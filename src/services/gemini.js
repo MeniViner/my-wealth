@@ -1,0 +1,64 @@
+/**
+ * Service for interacting with Gemini AI via Puter.js
+ * Using Puter.js for free Gemini access without API keys
+ * Documentation: https://developer.puter.com/tutorials/free-gemini-api
+ */
+
+/**
+ * Wait for Puter.js to be loaded
+ * @returns {Promise<void>}
+ */
+const waitForPuter = async () => {
+  if (typeof window === 'undefined') {
+    throw new Error("Window object not available");
+  }
+
+  // If Puter is already loaded, return immediately
+  if (window.puter && window.puter.ai) {
+    return;
+  }
+
+  // Wait up to 5 seconds for Puter to load
+  const maxWait = 5000;
+  const startTime = Date.now();
+  
+  while (!window.puter || !window.puter.ai) {
+    if (Date.now() - startTime > maxWait) {
+      throw new Error("Puter.js failed to load within 5 seconds");
+    }
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+};
+
+export const callGeminiAI = async (prompt) => {
+  try {
+    // Wait for Puter.js to be loaded
+    await waitForPuter();
+
+    // Using Puter.js for free Gemini access
+    // Documentation: https://developer.puter.com/tutorials/free-gemini-api
+    const response = await window.puter.ai.chat(prompt, { model: 'gemini-3-pro-preview' });
+    
+    // Puter returns an object, extract the message content
+    // Response structure: response.message.content or response.content or response.text
+    const content = response?.message?.content || response?.content || response?.text || response;
+    
+    // If content is still an object, try to stringify it
+    if (typeof content !== 'string') {
+      const stringified = typeof content === 'object' ? JSON.stringify(content, null, 2) : String(content);
+      return stringified || "לא התקבלה תשובה תקינה.";
+    }
+    
+    return content || "לא התקבלה תשובה תקינה.";
+  } catch (error) {
+    console.error("Puter AI Error:", error);
+    
+    // Provide helpful error messages
+    if (error.message.includes("failed to load")) {
+      return "שגיאה: Puter.js לא נטען. אנא ודא שהסקריפט נטען ב-index.html";
+    }
+    
+    return `שגיאה בקבלת תשובה מה-AI (Puter): ${error.message || "שגיאה לא ידועה"}`;
+  }
+};
+
