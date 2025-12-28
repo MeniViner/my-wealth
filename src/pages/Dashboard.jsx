@@ -54,6 +54,17 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
       .sort((a, b) => b.value - a.value);
   }, [assets]);
 
+  const dataBySymbol = useMemo(() => {
+    const map = {};
+    assets.forEach(a => {
+      const key = a.symbol || a.name || 'ללא סמל';
+      map[key] = (map[key] || 0) + a.value;
+    });
+    return Object.keys(map)
+      .map(name => ({ name, value: map[name] }))
+      .sort((a, b) => b.value - a.value);
+  }, [assets]);
+
   const topAssets = useMemo(() => {
     return [...assets]
       .sort((a, b) => b.value - a.value)
@@ -102,25 +113,25 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-10">
-      <header className="mb-6 flex justify-between items-end">
+      <header className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
         <div>
-          <h2 className="text-3xl font-bold text-slate-800">דשבורד ראשי</h2>
-          <p className="text-slate-500 flex items-center gap-2">
+          <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">דשבורד ראשי</h2>
+          <p className="text-slate-500 dark:text-slate-400 flex items-center gap-2 mt-1">
             <Cloud size={14} /> מסונכרן לענן בזמן אמת
           </p>
         </div>
-        <div className="text-left hidden md:block">
-          <div className="text-sm text-slate-400">שווי נקי</div>
-          <div className="text-3xl font-black text-slate-800 font-mono">
+        <div className="text-left w-full md:w-auto">
+          <div className="text-sm text-slate-400 dark:text-slate-500">שווי נקי</div>
+          <div className="text-2xl md:text-3xl font-black text-slate-800 dark:text-white font-mono">
             ₪{totalWealth.toLocaleString()}
           </div>
         </div>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <h3 className="text-lg font-bold text-slate-800 mb-6">פיזור לפי קטגוריות</h3>
-          <div className="h-80">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+        <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+          <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">פיזור לפי קטגוריות</h3>
+          <div className="h-64 md:h-80">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -155,7 +166,7 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
 
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
           <h3 className="text-lg font-bold text-slate-800 mb-6">איזון תיק לפי קטגוריות</h3>
-          <div className="h-80">
+          <div className="h-64 md:h-80">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={areaDataByCategory} margin={{ top: 10, right: 30, left: 0, bottom: 60 }}>
                 <defs>
@@ -164,15 +175,16 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                     <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" className="dark:stroke-slate-700" />
                 <XAxis 
                   dataKey="name" 
-                  tick={{ fontSize: 12 }}
+                  tick={{ fontSize: 12, fill: 'currentColor' }}
                   angle={-45}
                   textAnchor="end"
                   height={80}
+                  className="dark:text-slate-300"
                 />
-                <YAxis tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12, fill: 'currentColor' }} className="dark:text-slate-300" />
                 <Tooltip content={<CustomTooltip />} />
                 <Area 
                   type="monotone" 
@@ -195,20 +207,28 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
         />
 
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <h3 className="text-lg font-bold text-slate-800 mb-6">במה מושקע הכסף? (Instruments)</h3>
-          <div className="h-64">
+          <h3 className="text-lg font-bold text-slate-800 mb-6">הקצאה לפי נכס (Allocation by Asset)</h3>
+          <div className="h-56 md:h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={dataByInstrument} margin={{ bottom: 20 }}>
-                <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} height={40} />
+              <BarChart data={dataBySymbol} margin={{ bottom: 20 }}>
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'currentColor' }} interval={0} height={40} className="dark:text-slate-300" />
                 <YAxis hide />
                 <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f8fafc' }} />
                 <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                  {dataByInstrument.map((entry, index) => (
-                    <Cell 
-                      key={`cell-${index}`} 
-                      fill={systemData.instruments.find(i => i.name === entry.name)?.color || '#3b82f6'} 
-                    />
-                  ))}
+                  {dataBySymbol.map((entry, index) => {
+                    const symbol = systemData.symbols?.find(s => {
+                      const symbolName = typeof s === 'string' ? s : s.name;
+                      return symbolName === entry.name;
+                    });
+                    const color = symbol ? (typeof symbol === 'string' ? '#94a3b8' : symbol.color) : 
+                      ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#6366f1', '#ec4899', '#14b8a6'][index % 8];
+                    return (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={color} 
+                      />
+                    );
+                  })}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -226,10 +246,31 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
       />
 
       {/* Additional Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 mt-6">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+          <h3 className="text-lg font-bold text-slate-800 mb-6">במה מושקע הכסף? (Instruments)</h3>
+          <div className="h-56 md:h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={dataByInstrument} margin={{ bottom: 20 }}>
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'currentColor' }} interval={0} height={40} className="dark:text-slate-300" />
+                <YAxis hide />
+                <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f8fafc' }} />
+                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                  {dataByInstrument.map((entry, index) => (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={systemData.instruments.find(i => i.name === entry.name)?.color || '#3b82f6'} 
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
           <h3 className="text-lg font-bold text-slate-800 mb-6">פיזור לפי מטבעות</h3>
-          <div className="h-64">
+          <div className="h-56 md:h-64">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
@@ -261,12 +302,12 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
 
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
           <h3 className="text-lg font-bold text-slate-800 mb-6">פיזור לפי פלטפורמות</h3>
-          <div className="h-64">
+          <div className="h-56 md:h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={dataByPlatform} layout="vertical" margin={{ left: 20, right: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis type="number" tick={{ fontSize: 11 }} />
-                <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={100} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" className="dark:stroke-slate-700" />
+                <XAxis type="number" tick={{ fontSize: 11, fill: 'currentColor' }} className="dark:text-slate-300" />
+                <YAxis dataKey="name" type="category" tick={{ fontSize: 11, fill: 'currentColor' }} width={100} className="dark:text-slate-300" />
                 <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f8fafc' }} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                   {dataByPlatform.map((entry, index) => (
@@ -283,18 +324,19 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
 
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
           <h3 className="text-lg font-bold text-slate-800 mb-6">10 הנכסים הגדולים ביותר</h3>
-          <div className="h-64">
+          <div className="h-56 md:h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={topAssets} margin={{ bottom: 40, left: 20, right: 20 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" className="dark:stroke-slate-700" />
                 <XAxis 
                   dataKey="name" 
                   angle={-45}
                   textAnchor="end"
                   height={100}
-                  tick={{ fontSize: 10 }}
+                  tick={{ fontSize: 10, fill: 'currentColor' }}
+                  className="dark:text-slate-300"
                 />
-                <YAxis tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11, fill: 'currentColor' }} className="dark:text-slate-300" />
                 <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f8fafc' }} />
                 <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                   {topAssets.map((entry, index) => {
@@ -314,10 +356,10 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
 
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
           <h3 className="text-lg font-bold text-slate-800 mb-6">השוואת קטגוריות</h3>
-          <div className="h-64">
+          <div className="h-56 md:h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={areaDataByCategory} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" className="dark:stroke-slate-700" />
                 <XAxis 
                   dataKey="name" 
                   tick={{ fontSize: 11 }}

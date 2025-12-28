@@ -1,0 +1,421 @@
+import { useState, useEffect, useMemo } from 'react';
+import { useAuth } from '../hooks/useAuth';
+import { useAssets } from '../hooks/useAssets';
+import { useCurrency } from '../hooks/useCurrency';
+import { useSystemData } from '../hooks/useSystemData';
+import { subscribeToChartConfigs, deleteChartConfig } from '../services/chartService';
+import { aggregateData, getColorForItem } from '../utils/chartUtils';
+import ChartRenderer from '../components/ChartRenderer';
+import { Cloud, Trash2, Edit2, Filter, X, Settings, Eye, EyeOff } from 'lucide-react';
+import { confirmAlert, successAlert, errorAlert } from '../utils/alerts';
+import { Link } from 'react-router-dom';
+
+const DynamicDashboard = () => {
+  const { user } = useAuth();
+  const { currencyRate } = useCurrency(user);
+  const { assets } = useAssets(user, currencyRate.rate);
+  const { systemData } = useSystemData(user);
+
+  const [widgets, setWidgets] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [isWealthVisible, setIsWealthVisible] = useState(true);
+
+  // Main interactive chart state
+  const [mainChartConfig, setMainChartConfig] = useState({
+    chartType: 'PieChart',
+    dataKey: 'category',
+    filters: {
+      category: '',
+      platform: '',
+      instrument: '',
+      currency: ''
+    }
+  });
+
+  // Subscribe to chart configurations
+  useEffect(() => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    const unsubscribe = subscribeToChartConfigs(user, (configs) => {
+      // Filter only visible widgets and sort by order
+      const visibleWidgets = configs
+        .filter(config => config.isVisible !== false)
+        .sort((a, b) => (a.order || 0) - (b.order || 0));
+      setWidgets(visibleWidgets);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // Calculate total wealth
+  const totalWealth = useMemo(() => {
+    return assets.reduce((sum, item) => sum + item.value, 0);
+  }, [assets]);
+
+  // Get unique values for filters
+  const uniqueCategories = useMemo(() => {
+    return [...new Set(assets.map(a => a.category))].filter(Boolean).sort();
+  }, [assets]);
+
+  const uniquePlatforms = useMemo(() => {
+    return [...new Set(assets.map(a => a.platform))].filter(Boolean).sort();
+  }, [assets]);
+
+  const uniqueInstruments = useMemo(() => {
+    return [...new Set(assets.map(a => a.instrument))].filter(Boolean).sort();
+  }, [assets]);
+
+  const uniqueCurrencies = useMemo(() => {
+    return [...new Set(assets.map(a => a.currency))].filter(Boolean).sort();
+  }, [assets]);
+
+  // Main chart data
+  const mainChartData = useMemo(() => {
+    const aggregatedData = aggregateData(assets, mainChartConfig.dataKey, mainChartConfig.filters);
+    
+    if (mainChartConfig.chartType === 'Treemap') {
+      return aggregatedData.map(item => ({
+        name: item.name,
+        size: item.value,
+        fill: getColorForItem(item.name, mainChartConfig.dataKey, systemData)
+      }));
+    }
+    
+    return aggregatedData;
+  }, [assets, mainChartConfig, systemData]);
+
+  const mainChartTotalValue = useMemo(() => {
+    return mainChartData.reduce((sum, item) => sum + (item.value || item.size || 0), 0);
+  }, [mainChartData]);
+
+  // Check if any filters are active
+  const hasActiveFilters = useMemo(() => {
+    return Object.values(mainChartConfig.filters).some(val => val !== '');
+  }, [mainChartConfig.filters]);
+
+  const clearFilters = () => {
+    setMainChartConfig(prev => ({
+      ...prev,
+      filters: {
+        category: '',
+        platform: '',
+        instrument: '',
+        currency: ''
+      }
+    }));
+  };
+
+  // Prepare chart data for each widget
+  const getChartDataForWidget = (widget) => {
+    const aggregatedData = aggregateData(assets, widget.dataKey, widget.filters || {});
+    
+    if (widget.chartType === 'Treemap') {
+      return aggregatedData.map(item => ({
+        name: item.name,
+        size: item.value,
+        fill: getColorForItem(item.name, widget.dataKey, systemData)
+      }));
+    }
+    
+    return aggregatedData;
+  };
+
+  const handleDeleteWidget = async (widgetId, widgetTitle) => {
+    const confirmed = await confirmAlert(
+      'מחיקת גרף',
+      `האם אתה בטוח שברצונך למחוק את הגרף "${widgetTitle}"?`,
+      'warning'
+    );
+    
+    if (!confirmed) return;
+
+    try {
+      await deleteChartConfig(user, widgetId);
+      await successAlert('הצלחה', 'הגרף נמחק בהצלחה');
+    } catch (error) {
+      console.error('Error deleting widget:', error);
+      await errorAlert('שגיאה', 'אירעה שגיאה במחיקת הגרף');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
+          <p className="text-slate-600">טוען דשבורד...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6 max-w-7xl mx-auto pb-10">
+      <header className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+        <div className="flex-1">
+          <div className="flex flex-col md:flex-row items-start md:items-center gap-3 mb-2">
+            <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">דשבורד מותאם אישית</h2>
+            <Link
+              to="/settings#charts"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition border border-slate-200 dark:border-slate-700 hover:border-emerald-200 dark:hover:border-emerald-700"
+              title="ערוך דשבורדים"
+            >
+              <Settings size={16} /> ערוך דשבורדים
+            </Link>
+          </div>
+          <p className="text-slate-500 dark:text-slate-400 flex items-center gap-2">
+            <Cloud size={14} /> מסונכרן לענן בזמן אמת
+          </p>
+        </div>
+        <div className="text-left w-full md:w-auto">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="text-sm text-slate-400 dark:text-slate-500">סה"כ הון עצמי</div>
+            <button
+              onClick={() => setIsWealthVisible(!isWealthVisible)}
+              className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 w-6 h-6 flex items-center justify-center flex-shrink-0"
+              title={isWealthVisible ? 'הסתר' : 'הצג'}
+            >
+              {isWealthVisible ? <Eye size={14} /> : <EyeOff size={14} />}
+            </button>
+          </div>
+          <div className="text-2xl md:text-3xl font-black text-slate-800 dark:text-white font-mono">
+            {isWealthVisible ? `₪${totalWealth.toLocaleString()}` : '••••••'}
+          </div>
+        </div>
+      </header>
+
+      {/* Main Interactive Chart */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+        {/* Controls Bar */}
+        <div className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 md:px-6 py-4">
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Chart Type Selector */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">סוג גרף:</span>
+              <div className="flex gap-1 bg-white dark:bg-slate-800 rounded-lg p-1 border border-slate-200 dark:border-slate-700">
+                {[
+                  { value: 'PieChart', label: 'עוגה' },
+                  { value: 'BarChart', label: 'עמודות' },
+                  { value: 'HorizontalBarChart', label: 'אופקי' },
+                  { value: 'RadarChart', label: 'רדאר' },
+                  { value: 'RadialBar', label: 'רדיאלי' },
+                  { value: 'Treemap', label: 'מפה' }
+                ].map(type => (
+                  <button
+                    key={type.value}
+                    onClick={() => setMainChartConfig(prev => ({ ...prev, chartType: type.value }))}
+                    className={`px-3 py-1.5 text-xs font-medium rounded transition ${
+                      mainChartConfig.chartType === type.value
+                        ? 'bg-slate-800 dark:bg-slate-700 text-white'
+                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    {type.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Group By Selector */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">קיבוץ:</span>
+              <div className="flex gap-1 bg-white dark:bg-slate-800 rounded-lg p-1 border border-slate-200 dark:border-slate-700">
+                {[
+                  { value: 'category', label: 'קטגוריה' },
+                  { value: 'platform', label: 'פלטפורמה' },
+                  { value: 'instrument', label: 'כלי' },
+                  { value: 'tags', label: 'תגיות' },
+                  { value: 'currency', label: 'מטבע' }
+                ].map(group => (
+                  <button
+                    key={group.value}
+                    onClick={() => setMainChartConfig(prev => ({ ...prev, dataKey: group.value }))}
+                    className={`px-3 py-1.5 text-xs font-medium rounded transition ${
+                      mainChartConfig.dataKey === group.value
+                        ? 'bg-slate-800 dark:bg-slate-700 text-white'
+                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    {group.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Filters */}
+            <div className="flex flex-wrap items-center gap-2 ml-auto">
+              <Filter size={14} className="text-slate-400 dark:text-slate-500" />
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">פילטרים:</span>
+              
+              {/* Category Filter */}
+              <select
+                value={mainChartConfig.filters.category}
+                onChange={(e) => setMainChartConfig(prev => ({
+                  ...prev,
+                  filters: { ...prev.filters, category: e.target.value }
+                }))}
+                className="px-2 py-1.5 text-xs border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-slate-400"
+              >
+                <option value="">כל הקטגוריות</option>
+                {uniqueCategories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+
+              {/* Platform Filter */}
+              <select
+                value={mainChartConfig.filters.platform}
+                onChange={(e) => setMainChartConfig(prev => ({
+                  ...prev,
+                  filters: { ...prev.filters, platform: e.target.value }
+                }))}
+                className="px-2 py-1.5 text-xs border border-slate-300 rounded bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-400"
+              >
+                <option value="">כל הפלטפורמות</option>
+                {uniquePlatforms.map(plat => (
+                  <option key={plat} value={plat}>{plat}</option>
+                ))}
+              </select>
+
+              {/* Currency Filter */}
+              <select
+                value={mainChartConfig.filters.currency}
+                onChange={(e) => setMainChartConfig(prev => ({
+                  ...prev,
+                  filters: { ...prev.filters, currency: e.target.value }
+                }))}
+                className="px-2 py-1.5 text-xs border border-slate-300 rounded bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-400"
+              >
+                <option value="">כל המטבעות</option>
+                {uniqueCurrencies.map(curr => (
+                  <option key={curr} value={curr}>{curr}</option>
+                ))}
+              </select>
+
+              {/* Clear Filters Button */}
+              {hasActiveFilters && (
+                <button
+                  onClick={clearFilters}
+                  className="px-2 py-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition flex items-center gap-1"
+                  title="נקה פילטרים"
+                >
+                  <X size={12} />
+                  נקה
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Chart Display */}
+        <div className="p-6">
+          <div className="h-96">
+            <ChartRenderer
+              config={mainChartConfig}
+              chartData={mainChartData}
+              systemData={systemData}
+              totalValue={mainChartTotalValue}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Saved Widgets */}
+      {widgets.length > 0 && (
+        <>
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-4">
+            <h3 className="text-lg font-semibold text-slate-700 dark:text-white">גרפים שמורים</h3>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                to="/settings#charts"
+                className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition"
+                title="ערוך דשבורדים"
+              >
+                <Settings size={14} /> ערוך דשבורדים
+              </Link>
+              <Link
+                to="/chart-builder"
+                className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition"
+              >
+                <Edit2 size={14} /> הוסף גרף
+              </Link>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 auto-rows-fr">
+            {widgets.map((widget) => {
+              const chartData = getChartDataForWidget(widget);
+              const totalValue = chartData.reduce((sum, item) => sum + (item.value || item.size || 0), 0);
+              const size = widget.size || 'medium';
+              
+              // Grid classes based on size (desktop only, mobile always col-span-1)
+              const gridClasses = {
+                small: 'lg:col-span-1',
+                medium: 'lg:col-span-2',
+                large: 'lg:col-span-2 lg:row-span-2'
+              };
+              
+              // Height based on size
+              const heightClasses = {
+                small: 'h-80',
+                medium: 'h-80',
+                large: 'h-[640px]'
+              };
+
+              return (
+                <div
+                  key={widget.id}
+                  className={`bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 relative group ${gridClasses[size]}`}
+                >
+                  {/* Delete button - appears on hover */}
+                  <button
+                    onClick={() => handleDeleteWidget(widget.id, widget.title)}
+                    className="absolute top-4 left-4 opacity-0 group-hover:opacity-100 transition-opacity p-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 rounded-lg"
+                    title="מחק גרף"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+
+                  <h3 className="text-base md:text-lg font-semibold text-slate-800 dark:text-white mb-4 pr-8">
+                    {widget.title}
+                  </h3>
+                  <div className={heightClasses[size]}>
+                    <ChartRenderer
+                      config={widget}
+                      chartData={chartData}
+                      systemData={systemData}
+                      totalValue={totalValue}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {/* Empty State */}
+      {widgets.length === 0 && (
+        <div className="bg-white dark:bg-slate-800 p-12 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 text-center">
+          <h3 className="text-lg font-semibold text-slate-700 dark:text-white mb-2">אין גרפים שמורים</h3>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+            צור גרפים חדשים באמצעות בונה הגרפים כדי לראות אותם כאן
+          </p>
+          <Link
+            to="/chart-builder"
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition"
+          >
+            <Edit2 size={16} /> צור גרף חדש
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default DynamicDashboard;
+

@@ -1,28 +1,54 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
+import { collection, getDocs, writeBatch, doc } from 'firebase/firestore';
 import { useAuth } from './hooks/useAuth';
 import { useAssets } from './hooks/useAssets';
 import { useSystemData } from './hooks/useSystemData';
 import { useCurrency } from './hooks/useCurrency';
+import { useAIConfig } from './hooks/useAIConfig';
+import { db, appId } from './services/firebase';
+import { generatePortfolioContext } from './utils/aiContext';
 import Layout from './components/Layout';
+import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import AssetManager from './pages/AssetManager';
 import AssetForm from './pages/AssetForm';
 import AIAdvisor from './pages/AIAdvisor';
 import Settings from './pages/Settings';
 import ChartBuilder from './pages/ChartBuilder';
+import DynamicDashboard from './pages/DynamicDashboard';
+import UserManagement from './pages/UserManagement';
+import Rebalancing from './pages/Rebalancing';
 import { DEFAULT_SYSTEM_DATA } from './constants/defaults';
 import { confirmAlert, successAlert, errorAlert } from './utils/alerts';
 
 function App() {
   const { user, loading: authLoading } = useAuth();
-  const { currencyRate } = useCurrency(user);
+  const { currencyRate, refreshCurrencyRate } = useCurrency(user);
   const { systemData, setSystemData } = useSystemData(user);
   const { assets, addAsset, updateAsset, deleteAsset, initializeAssets } = useAssets(user, currencyRate.rate);
+  const { aiConfig } = useAIConfig(user);
+
+  // // Debug: Log user info when user changes
+  // useEffect(() => {
+  //   if (user) {
+  //     console.log('%c👤 Current User Info:', 'color: #3b82f6; font-weight: bold;');
+  //     console.log('  User ID:', user.uid);
+  //     console.log('  Email:', user.email);
+  //     console.log('  Display Name:', user.displayName);
+  //     console.log('  Photo URL:', user.photoURL);
+  //     console.log('%c💡 Tip: Use window.__getCurrentUser() in console to get user info anytime', 'color: #10b981;');
+  //   }
+  // }, [user]);
 
   // Calculate total wealth
   const totalWealth = useMemo(() => {
     return assets.reduce((sum, item) => sum + item.value, 0);
+  }, [assets]);
+
+  // Generate portfolio context string for AI interactions
+  const portfolioContextString = useMemo(() => {
+    return generatePortfolioContext(assets);
   }, [assets]);
 
   // Handle asset save (both add and update)
@@ -36,6 +62,12 @@ function App() {
 
   // Handle initialize database
   const handleInitializeDB = async () => {
+    // Verify user is logged in
+    if (!user) {
+      await errorAlert('שגיאה', 'יש להתחבר כדי לאתחל את מסד הנתונים.');
+      return;
+    }
+
     const confirmed = await confirmAlert(
       'אתחול מסד נתונים',
       'פעולה זו תמחק את כל הנתונים הקיימים ותטען את נתוני ברירת המחדל. האם להמשיך?',
@@ -45,13 +77,47 @@ function App() {
       return;
     }
     
-    const success = await initializeAssets();
-    if (success) {
-      // Also reset system data
+    try {
+      if (!db) {
+        await errorAlert('שגיאה', 'מסד הנתונים לא זמין. אנא בדוק את הגדרות Firebase.');
+        return;
+      }
+      
+      const batch = writeBatch(db);
+      
+      // 1. Initialize assets for the logged-in user (deletes old and adds new)
+      const assetsSuccess = await initializeAssets();
+      if (!assetsSuccess) {
+        await errorAlert('שגיאה', 'אירעה שגיאה באתחול הנכסים.');
+        return;
+      }
+      
+      // 2. Delete all reports for the logged-in user
+      const reportsSnapshot = await getDocs(
+        collection(db, 'artifacts', appId, 'users', user.uid, 'reports')
+      );
+      reportsSnapshot.docs.forEach((d) => batch.delete(d.ref));
+      
+      // 3. Delete all dashboard widgets for the logged-in user
+      const widgetsSnapshot = await getDocs(
+        collection(db, 'artifacts', appId, 'users', user.uid, 'dashboard_widgets')
+      );
+      widgetsSnapshot.docs.forEach((d) => batch.delete(d.ref));
+      
+      // 4. Reset system data for the logged-in user
+      const configRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'config');
+      batch.set(configRef, DEFAULT_SYSTEM_DATA);
+      
+      // Commit all deletions and resets
+      await batch.commit();
+      
+      // Also update local state
       await setSystemData(DEFAULT_SYSTEM_DATA);
-      await successAlert('הצלחה', 'הנתונים אותחלו בהצלחה והועלו לפיירבייס!');
-    } else {
-      await errorAlert('שגיאה', 'אירעה שגיאה באתחול הנתונים.');
+      
+      await successAlert('הצלחה', 'הנתונים אותחלו בהצלחה והועלו לפיירבייס של המשתמש המחובר!');
+    } catch (error) {
+      console.error('Error initializing database:', error);
+      await errorAlert('שגיאה', 'אירעה שגיאה באתחול הנתונים: ' + error.message);
     }
   };
 
@@ -67,8 +133,13 @@ function App() {
     );
   }
 
+  // Show login page if user is not authenticated
+  if (!user) {
+    return <Login />;
+  }
+
   return (
-    <Layout totalWealth={totalWealth} currencyRate={currencyRate}>
+    <Layout totalWealth={totalWealth} currencyRate={currencyRate} user={user}>
       <Routes>
         <Route 
           path="/" 
@@ -76,7 +147,7 @@ function App() {
         />
         <Route 
           path="/advisor" 
-          element={<AIAdvisor assets={assets} totalWealth={totalWealth} user={user} />} 
+          element={<AIAdvisor assets={assets} totalWealth={totalWealth} user={user} portfolioContext={portfolioContextString} aiConfig={aiConfig} />} 
         />
         <Route 
           path="/assets" 
@@ -95,7 +166,9 @@ function App() {
               onSave={async (assetData) => {
                 await handleSaveAsset(assetData);
               }}
-              systemData={systemData} 
+              systemData={systemData}
+              setSystemData={setSystemData}
+              portfolioContext={portfolioContextString}
             />
           } 
         />
@@ -107,7 +180,9 @@ function App() {
                 await handleSaveAsset(assetData);
               }}
               assets={assets}
-              systemData={systemData} 
+              systemData={systemData}
+              setSystemData={setSystemData}
+              portfolioContext={portfolioContextString}
             />
           } 
         />
@@ -119,13 +194,34 @@ function App() {
               setSystemData={setSystemData} 
               currencyRate={currencyRate} 
               user={user} 
-              onResetData={handleInitializeDB} 
+              onResetData={handleInitializeDB}
+              onRefreshCurrency={refreshCurrencyRate}
             />
           } 
         />
         <Route 
           path="/chart-builder" 
           element={<ChartBuilder />} 
+        />
+        <Route 
+          path="/dashboard/custom" 
+          element={<DynamicDashboard />} 
+        />
+        <Route 
+          path="/rebalancing" 
+          element={
+            <Rebalancing 
+              assets={assets} 
+              systemData={systemData} 
+              user={user} 
+              currencyRate={currencyRate}
+              portfolioContext={portfolioContextString}
+            />
+          } 
+        />
+        <Route 
+          path="/admin/users" 
+          element={<UserManagement user={user} />} 
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

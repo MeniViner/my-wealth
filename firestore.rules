@@ -1,0 +1,103 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user owns the data
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Helper function to check if user is admin
+    function isAdmin(appId) {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/artifacts/$(appId)/admins/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/artifacts/$(appId)/admins/$(request.auth.uid)).data.isAdmin == true;
+    }
+    
+    // Helper function to check if user is admin (requires appId parameter)
+    function isAdminInContext(appId) {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/artifacts/$(appId)/admins/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/artifacts/$(appId)/admins/$(request.auth.uid)).data.isAdmin == true;
+    }
+    
+    // Helper function to check if user is admin or owner (requires appId parameter)
+    function isAdminOrOwner(userId, appId) {
+      return isOwner(userId) || isAdminInContext(appId);
+    }
+    
+    // Match the artifacts collection structure
+    match /artifacts/{appId} {
+      
+      // Admins collection
+      match /admins/{adminId} {
+        // Users can read their own admin status (to check if they are admin)
+        // Admins can read all admin records
+        allow read: if isAuthenticated() && (isOwner(adminId) || isAdminInContext(appId));
+        // Only admins can write (add/update/delete admin status)
+        // Note: First admin must be set manually via Firebase Console
+        allow write: if isAdminInContext(appId);
+      }
+      
+      // Users subcollection - each user has their own data
+      match /users/{userId} {
+        // Admins can read all user metadata, regular users can only read their own
+        allow read: if isAuthenticated() && (isOwner(userId) || isAdminInContext(appId));
+        
+        // Assets collection - user's financial assets
+        match /assets/{assetId} {
+          // Admins can read all, users can only read/write their own
+          allow read: if isAdminOrOwner(userId, appId);
+          allow write: if isOwner(userId);
+        }
+        
+        // Settings subcollection
+        match /settings/{settingId} {
+          // Admins can read all, users can only read/write their own
+          allow read: if isAdminOrOwner(userId, appId);
+          allow write: if isOwner(userId);
+        }
+        
+        // Reports collection - AI advisor reports
+        match /reports/{reportId} {
+          // Admins can read all, users can only read/write their own
+          allow read: if isAdminOrOwner(userId, appId);
+          allow write: if isOwner(userId);
+        }
+        
+        // Dashboard widgets collection - chart configurations
+        match /dashboard_widgets/{widgetId} {
+          // Admins can read all, users can only read/write their own
+          allow read: if isAdminOrOwner(userId, appId);
+          allow write: if isOwner(userId);
+        }
+        
+        // Chats collection - AI chat conversations
+        match /chats/{chatId} {
+          // Admins can read all, users can only read/write their own
+          allow read: if isAdminOrOwner(userId, appId);
+          allow write: if isOwner(userId);
+          
+          // Messages subcollection within each chat
+          match /messages/{messageId} {
+            // Admins can read all, users can only read/write their own
+            allow read: if isAdminOrOwner(userId, appId);
+            allow write: if isOwner(userId);
+          }
+        }
+      }
+    }
+    
+    // Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+

@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
+import { getAuth, onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 // Firebase configuration from environment variables
@@ -42,16 +42,53 @@ export { auth, db };
 // App ID for Firebase collections
 export const appId = import.meta.env.VITE_APP_ID || 'my-wealth-app';
 
-// Initialize anonymous authentication
-export const initAuth = async () => {
+// Make auth available globally for console debugging
+if (typeof window !== 'undefined' && auth) {
+  window.__firebaseAuth = auth;
+  window.__getCurrentUser = () => {
+    if (auth && auth.currentUser) {
+      console.log('Current User ID:', auth.currentUser.uid);
+      console.log('Current User Email:', auth.currentUser.email);
+      console.log('Current User Display Name:', auth.currentUser.displayName);
+      return auth.currentUser;
+    } else {
+      console.log('No user is currently logged in');
+      return null;
+    }
+  };
+  // console.log('%c🔧 Firebase Debug Tools Available:', 'color: #10b981; font-weight: bold;');
+  // console.log('  - window.__getCurrentUser() - Get current user info');
+  // console.log('  - window.__firebaseAuth - Access Firebase auth object');
+}
+
+// Google Auth Provider
+const googleProvider = new GoogleAuthProvider();
+
+// Sign in with Google
+export const signInWithGoogle = async () => {
   if (!auth) {
     console.warn("Firebase auth not initialized. Please configure Firebase in .env file.");
+    throw new Error("Firebase auth not initialized");
+  }
+  try {
+    const result = await signInWithPopup(auth, googleProvider);
+    return result.user;
+  } catch (error) {
+    console.error("Google sign-in failed:", error);
+    throw error;
+  }
+};
+
+// Sign out
+export const signOutUser = async () => {
+  if (!auth) {
     return;
   }
   try {
-    await signInAnonymously(auth);
+    await signOut(auth);
   } catch (error) {
-    console.error("Anonymous auth failed:", error);
+    console.error("Sign out failed:", error);
+    throw error;
   }
 };
 

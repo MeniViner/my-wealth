@@ -24,16 +24,21 @@ export const useAssets = (user, currencyRate) => {
       const items = [];
       snapshot.forEach((doc) => {
         const data = doc.data();
+        // Use currencyRate if available, otherwise use originalValue or default rate
+        const rate = currencyRate || 3.65;
         items.push({
           id: doc.id,
           ...data,
           // Recalculate value based on current exchange rate
           value: data.currency === 'USD' 
-            ? data.originalValue * currencyRate 
-            : data.originalValue
+            ? (data.originalValue || 0) * rate
+            : (data.originalValue || data.value || 0)
         });
       });
       setAssets(items);
+    }, (error) => {
+      console.error('Error listening to assets:', error);
+      setAssets([]);
     });
 
     return () => unsubscribe();

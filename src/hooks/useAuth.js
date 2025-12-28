@@ -1,21 +1,15 @@
 import { useState, useEffect } from 'react';
-import { initAuth, onAuthStateChange } from '../services/firebase';
+import { onAuthStateChange, signInWithGoogle, signOutUser } from '../services/firebase';
 
 /**
  * Custom hook for Firebase authentication
- * @returns {{ user: User | null, loading: boolean }}
+ * @returns {{ user: User | null, loading: boolean, signIn: Function, signOut: Function }}
  */
 export const useAuth = () => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Initialize anonymous auth
-    initAuth().catch((error) => {
-      console.error("Auth initialization error:", error);
-      setLoading(false);
-    });
-
     // Listen to auth state changes
     const unsubscribe = onAuthStateChange((authUser) => {
       setUser(authUser);
@@ -27,6 +21,24 @@ export const useAuth = () => {
     };
   }, []);
 
-  return { user, loading };
+  const signIn = async () => {
+    try {
+      await signInWithGoogle();
+    } catch (error) {
+      console.error("Sign in error:", error);
+      throw error;
+    }
+  };
+
+  const signOut = async () => {
+    try {
+      await signOutUser();
+    } catch (error) {
+      console.error("Sign out error:", error);
+      throw error;
+    }
+  };
+
+  return { user, loading, signIn, signOut };
 };
 

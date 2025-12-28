@@ -95,3 +95,22 @@ export const subscribeToChartConfigs = (user, callback) => {
   });
 };
 
+/**
+ * Update order of multiple chart configurations
+ * @param {Object} user - Firebase user object
+ * @param {Array} configs - Array of configs with updated order values
+ */
+export const updateChartOrders = async (user, configs) => {
+  if (!user || !db) return;
+  
+  const updatePromises = configs.map(config => {
+    const configRef = doc(db, 'artifacts', appId, 'users', user.uid, 'dashboard_widgets', config.id);
+    return updateDoc(configRef, {
+      order: config.order,
+      updatedAt: new Date()
+    });
+  });
+  
+  await Promise.all(updatePromises);
+};
+

@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Sparkles, Loader2 } from 'lucide-react';
+import { ArrowLeft, Sparkles, Loader2, Plus } from 'lucide-react';
 import { callGeminiAI } from '../services/gemini';
 import { infoAlert, successToast } from '../utils/alerts';
+import { generateRandomColor } from '../constants/defaults';
+import TickerSearch from '../components/TickerSearch';
 
-const AssetForm = ({ onSave, assets = [], systemData }) => {
+const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioContext = "" }) => {
   const navigate = useNavigate();
   const { id } = useParams();
   const editAsset = id ? assets.find(a => a.id === id) : null;
@@ -17,6 +19,9 @@ const AssetForm = ({ onSave, assets = [], systemData }) => {
   }, [id, editAsset, assets.length, navigate]);
   const [formData, setFormData] = useState({
     name: '',
+    symbol: '',
+    apiId: '', // API ID for price fetching (e.g., "bitcoin" for CoinGecko)
+    marketDataSource: '', // "coingecko" | "yahoo" | "manual"
     instrument: systemData.instruments[0]?.name || '',
     platform: systemData.platforms[0]?.name || '',
     category: systemData.categories[0]?.name || 'אחר',
@@ -25,11 +30,76 @@ const AssetForm = ({ onSave, assets = [], systemData }) => {
     tags: ''
   });
   const [tagLoading, setTagLoading] = useState(false);
+  const [aiSuggestLoading, setAiSuggestLoading] = useState(false);
+  const [showNewSymbol, setShowNewSymbol] = useState(false);
+  const [newSymbolValue, setNewSymbolValue] = useState('');
+  const [showNewPlatform, setShowNewPlatform] = useState(false);
+  const [newPlatformValue, setNewPlatformValue] = useState('');
+  const [showNewInstrument, setShowNewInstrument] = useState(false);
+  const [newInstrumentValue, setNewInstrumentValue] = useState('');
+
+  // Handle adding new symbol
+  const handleAddSymbol = () => {
+    if (!newSymbolValue.trim()) return;
+    const trimmedValue = newSymbolValue.trim().toUpperCase();
+    const exists = systemData.symbols?.some(s => {
+      const symbolName = typeof s === 'string' ? s : s.name;
+      return symbolName === trimmedValue;
+    });
+    if (exists) {
+      infoAlert('שגיאה', 'הסמל כבר קיים');
+      return;
+    }
+    const newSymbol = { name: trimmedValue, color: generateRandomColor() };
+    const updatedSymbols = [...(systemData.symbols || []), newSymbol];
+    setSystemData({ ...systemData, symbols: updatedSymbols });
+    setFormData({ ...formData, symbol: trimmedValue });
+    setNewSymbolValue('');
+    setShowNewSymbol(false);
+    successToast('סמל נוסף בהצלחה', 1500);
+  };
+
+  // Handle adding new platform
+  const handleAddPlatform = () => {
+    if (!newPlatformValue.trim()) return;
+    const trimmedValue = newPlatformValue.trim();
+    if (systemData.platforms.find(p => p.name === trimmedValue)) {
+      infoAlert('שגיאה', 'הפלטפורמה כבר קיימת');
+      return;
+    }
+    const newPlatform = { name: trimmedValue, color: generateRandomColor() };
+    const updatedPlatforms = [...systemData.platforms, newPlatform];
+    setSystemData({ ...systemData, platforms: updatedPlatforms });
+    setFormData({ ...formData, platform: trimmedValue });
+    setNewPlatformValue('');
+    setShowNewPlatform(false);
+    successToast('פלטפורמה נוספה בהצלחה', 1500);
+  };
+
+  // Handle adding new instrument
+  const handleAddInstrument = () => {
+    if (!newInstrumentValue.trim()) return;
+    const trimmedValue = newInstrumentValue.trim();
+    if (systemData.instruments.find(i => i.name === trimmedValue)) {
+      infoAlert('שגיאה', 'המכשיר כבר קיים');
+      return;
+    }
+    const newInstrument = { name: trimmedValue, color: generateRandomColor() };
+    const updatedInstruments = [...systemData.instruments, newInstrument];
+    setSystemData({ ...systemData, instruments: updatedInstruments });
+    setFormData({ ...formData, instrument: trimmedValue });
+    setNewInstrumentValue('');
+    setShowNewInstrument(false);
+    successToast('מכשיר נוסף בהצלחה', 1500);
+  };
 
   useEffect(() => {
     if (editAsset) {
       setFormData({
         name: editAsset.name,
+        symbol: editAsset.symbol || '',
+        apiId: editAsset.apiId || '',
+        marketDataSource: editAsset.marketDataSource || '',
         instrument: editAsset.instrument,
         platform: editAsset.platform,
         category: editAsset.category,
@@ -41,6 +111,9 @@ const AssetForm = ({ onSave, assets = [], systemData }) => {
       // Reset form when not editing
       setFormData({
         name: '',
+        symbol: '',
+        apiId: '',
+        marketDataSource: '',
         instrument: systemData.instruments[0]?.name || '',
         platform: systemData.platforms[0]?.name || '',
         category: systemData.categories[0]?.name || 'אחר',
@@ -51,15 +124,112 @@ const AssetForm = ({ onSave, assets = [], systemData }) => {
     }
   }, [editAsset, systemData]);
 
+  // Reset API data when category changes to non-searchable type
+  useEffect(() => {
+    if (formData.category !== 'מניות' && formData.category !== 'קריפטו') {
+      if (formData.apiId || formData.marketDataSource) {
+        setFormData(prev => ({
+          ...prev,
+          apiId: '',
+          marketDataSource: ''
+        }));
+      }
+    }
+  }, [formData.category]);
+
+  // Smart AI Suggest - suggests category, symbol, and tags based on portfolio patterns
+  const handleAISuggest = async () => {
+    if (!formData.name) {
+      await infoAlert('שגיאה', 'הזן שם נכס');
+      return;
+    }
+    setAiSuggestLoading(true);
+    const prompt = `תבסס על דפוסי הפורטפוליו הנוכחי שלי (מצורף בהקשר) וידע פיננסי כללי, הצע metadata עבור הנכס החדש: "${formData.name}".
+
+החזר תשובה בפורמט JSON בלבד (ללא טקסט נוסף) עם השדות הבאים:
+1. "symbol" - סמל או מזהה סטנדרטי של הנכס. דוגמאות: 'Apple Stock' -> 'AAPL', 'S&P 500 Fund' -> 'SPX', 'Bitcoin' -> 'BTC', 'Tesla' -> 'TSLA'. אם לא ידוע, השתמש בשם קצר ותיאורי (עד 10 תווים).
+2. "category" - קטגוריה מהרשימה: מניות, קריפטו, מזומן, נדלן, אחר
+3. "tags" - רשימת תגיות מופרדת בפסיקים (מחרוזת אחת). חשוב: אם יש דפוסים בפורטפוליו (למשל, כל המניות האמריקאיות מסומנות כ-"Wall St"), השתמש באותם דפוסים.
+
+החזר רק JSON, ללא הסברים נוספים. דוגמה: {"symbol": "TSLA", "category": "מניות", "tags": "מניות, טכנולוגיה, ארה\"ב, Wall St"}`;
+    try {
+      const result = await callGeminiAI(prompt, portfolioContext);
+      // Try to parse JSON response
+      let parsed;
+      try {
+        parsed = JSON.parse(result);
+      } catch {
+        // If not JSON, try to extract JSON from the response
+        const jsonMatch = result.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          parsed = JSON.parse(jsonMatch[0]);
+        } else {
+          // Fallback: treat as error
+          await infoAlert('שגיאה', 'לא ניתן לפרש את תשובת ה-AI');
+          setAiSuggestLoading(false);
+          return;
+        }
+      }
+      setFormData(prev => {
+        const newCategory = parsed.category || prev.category;
+        // Reset apiId and marketDataSource if category changed to non-searchable type
+        const shouldResetApiData = newCategory !== 'מניות' && newCategory !== 'קריפטו';
+        return {
+          ...prev, 
+          symbol: parsed.symbol || prev.symbol,
+          category: newCategory,
+          tags: parsed.tags ? parsed.tags.replace(/\.$/, '') : prev.tags,
+          // Reset API data if category doesn't support smart search
+          ...(shouldResetApiData && { apiId: '', marketDataSource: '' })
+        };
+      });
+      await successToast('הצעות AI הוחלו בהצלחה', 2000);
+    } catch (error) {
+      console.error('Error parsing AI response:', error);
+      await infoAlert('שגיאה', 'אירעה שגיאה ביצירת הצעות AI');
+    }
+    setAiSuggestLoading(false);
+  };
+
   const handleGenerateTags = async () => {
     if (!formData.name) {
       await infoAlert('שגיאה', 'הזן שם נכס');
       return;
     }
     setTagLoading(true);
-    const prompt = `החזר רק רשימת תגיות מופרדת בפסיקים עבור הנכס: ${formData.name}.`;
-    const result = await callGeminiAI(prompt);
-    setFormData(prev => ({ ...prev, tags: result.replace(/\.$/, '') }));
+    const prompt = `עבור הנכס: "${formData.name}", החזר תשובה בפורמט JSON בלבד (ללא טקסט נוסף) עם שני שדות:
+1. "tags" - רשימת תגיות מופרדת בפסיקים (מחרוזת אחת)
+2. "symbol" - סמל או מזהה סטנדרטי של הנכס. דוגמאות: 'Apple Stock' -> 'AAPL', 'S&P 500 Fund' -> 'SPX', 'Bitcoin' -> 'BTC', 'תעודת סל נאסד"ק' -> 'QQQ'. אם לא ידוע, השתמש בשם קצר ותיאורי (עד 10 תווים).
+
+החזר רק JSON, ללא הסברים נוספים. דוגמה: {"tags": "מניות, טכנולוגיה, ארה\"ב", "symbol": "AAPL"}`;
+    try {
+      const result = await callGeminiAI(prompt, portfolioContext);
+      // Try to parse JSON response
+      let parsed;
+      try {
+        parsed = JSON.parse(result);
+      } catch {
+        // If not JSON, try to extract JSON from the response
+        const jsonMatch = result.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          parsed = JSON.parse(jsonMatch[0]);
+        } else {
+          // Fallback: treat as tags only
+          parsed = { tags: result.replace(/\.$/, ''), symbol: '' };
+        }
+      }
+      setFormData(prev => ({ 
+        ...prev, 
+        tags: parsed.tags ? parsed.tags.replace(/\.$/, '') : prev.tags,
+        symbol: parsed.symbol || prev.symbol
+      }));
+    } catch (error) {
+      console.error('Error parsing AI response:', error);
+      // Fallback to original behavior
+      const promptFallback = `החזר רק רשימת תגיות מופרדת בפסיקים עבור הנכס: ${formData.name}.`;
+      const result = await callGeminiAI(promptFallback, portfolioContext);
+      setFormData(prev => ({ ...prev, tags: result.replace(/\.$/, '') }));
+    }
     setTagLoading(false);
   };
 
@@ -84,73 +254,305 @@ const AssetForm = ({ onSave, assets = [], systemData }) => {
     navigate('/assets');
   };
 
-  const currentColor = (type, val) => systemData[type]?.find(i => i.name === val)?.color;
+  const currentColor = (type, val) => {
+    if (!val) return '#94a3b8';
+    const item = systemData[type]?.find(i => {
+      if (type === 'symbols') {
+        const itemName = typeof i === 'string' ? i : i.name;
+        return itemName === val;
+      }
+      return i.name === val;
+    });
+    if (type === 'symbols' && item) {
+      return typeof item === 'string' ? '#94a3b8' : item.color;
+    }
+    return item?.color || '#94a3b8';
+  };
 
   return (
     <div className="max-w-3xl mx-auto pb-12">
       <header className="flex items-center gap-4 mb-8">
         <button 
           onClick={() => navigate('/assets')} 
-          className="p-2 hover:bg-slate-200 rounded-full transition"
+          className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition"
         >
-          <ArrowLeft size={24} />
+          <ArrowLeft size={24} className="text-slate-800 dark:text-slate-200" />
         </button>
-        <h2 className="text-3xl font-bold text-slate-800">
+        <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">
           {editAsset ? 'עריכת נכס' : 'הוספת נכס חדש'}
         </h2>
       </header>
-      <form onSubmit={handleSubmit} className="bg-white p-8 rounded-2xl shadow-lg border border-slate-100 space-y-6">
+      <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">פלטפורמה</label>
-            <div className="flex items-center gap-2 border rounded-lg p-3 bg-white">
-              <div 
-                className="w-4 h-4 rounded-full" 
-                style={{ backgroundColor: currentColor('platforms', formData.platform) }}
-              ></div>
-              <select 
-                className="w-full outline-none bg-transparent" 
-                value={formData.platform} 
-                onChange={e => setFormData({...formData, platform: e.target.value})}
-              >
-                {systemData.platforms.map(p => (
-                  <option key={p.name} value={p.name}>{p.name}</option>
-                ))}
-              </select>
-            </div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">פלטפורמה</label>
+            {!showNewPlatform ? (
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 border border-slate-200 dark:border-slate-600 rounded-lg p-3 bg-white dark:bg-slate-700 flex-1">
+                  <div 
+                    className="w-4 h-4 rounded-full" 
+                    style={{ backgroundColor: currentColor('platforms', formData.platform) }}
+                  ></div>
+                  <select 
+                    className="w-full outline-none bg-transparent text-slate-900 dark:text-slate-100" 
+                    value={formData.platform} 
+                    onChange={e => {
+                      if (e.target.value === '__NEW__') {
+                        setShowNewPlatform(true);
+                      } else {
+                        setFormData({...formData, platform: e.target.value});
+                      }
+                    }}
+                  >
+                    {systemData.platforms.map(p => (
+                      <option key={p.name} value={p.name}>{p.name}</option>
+                    ))}
+                    <option value="__NEW__">+ הוסף חדש</option>
+                  </select>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={newPlatformValue}
+                  onChange={e => setNewPlatformValue(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddPlatform();
+                    } else if (e.key === 'Escape') {
+                      setShowNewPlatform(false);
+                      setNewPlatformValue('');
+                    }
+                  }}
+                  placeholder="הזן שם פלטפורמה חדשה"
+                  className="flex-1 p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={handleAddPlatform}
+                  className="px-4 py-3 bg-emerald-600 dark:bg-emerald-700 text-white rounded-lg hover:bg-emerald-700 dark:hover:bg-emerald-600 flex items-center gap-2"
+                >
+                  <Plus size={16} />
+                  הוסף
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowNewPlatform(false);
+                    setNewPlatformValue('');
+                  }}
+                  className="px-4 py-3 bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-500"
+                >
+                  ביטול
+                </button>
+              </div>
+            )}
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">מכשיר</label>
-            <div className="flex items-center gap-2 border rounded-lg p-3 bg-white">
-              <div 
-                className="w-4 h-4 rounded-full" 
-                style={{ backgroundColor: currentColor('instruments', formData.instrument) }}
-              ></div>
-              <select 
-                className="w-full outline-none bg-transparent" 
-                value={formData.instrument} 
-                onChange={e => setFormData({...formData, instrument: e.target.value})}
-              >
-                {systemData.instruments.map(i => (
-                  <option key={i.name} value={i.name}>{i.name}</option>
-                ))}
-              </select>
-            </div>
+            {!showNewInstrument ? (
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 border border-slate-200 dark:border-slate-600 rounded-lg p-3 bg-white dark:bg-slate-700 flex-1">
+                  <div 
+                    className="w-4 h-4 rounded-full" 
+                    style={{ backgroundColor: currentColor('instruments', formData.instrument) }}
+                  ></div>
+                  <select 
+                    className="w-full outline-none bg-transparent" 
+                    value={formData.instrument} 
+                    onChange={e => {
+                      if (e.target.value === '__NEW__') {
+                        setShowNewInstrument(true);
+                      } else {
+                        setFormData({...formData, instrument: e.target.value});
+                      }
+                    }}
+                  >
+                    {systemData.instruments.map(i => (
+                      <option key={i.name} value={i.name}>{i.name}</option>
+                    ))}
+                    <option value="__NEW__">+ הוסף חדש</option>
+                  </select>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={newInstrumentValue}
+                  onChange={e => setNewInstrumentValue(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddInstrument();
+                    } else if (e.key === 'Escape') {
+                      setShowNewInstrument(false);
+                      setNewInstrumentValue('');
+                    }
+                  }}
+                  placeholder="הזן שם מכשיר חדש"
+                  className="flex-1 p-3 border rounded-lg"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={handleAddInstrument}
+                  className="px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2"
+                >
+                  <Plus size={16} />
+                  הוסף
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowNewInstrument(false);
+                    setNewInstrumentValue('');
+                  }}
+                  className="px-4 py-3 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300"
+                >
+                  ביטול
+                </button>
+              </div>
+            )}
           </div>
           <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-slate-700 mb-2">שם הנכס</label>
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-sm font-medium text-slate-700">שם הנכס</label>
+              <button 
+                type="button" 
+                onClick={handleAISuggest} 
+                disabled={aiSuggestLoading || !formData.name}
+                className="text-xs text-purple-600 font-bold flex gap-1 items-center hover:text-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="הצע קטגוריה, סמל ותגיות בהתבסס על הפורטפוליו שלך"
+              >
+                {aiSuggestLoading ? <Loader2 size={12} className="animate-spin"/> : <Sparkles size={12}/>} AI Suggest
+              </button>
+            </div>
             <input 
               type="text" 
               required 
-              className="w-full p-3 border rounded-lg" 
+              className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100" 
               value={formData.name} 
               onChange={e => setFormData({...formData, name: e.target.value})} 
             />
           </div>
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-slate-700 mb-2">סמל נכס / Ticker</label>
+            {(formData.category === 'מניות' || formData.category === 'קריפטו') ? (
+              // Smart Ticker Search for Stocks and Crypto
+              <TickerSearch
+                type={formData.category === 'קריפטו' ? 'crypto' : 'stock'}
+                value={formData.symbol}
+                onSelect={(asset) => {
+                  if (asset) {
+                    setFormData({
+                      ...formData,
+                      symbol: asset.symbol,
+                      apiId: asset.id,
+                      marketDataSource: asset.marketDataSource || 
+                        (formData.category === 'קריפטו' ? 'coingecko' : 'yahoo')
+                    });
+                  } else {
+                    setFormData({
+                      ...formData,
+                      symbol: '',
+                      apiId: '',
+                      marketDataSource: ''
+                    });
+                  }
+                }}
+                placeholder={formData.category === 'קריפטו' 
+                  ? 'חפש קריפטו (BTC, ETH, SOL...)' 
+                  : 'חפש מניה (AAPL, TSLA, SPY...)'}
+                allowManual={true}
+              />
+            ) : (
+              // Manual input for Cash, Real Estate, and Other categories
+              <>
+                {!showNewSymbol ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <select
+                        className="flex-1 p-3 border rounded-lg"
+                        value={formData.symbol || ''}
+                        onChange={e => {
+                          if (e.target.value === '__NEW__') {
+                            setShowNewSymbol(true);
+                          } else {
+                            setFormData({...formData, symbol: e.target.value});
+                          }
+                        }}
+                      >
+                        <option value="">-- בחר סמל --</option>
+                        {systemData.symbols && systemData.symbols.length > 0 && systemData.symbols.map(s => {
+                          const symbolName = typeof s === 'string' ? s : s.name;
+                          return <option key={symbolName} value={symbolName}>{symbolName}</option>;
+                        })}
+                        <option value="__NEW__">+ הוסף סמל חדש</option>
+                      </select>
+                    </div>
+                    <input
+                      type="text"
+                      className="w-full p-3 border rounded-lg font-mono"
+                      placeholder="או הזן סמל ידנית"
+                      value={formData.symbol}
+                      onChange={e => setFormData({...formData, symbol: e.target.value.toUpperCase()})}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={newSymbolValue}
+                      onChange={e => setNewSymbolValue(e.target.value.toUpperCase())}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddSymbol();
+                        } else if (e.key === 'Escape') {
+                          setShowNewSymbol(false);
+                          setNewSymbolValue('');
+                        }
+                      }}
+                      placeholder="הזן סמל חדש"
+                      className="flex-1 p-3 border rounded-lg font-mono"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddSymbol}
+                      className="px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2"
+                    >
+                      <Plus size={16} />
+                      הוסף
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowNewSymbol(false);
+                        setNewSymbolValue('');
+                      }}
+                      className="px-4 py-3 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300"
+                    >
+                      ביטול
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+            <p className="text-xs text-slate-500 mt-1">
+              {formData.category === 'מניות' || formData.category === 'קריפטו' 
+                ? 'חיפוש חכם - נבחר אוטומטית מהמאגר הרשמי' 
+                : 'מזהה סטנדרטי לזיהוי נכסים זהים על פני פלטפורמות שונות'}
+            </p>
+          </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">מטבע</label>
             <select 
-              className="w-full p-3 border rounded-lg" 
+              className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100" 
               value={formData.currency} 
               onChange={e => setFormData({...formData, currency: e.target.value})}
             >
@@ -163,7 +565,7 @@ const AssetForm = ({ onSave, assets = [], systemData }) => {
             <input 
               type="number" 
               required 
-              className="w-full p-3 border rounded-lg" 
+              className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100" 
               value={formData.originalValue} 
               onChange={e => setFormData({...formData, originalValue: e.target.value})} 
             />
@@ -177,7 +579,7 @@ const AssetForm = ({ onSave, assets = [], systemData }) => {
                   key={cat.name} 
                   onClick={() => setFormData({...formData, category: cat.name})} 
                   className={`px-4 py-2 rounded-full border flex items-center gap-2 transition
-                    ${formData.category === cat.name ? 'bg-slate-800 text-white' : 'bg-white hover:bg-slate-50'}`}
+                    ${formData.category === cat.name ? 'bg-slate-800 dark:bg-slate-700 text-white' : 'bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100'}`}
                 >
                   <div className="w-2 h-2 rounded-full" style={{backgroundColor: cat.color}}></div>
                   {cat.name}
@@ -198,21 +600,21 @@ const AssetForm = ({ onSave, assets = [], systemData }) => {
             </div>
             <input 
               type="text" 
-              className="w-full p-3 border rounded-lg" 
+              className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100" 
               value={formData.tags} 
               onChange={e => setFormData({...formData, tags: e.target.value})} 
             />
           </div>
         </div>
-        <div className="flex justify-end gap-3 pt-4 border-t">
+        <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
           <button 
             type="button" 
             onClick={() => navigate('/assets')} 
-            className="px-6 py-2 rounded-lg hover:bg-slate-100"
+            className="px-6 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
           >
             ביטול
           </button>
-          <button type="submit" className="px-6 py-2 bg-slate-900 text-white rounded-lg">
+          <button type="submit" className="px-6 py-2 bg-slate-900 dark:bg-slate-700 text-white rounded-lg hover:bg-slate-800 dark:hover:bg-slate-600">
             שמור
           </button>
         </div>
