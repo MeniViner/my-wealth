@@ -1,10 +1,18 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Edit2, Trash2, Eye, ArrowUpDown, LayoutGrid, Layers, Building2, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Eye, ArrowUpDown, LayoutGrid, Layers, Building2, ChevronDown, ChevronUp, X, Tag, Database, Palette, Check, ChevronRight, RefreshCw } from 'lucide-react';
 import Modal from '../components/Modal';
 import { confirmAlert, successToast } from '../utils/alerts';
+import CustomSelect from '../components/CustomSelect';
+import { generateRandomColor } from '../constants/defaults';
+import TickerSearch from '../components/TickerSearch';
+import { useDemoData } from '../contexts/DemoDataContext';
 
-const AssetManager = ({ assets, onDelete, systemData }) => {
+const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData }) => {
+  const { demoAssets, isActive: isDemoActive } = useDemoData();
+  
+  // Use demo assets if tour is active, otherwise use real assets
+  const displayAssets = isDemoActive && demoAssets.length > 0 ? demoAssets : assets;
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterPlatform, setFilterPlatform] = useState('all');
@@ -23,9 +31,10 @@ const AssetManager = ({ assets, onDelete, systemData }) => {
   const [selectedAsset, setSelectedAsset] = useState(null);
   const [groupBy, setGroupBy] = useState('platform'); // 'platform', 'category', 'instrument'
   const [expandedGroups, setExpandedGroups] = useState(new Set()); // Track which groups are expanded
+  const [activeTab, setActiveTab] = useState('assets'); // 'assets' or 'sources'
 
   // Filtering
-  const filteredAssets = assets.filter(asset => {
+  const filteredAssets = displayAssets.filter(asset => {
     const matchesSearch = asset.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                           asset.instrument.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           (asset.symbol && asset.symbol.toLowerCase().includes(searchTerm.toLowerCase())) ||
@@ -113,7 +122,7 @@ const AssetManager = ({ assets, onDelete, systemData }) => {
     return <LayoutGrid size={18} />;
   };
 
-  // Toggle group expansion
+  // החלף הרחבה/צמצום של קבוצה
   const toggleGroup = (groupKey) => {
     setExpandedGroups(prev => {
       const newSet = new Set(prev);
@@ -126,13 +135,13 @@ const AssetManager = ({ assets, onDelete, systemData }) => {
     });
   };
 
-  // Expand/collapse all groups
+  // הרחב/צמצם את כל הקבוצות
   const toggleAllGroups = () => {
     if (expandedGroups.size === groupedAssets.length) {
-      // All expanded, collapse all
+      // הכל מורחב, צמצם הכל
       setExpandedGroups(new Set());
     } else {
-      // Expand all
+      // הרחב הכל
       setExpandedGroups(new Set(groupedAssets.map(g => g.key)));
     }
   };
@@ -155,19 +164,148 @@ const AssetManager = ({ assets, onDelete, systemData }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupBy, groupedAssets.length]);
 
+  // Source management functions
+  const handleAddSource = (type, name, color) => {
+    if (!name.trim()) return;
+    const newList = [...systemData[type], { name: name.trim(), color: color || generateRandomColor() }];
+    const updatedData = { ...systemData, [type]: newList };
+    setSystemData(updatedData);
+    successToast('נוסף בהצלחה', 1500);
+  };
+
+  const handleUpdateSource = (type, oldName, newName, newColor) => {
+    if (!newName.trim()) return;
+    const newList = systemData[type].map(item => {
+      const itemName = type === 'symbols' && typeof item === 'string' ? item : item.name;
+      if (itemName === oldName) {
+        return { name: newName.trim(), color: newColor };
+      }
+      return item;
+    });
+    const updatedData = { ...systemData, [type]: newList };
+    setSystemData(updatedData);
+    successToast('עודכן בהצלחה', 1500);
+  };
+
+  const handleDeleteSource = async (type, name) => {
+    const confirmed = await confirmAlert('מחיקה', `למחוק את ${name}?`, 'warning', true);
+    if (confirmed) {
+      const newList = systemData[type].filter(item => {
+        const itemName = type === 'symbols' && typeof item === 'string' ? item : item.name;
+        return itemName !== name;
+      });
+      const updatedData = { ...systemData, [type]: newList };
+      setSystemData(updatedData);
+      await successToast('נמחק בהצלחה', 2000);
+    }
+  };
+
+  const getSourceTypeIcon = (type) => {
+    switch(type) {
+      case 'categories': return <Tag size={16} className="text-emerald-500" />;
+      case 'platforms': return <Database size={16} className="text-emerald-500" />;
+      case 'instruments': return <Palette size={16} className="text-emerald-500" />;
+      case 'symbols': return <Tag size={16} className="text-emerald-500" />;
+      default: return null;
+    }
+  };
+
+  const getSourceTypeTitle = (type) => {
+    switch(type) {
+      case 'categories': return 'אפיקי השקעה';
+      case 'platforms': return 'חשבונות וארנקים';
+      case 'instruments': return 'מטבעות בסיס';
+      case 'symbols': return 'נכסים למעקב';
+      default: return '';
+    }
+  };
+
+  const getSourceTypeDescription = (type) => {
+    switch(type) {
+      case 'categories':
+        return 'חלוקת התיק הראשית';
+      case 'platforms':
+        return 'איפה הכסף שלך נמצא?';
+      case 'instruments':
+        return 'סוגי מטבע להערכת שווי';
+      case 'symbols':
+        return 'טיקרים וסמלים ספציפיים';
+      default:
+        return '';
+    }
+  };
+
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-12">
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+      <header className="flex justify-between items-center gap-4 mr-12 md:mr-0">
         <h2 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">ניהול נכסים</h2>
-        <button 
-          onClick={() => navigate('/assets/add')} 
-          className="bg-emerald-600 dark:bg-emerald-700 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 font-medium hover:bg-emerald-700 dark:hover:bg-emerald-600 transition-colors shadow-sm"
-        >
-          <Plus size={18} /> 
-          <span className="hidden sm:inline">הוסף נכס</span>
-          <span className="sm:hidden">הוסף</span>
-        </button>
+        {activeTab === 'assets' && (
+          <button 
+            onClick={() => navigate('/assets/add')} 
+            className="bg-emerald-600 dark:bg-emerald-700 text-white px-5 py-1.5 md:py-2.5 rounded-lg flex items-center gap-2 font-medium hover:bg-emerald-700 dark:hover:bg-emerald-600 transition-colors shadow-sm"
+          >
+            <Plus size={18} /> 
+            <span className="hidden sm:inline">הוסף נכס</span>
+            <span className="sm:hidden">הוסף</span>
+          </button>
+        )}
       </header>
+
+      {/* Tabs */}
+      <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700">
+        <button
+          onClick={() => setActiveTab('assets')}
+          className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 ${
+            activeTab === 'assets'
+              ? 'border-emerald-600 dark:border-emerald-400 text-emerald-600 dark:text-emerald-400'
+              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+          }`}
+        >
+          נכסים
+        </button>
+        <button
+          onClick={() => setActiveTab('sources')}
+          className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 ${
+            activeTab === 'sources'
+              ? 'border-emerald-600 dark:border-emerald-400 text-emerald-600 dark:text-emerald-400'
+              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+          }`}
+        >
+          ניהול המקורות שלי
+        </button>
+      </div>
+
+      {/* Sources Management Tab */}
+      {activeTab === 'sources' && (
+        <>
+          {/* Reset Database Button */}
+          {onResetData && (
+            <div className="mb-6 flex justify-end">
+              <button 
+                onClick={onResetData} 
+                className="text-sm text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 px-4 py-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all flex items-center gap-2 border border-slate-200 dark:border-slate-700 hover:border-red-200 dark:hover:border-red-800 font-medium"
+                title="אתחול מסד נתונים - ימחק את כל הנתונים"
+              >
+                <RefreshCw size={16} />
+                <span>אתחול מסד נתונים</span>
+              </button>
+            </div>
+          )}
+          <SourcesConfiguration
+            systemData={systemData}
+            onAdd={handleAddSource}
+            onUpdate={handleUpdateSource}
+            onDelete={handleDeleteSource}
+            getSourceTypeTitle={getSourceTypeTitle}
+            getSourceTypeDescription={getSourceTypeDescription}
+            getSourceTypeIcon={getSourceTypeIcon}
+          />
+        </>
+      )}
+
+      {/* Assets Tab */}
+      {activeTab === 'assets' && (
+        <>
 
       {/* Filters and Group By */}
       <div className="bg-white dark:bg-slate-800 p-4 md:p-5 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 space-y-4">
@@ -183,26 +321,34 @@ const AssetManager = ({ assets, onDelete, systemData }) => {
             />
           </div>
           <div className="flex gap-2">
-            <select 
-              className="px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700" 
-              value={filterCategory} 
-              onChange={e => setFilterCategory(e.target.value)}
-            >
-              <option value="all">כל הקטגוריות</option>
-              {systemData.categories.map(c => (
-                <option key={c.name} value={c.name}>{c.name}</option>
-              ))}
-            </select>
-            <select 
-              className="px-3 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700" 
-              value={filterPlatform} 
-              onChange={e => setFilterPlatform(e.target.value)}
-            >
-              <option value="all">כל הפלטפורמות</option>
-              {systemData.platforms.map(p => (
-                <option key={p.name} value={p.name}>{p.name}</option>
-              ))}
-            </select>
+            <CustomSelect
+              value={filterCategory}
+              onChange={(val) => setFilterCategory(val)}
+              options={[
+                { value: 'all', label: 'כל אפיקי ההשקעה' },
+                ...systemData.categories.map(c => ({
+                  value: c.name,
+                  label: c.name,
+                  iconColor: c.color
+                }))
+              ]}
+              placeholder="כל אפיקי ההשקעה"
+              className="min-w-[150px]"
+            />
+            <CustomSelect
+              value={filterPlatform}
+              onChange={(val) => setFilterPlatform(val)}
+              options={[
+                { value: 'all', label: 'כל החשבונות' },
+                ...systemData.platforms.map(p => ({
+                  value: p.name,
+                  label: p.name,
+                  iconColor: p.color
+                }))
+              ]}
+              placeholder="כל החשבונות"
+              className="min-w-[150px]"
+            />
             {/* View Button - Moved here next to filters */}
             <div className="relative">
               <button 
@@ -243,7 +389,7 @@ const AssetManager = ({ assets, onDelete, systemData }) => {
                             className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-emerald-600 focus:ring-emerald-500"
                           />
                           <span className="text-sm font-medium text-slate-700 dark:text-slate-200 flex-1">
-                            {key === 'name' ? 'שם' : key === 'value' ? 'שווי' : key === 'symbol' ? 'סמל' : key === 'instrument' ? 'מכשיר' : key === 'platform' ? 'פלטפורמה' : key === 'category' ? 'קטגוריה' : key === 'tags' ? 'תגיות' : key}
+                            {key === 'name' ? 'שם' : key === 'value' ? 'שווי' : key === 'symbol' ? 'סמל' : key === 'instrument' ? 'מטבעות בסיס' : key === 'platform' ? 'חשבונות וארנקים' : key === 'category' ? 'אפיקי השקעה' : key === 'tags' ? 'תגיות' : key}
                           </span>
                         </label>
                       ))}
@@ -271,29 +417,29 @@ const AssetManager = ({ assets, onDelete, systemData }) => {
               }`}
             >
               <Building2 size={16} className="inline ml-1" />
-              פלטפורמות
+              חשבונות וארנקים
             </button>
             <button
               onClick={() => setGroupBy('category')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                 groupBy === 'category'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  ? 'bg-emerald-600 dark:bg-emerald-700 text-white shadow-sm'
+                  : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600'
               }`}
             >
               <Layers size={16} className="inline ml-1" />
-              קטגוריות
+              אפיקי השקעה
             </button>
             <button
               onClick={() => setGroupBy('instrument')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                 groupBy === 'instrument'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  ? 'bg-emerald-600 dark:bg-emerald-700 text-white shadow-sm'
+                  : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600'
               }`}
             >
               <LayoutGrid size={16} className="inline ml-1" />
-              מכשירים
+              מטבעות בסיס
             </button>
           </div>
         </div>
@@ -307,7 +453,7 @@ const AssetManager = ({ assets, onDelete, systemData }) => {
           </div>
         ) : (
           <>
-            {/* Expand/Collapse All Button */}
+            {/* כפתור הרחב/צמצם הכל */}
             {groupedAssets.length > 1 && (
               <div className="flex justify-end">
                 <button
@@ -335,40 +481,76 @@ const AssetManager = ({ assets, onDelete, systemData }) => {
               
               return (
                 <div key={key} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-                  {/* Group Header - Clickable to expand/collapse */}
-                  <button
-                    onClick={() => toggleGroup(key)}
-                    className="w-full px-4 md:px-6 py-4 border-b border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                  {/* Group Header */}
+                  <div
+                    className="px-4 md:px-6 py-4 border-b border-slate-100 dark:border-slate-700 hover:bg-slate-50/50 dark:hover:bg-slate-700/30 transition-colors"
                     style={{ borderRight: `4px solid ${groupColor}` }}
                   >
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
-                      <div className="flex items-center gap-3 flex-1">
-                        <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-between gap-4">
+                      {/* שמאל: כפתור הוספה + הרחב/צמצם */}
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const params = new URLSearchParams();
+                            if (groupBy === 'platform') {
+                              params.set('platform', key);
+                            } else if (groupBy === 'category') {
+                              params.set('category', key);
+                            } else if (groupBy === 'instrument') {
+                              params.set('instrument', key);
+                            }
+                            navigate(`/assets/add?${params.toString()}`);
+                          }}
+                          className="bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600 text-white p-2 rounded-lg flex items-center justify-center transition-all shadow-sm hover:shadow-md"
+                          title="הוסף נכס לקבוצה זו"
+                        >
+                          <Plus size={18} />
+                        </button>
+                        <button
+                          onClick={() => toggleGroup(key)}
+                          className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-all"
+                          title={isExpanded ? 'צמצם' : 'הרחב'}
+                        >
                           {isExpanded ? (
-                            <ChevronUp size={18} className="text-slate-400 dark:text-slate-500" />
+                            <ChevronUp size={20} />
                           ) : (
-                            <ChevronDown size={18} className="text-slate-400 dark:text-slate-500" />
+                            <ChevronDown size={20} />
                           )}
-                          <div 
-                            className="w-3 h-3 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: groupColor }}
-                          />
-                        </div>
-                        <h3 className="text-base md:text-lg font-semibold text-slate-900 dark:text-white">{key}</h3>
-                        <span className="text-sm text-slate-500 dark:text-slate-400">({items.length} נכסים)</span>
+                        </button>
                       </div>
-                      <div className="text-right flex-shrink-0">
+
+                      {/* Center: Group Info */}
+                      <button
+                        onClick={() => toggleGroup(key)}
+                        className="flex items-center gap-3 flex-1 min-w-0 text-right hover:opacity-80 transition-opacity"
+                      >
+                        <div 
+                          className="w-4 h-4 rounded-full flex-shrink-0 shadow-sm ring-2 ring-white dark:ring-slate-800"
+                          style={{ 
+                            backgroundColor: groupColor,
+                            boxShadow: `0 0 0 2px ${groupColor}20, 0 2px 8px ${groupColor}40`
+                          }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-base md:text-lg font-semibold text-slate-900 dark:text-white truncate">{key}</h3>
+                          <span className="text-xs text-slate-500 dark:text-slate-400">{items.length} נכסים</span>
+                        </div>
+                      </button>
+
+                      {/* Right: Value Info */}
+                      <div className="text-right flex-shrink-0 min-w-[100px]">
                         <div className="text-base md:text-lg font-bold text-slate-900 dark:text-white">
                           ₪{totalValue.toLocaleString()}
                         </div>
                         <div className="text-xs text-slate-500 dark:text-slate-400">
-                          {((totalValue / sortedAssets.reduce((sum, a) => sum + (a.value || 0), 0)) * 100).toFixed(1)}% מהסה"כ
+                          {((totalValue / sortedAssets.reduce((sum, a) => sum + (a.value || 0), 0)) * 100).toFixed(1)}%
                         </div>
                       </div>
                     </div>
-                  </button>
+                  </div>
 
-                  {/* Assets Table - Collapsible */}
+                  {/* טבלת נכסים - ניתן לצמצום */}
                   {isExpanded && (
                     <div className="overflow-x-auto">
                   <table className="w-full text-sm text-right">
@@ -392,17 +574,17 @@ const AssetManager = ({ assets, onDelete, systemData }) => {
                         )}
                         {visibleColumns.instrument && (
                           <th className="p-4 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('instrument')}>
-                            מכשיר
+                            מטבעות בסיס
                           </th>
                         )}
                         {visibleColumns.platform && (
                           <th className="p-4 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('platform')}>
-                            פלטפורמה
+                            חשבונות וארנקים
                           </th>
                         )}
                         {visibleColumns.category && (
                           <th className="p-4 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('category')}>
-                            קטגוריה
+                            אפיקי השקעה
                           </th>
                         )}
                         {visibleColumns.tags && <th className="p-4">תגיות</th>}
@@ -472,7 +654,7 @@ const AssetManager = ({ assets, onDelete, systemData }) => {
                             </td>
                           )}
                           <td className="p-3 md:p-4" onClick={e => e.stopPropagation()}>
-                            <div className="flex justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="flex justify-center gap-1 transition-opacity">
                               <button 
                                 onClick={() => handleEdit(asset)} 
                                 className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors"
@@ -520,15 +702,15 @@ const AssetManager = ({ assets, onDelete, systemData }) => {
 
             <div className="space-y-4">
               <div className="flex border-b border-slate-100 dark:border-slate-700 pb-2">
-                <span className="w-1/3 text-slate-500 dark:text-slate-400">פלטפורמה</span>
+                <span className="w-1/3 text-slate-500 dark:text-slate-400">חשבונות וארנקים</span>
                 <span className="font-medium text-slate-800 dark:text-white">{selectedAsset.platform}</span>
               </div>
               <div className="flex border-b border-slate-100 dark:border-slate-700 pb-2">
-                <span className="w-1/3 text-slate-500 dark:text-slate-400">מכשיר</span>
+                <span className="w-1/3 text-slate-500 dark:text-slate-400">מטבעות בסיס</span>
                 <span className="font-medium text-slate-800 dark:text-white">{selectedAsset.instrument}</span>
               </div>
               <div className="flex border-b border-slate-100 dark:border-slate-700 pb-2">
-                <span className="w-1/3 text-slate-500 dark:text-slate-400">קטגוריה</span>
+                <span className="w-1/3 text-slate-500 dark:text-slate-400">אפיקי השקעה</span>
                 <span className="font-medium text-slate-800 dark:text-white">{selectedAsset.category}</span>
               </div>
               <div className="flex border-b border-slate-100 dark:border-slate-700 pb-2">
@@ -561,6 +743,387 @@ const AssetManager = ({ assets, onDelete, systemData }) => {
           </div>
         )}
       </Modal>
+        </>
+      )}
+    </div>
+  );
+};
+
+// Modern Sources Configuration Component
+const SourcesConfiguration = ({ systemData, onAdd, onUpdate, onDelete, getSourceTypeTitle, getSourceTypeDescription, getSourceTypeIcon }) => {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalType, setModalType] = useState(null);
+  const [editingItem, setEditingItem] = useState(null);
+  const [editType, setEditType] = useState(null);
+  const [expandedSections, setExpandedSections] = useState(new Set(['platforms', 'categories', 'symbols', 'instruments'])); // All expanded by default
+
+  const openAddModal = (type) => {
+    setModalType(type);
+    setEditingItem(null);
+    setModalOpen(true);
+  };
+
+  const openEditModal = (type, item) => {
+    setModalType(type);
+    setEditType(type);
+    const itemName = (type === 'symbols' && typeof item === 'string') ? item : item.name;
+    const itemColor = (type === 'symbols' && typeof item === 'string') ? '#94a3b8' : item.color;
+    setEditingItem({ name: itemName, color: itemColor, originalName: itemName });
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setModalType(null);
+    setEditingItem(null);
+    setEditType(null);
+  };
+
+  const toggleSection = (type) => {
+    setExpandedSections(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(type)) {
+        newSet.delete(type);
+      } else {
+        newSet.add(type);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleAllSections = () => {
+    const allTypes = ['platforms', 'categories', 'symbols', 'instruments'];
+    if (expandedSections.size === allTypes.length) {
+      // הכל מורחב, צמצם הכל
+      setExpandedSections(new Set());
+    } else {
+      // הרחב הכל
+      setExpandedSections(new Set(allTypes));
+    }
+  };
+
+  const sourceTypes = [
+    { key: 'platforms', order: 1 },
+    { key: 'categories', order: 2 },
+    { key: 'symbols', order: 3 },
+    { key: 'instruments', order: 4 }
+  ];
+
+  return (
+    <>
+      {/* כותרת עם כפתור הרחב/צמצם הכל */}
+      <div className="flex justify-between items-center mb-4">
+        <div>
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">הגדרת מקורות</h3>
+          {/* <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">נהל את החשבונות, אפיקי ההשקעה והנכסים למעקב</p> */}
+        </div>
+        <button
+          onClick={toggleAllSections}
+          className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors flex items-center gap-2"
+        >
+          {expandedSections.size === sourceTypes.length ? (
+            <>
+              <ChevronUp size={16} />
+              <span>צמצם הכל</span>
+            </>
+          ) : (
+            <>
+              <ChevronDown size={16} />
+              <span>הרחב הכל</span>
+            </>
+          )}
+        </button>
+      </div>
+
+      <div className="space-y-8">
+        {sourceTypes.map(({ key: type }) => {
+          const data = systemData[type] || [];
+          const title = getSourceTypeTitle(type);
+          const description = getSourceTypeDescription(type);
+          const icon = getSourceTypeIcon(type);
+          const isSymbols = type === 'symbols';
+
+          const isExpanded = expandedSections.has(type);
+
+          return (
+            <div key={type} className="bg-white dark:bg-slate-800/50 rounded-2xl border border-slate-200/60 dark:border-slate-700/60 overflow-hidden backdrop-blur-sm">
+              {/* Section Header */}
+              <div className="px-4 md:px-6 py-5 border-b border-slate-100 dark:border-slate-700/50">
+                <div className="flex items-start justify-between gap-4">
+                  <button
+                    onClick={() => toggleSection(type)}
+                    className="flex-1 text-right hover:opacity-80 transition-opacity"
+                  >
+                    <div className="flex items-center gap-3 mb-1.5">
+                      <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20">
+                        {icon}
+                      </div>
+                      <h3 className="text-lg font-bold text-slate-900 dark:text-white">{title}</h3>
+                      <div className="flex-shrink-0 text-slate-400 dark:text-slate-500 transition-transform duration-200" style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+                        <ChevronRight size={20} />
+                      </div>
+                    </div>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 pr-11">{description}</p>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openAddModal(type);
+                    }}
+                    className="flex-shrink-0 bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600 text-white px-4 py-2 rounded-xl flex items-center gap-2 text-sm font-medium transition-all shadow-sm hover:shadow-md"
+                  >
+                    <Plus size={18} />
+                    <span className="hidden sm:inline">הוסף</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* רשימת פריטים - ניתן לצמצום */}
+              <div 
+                className={`divide-y divide-slate-100 dark:divide-slate-700/50 transition-all duration-300 ease-in-out overflow-hidden ${
+                  isExpanded 
+                    ? 'max-h-[2000px] opacity-100 pointer-events-auto' 
+                    : 'max-h-0 opacity-0 pointer-events-none'
+                }`}
+              >
+                {data.length === 0 ? (
+                  <div className="px-4 md:px-6 py-12 text-center">
+                    <p className="text-sm text-slate-400 dark:text-slate-500">אין פריטים עדיין</p>
+                    <button
+                      onClick={() => openAddModal(type)}
+                      className="mt-3 text-sm text-emerald-600 dark:text-emerald-400 hover:underline"
+                    >
+                      הוסף פריט ראשון
+                    </button>
+                  </div>
+                ) : (
+                  data.map((item) => {
+                    const itemName = (isSymbols && typeof item === 'string') ? item : item.name;
+                    const itemColor = (isSymbols && typeof item === 'string') ? '#94a3b8' : item.color;
+                    
+                    return (
+                      <div
+                        key={itemName}
+                        className="group px-4 md:px-6 py-4 hover:bg-slate-50/50 dark:hover:bg-slate-700/30 transition-colors"
+                      >
+                        <div className="flex items-center justify-between gap-4">
+                          {/* Left: Color + Name */}
+                          <div className="flex items-center gap-4 flex-1 min-w-0">
+                            <div
+                              className="w-4 h-4 rounded-full flex-shrink-0 shadow-sm ring-2 ring-white dark:ring-slate-800"
+                              style={{ 
+                                backgroundColor: itemColor,
+                                boxShadow: `0 0 0 2px ${itemColor}20, 0 2px 8px ${itemColor}40`
+                              }}
+                            />
+                            <span className={`text-base font-medium text-slate-900 dark:text-white truncate ${isSymbols ? 'font-mono' : ''}`}>
+                              {itemName}
+                            </span>
+                          </div>
+
+                          {/* Right: Actions */}
+                          <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 md:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => openEditModal(type, item)}
+                              className="p-2 text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-all"
+                              title="ערוך"
+                            >
+                              <Edit2 size={18} />
+                            </button>
+                            <button
+                              onClick={() => onDelete(type, itemName)}
+                              className="p-2 text-slate-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
+                              title="מחק"
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Add/Edit Modal */}
+      <SourceItemModal
+        isOpen={modalOpen}
+        onClose={closeModal}
+        type={modalType}
+        editingItem={editingItem}
+        onSave={(name, color) => {
+          if (editingItem) {
+            onUpdate(editType, editingItem.originalName, name, color);
+          } else {
+            onAdd(modalType, name, color);
+          }
+          closeModal();
+        }}
+        systemData={systemData}
+      />
+    </>
+  );
+};
+
+// Modal for Adding/Editing Source Items
+const SourceItemModal = ({ isOpen, onClose, type, editingItem, onSave, systemData }) => {
+  const [name, setName] = useState('');
+  const [color, setColor] = useState('#3b82f6');
+  const isSymbols = type === 'symbols';
+  const isEditing = !!editingItem;
+
+  useEffect(() => {
+    if (isOpen) {
+      if (editingItem) {
+        setName(editingItem.name);
+        setColor(editingItem.color);
+      } else {
+        setName('');
+        setColor(generateRandomColor());
+      }
+    }
+  }, [isOpen, editingItem]);
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+
+    const trimmedValue = isSymbols ? name.trim().toUpperCase() : name.trim();
+    const data = systemData[type] || [];
+    
+    // Check if already exists (only if not editing or name changed)
+    if (!isEditing || trimmedValue !== editingItem.originalName) {
+      const exists = data.some(item => {
+        const itemName = (isSymbols && typeof item === 'string') ? item : item.name;
+        return itemName === trimmedValue;
+      });
+      if (exists) {
+        successToast('הפריט כבר קיים', 1500);
+        return;
+      }
+    }
+
+    onSave(trimmedValue, color);
+  };
+
+  if (!isOpen || !type) return null;
+
+  const getTypeTitle = (t) => {
+    switch(t) {
+      case 'categories': return 'אפיקי השקעה';
+      case 'platforms': return 'חשבונות וארנקים';
+      case 'instruments': return 'מטבעות בסיס';
+      case 'symbols': return 'נכסים למעקב';
+      default: return '';
+    }
+  };
+
+  return (
+    <div 
+      className="fixed inset-0 bg-black/60 z-50 flex items-end md:items-center justify-center p-0 md:p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-white dark:bg-slate-800 w-full md:w-full md:max-w-md rounded-t-3xl md:rounded-2xl shadow-2xl animate-slide-up md:animate-fade-in"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center">
+          <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+            {isEditing ? 'ערוך' : 'הוסף'} {getTypeTitle(type)}
+          </h3>
+          <button 
+            onClick={onClose} 
+            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition text-slate-500 dark:text-slate-400"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+          {/* Color Picker */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
+              צבע
+            </label>
+            <div className="flex items-center gap-4">
+              <input 
+                type="color" 
+                value={color} 
+                onChange={e => setColor(e.target.value)} 
+                className="w-16 h-16 rounded-xl cursor-pointer border-2 border-slate-200 dark:border-slate-600 hover:border-slate-300 dark:hover:border-slate-500 transition shadow-sm"
+              />
+              <div className="flex-1">
+                <div 
+                  className="w-full h-12 rounded-lg shadow-sm"
+                  style={{ backgroundColor: color }}
+                />
+                <input
+                  type="text"
+                  value={color}
+                  onChange={e => setColor(e.target.value)}
+                  className="mt-2 w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm font-mono bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                  placeholder="#3b82f6"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Name Input */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
+              שם
+            </label>
+            {isSymbols ? (
+              <TickerSearch
+                type="us-stock"
+                value={name}
+                onSelect={(asset) => {
+                  if (asset) {
+                    setName(asset.symbol.toUpperCase());
+                  } else {
+                    setName('');
+                  }
+                }}
+                allowManual={true}
+                showCategorySelector={true}
+              />
+            ) : (
+              <input 
+                type="text" 
+                value={name} 
+                onChange={e => setName(e.target.value)}
+                placeholder="הכנס שם..."
+                className="w-full px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl text-base outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100"
+                autoFocus
+              />
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-3 border border-slate-300 dark:border-slate-600 rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition font-medium"
+            >
+              ביטול
+            </button>
+            <button
+              type="submit"
+              disabled={!name.trim()}
+              className="flex-1 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600 text-white rounded-xl transition font-medium disabled:opacity-40 disabled:cursor-not-allowed shadow-sm hover:shadow-md"
+            >
+              {isEditing ? 'שמור שינויים' : 'הוסף'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 };

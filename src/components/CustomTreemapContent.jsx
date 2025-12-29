@@ -1,66 +1,138 @@
 /**
  * Custom content component for Recharts Treemap
+ * Clean, minimal RTL-aware design with smart text handling
  */
+
+// Hebrew font stack
+const HEBREW_FONT = "'Assistant', 'Heebo', 'Rubik', sans-serif";
+
+// Format currency for Hebrew locale
+const formatCurrency = (value) => {
+  if (typeof value !== 'number' || isNaN(value)) return '';
+  return new Intl.NumberFormat('he-IL', {
+    style: 'currency',
+    currency: 'ILS',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
+};
+
+// Truncate text with ellipsis if too long
+const truncateText = (text, maxLength) => {
+  if (!text || text.length <= maxLength) return text;
+  return text.substring(0, maxLength - 1) + '…';
+};
+
+// Calculate contrasting text color based on background
+const getContrastColor = (hexColor) => {
+  if (!hexColor) return '#1e293b';
+  const hex = hexColor.replace('#', '');
+  const r = parseInt(hex.substr(0, 2), 16);
+  const g = parseInt(hex.substr(2, 2), 16);
+  const b = parseInt(hex.substr(4, 2), 16);
+  // Calculate luminance
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  // Return dark text for light backgrounds, light text for dark backgrounds
+  return luminance > 0.5 ? '#1e293b' : '#ffffff';
+};
+
 const CustomTreemapContent = (props) => {
-  const { x, y, width, height, name, size } = props;
+  const { x, y, width, height, name, size, fill, depth } = props;
   
-  if (width < 40 || height < 30) return null;
+  // Skip rendering for root node
+  if (depth === 0) return null;
   
-  const fontSize = Math.min(Math.max(width / 12, 10), 16);
-  const showValue = width > 80 && height > 50;
-  const textY = y + height / 2 - (showValue ? 10 : 0);
-  const valueY = y + height / 2 + 12;
-  const textWidth = Math.min(width * 0.9, 200);
-  const textHeight = showValue ? fontSize * 2.8 : fontSize * 1.8;
+  // Minimum dimensions to show any content
+  const MIN_WIDTH_FOR_TEXT = 50;
+  const MIN_HEIGHT_FOR_TEXT = 35;
+  const MIN_WIDTH_FOR_VALUE = 70;
+  const MIN_HEIGHT_FOR_VALUE = 50;
+  
+  // Determine what to show based on available space
+  const showText = width >= MIN_WIDTH_FOR_TEXT && height >= MIN_HEIGHT_FOR_TEXT;
+  const showValue = width >= MIN_WIDTH_FOR_VALUE && height >= MIN_HEIGHT_FOR_VALUE;
+  
+  // Calculate responsive font sizes
+  const nameFontSize = Math.min(Math.max(Math.floor(width / 8), 10), 16);
+  const valueFontSize = Math.min(Math.max(Math.floor(width / 10), 9), 13);
+  
+  // Calculate max characters based on width
+  const maxChars = Math.max(Math.floor(width / (nameFontSize * 0.6)), 3);
+  
+  // Get tile color
+  const tileColor = fill || '#94a3b8';
+  
+  // Get text color based on background - use contrast color with stroke outline
+  const textColor = getContrastColor(tileColor);
+  const strokeColor = textColor === '#ffffff' ? '#000000' : '#ffffff';
+  
+  // Calculate text position (centered)
+  const centerX = x + width / 2;
+  const centerY = y + height / 2;
+  
+  // Truncated name for display
+  const displayName = truncateText(name, maxChars);
   
   return (
     <g>
-      <rect 
-        x={x} 
-        y={y} 
-        width={width} 
-        height={height} 
-        style={{ fill: props.fill, stroke: '#fff', strokeWidth: 2 }} 
-      />
-      {/* Background for text to improve readability */}
-      {width > 50 && (
-        <rect 
-          x={x + width / 2 - textWidth / 2} 
-          y={textY - fontSize - 4} 
-          width={textWidth} 
-          height={textHeight} 
-          fill="rgba(0, 0, 0, 0.65)" 
-          rx={6}
-        />
-      )}
-      <text 
-        x={x + width / 2} 
-        y={textY} 
-        textAnchor="middle" 
-        fill="#fff" 
-        fontSize={fontSize} 
-        fontWeight="bold"
-        style={{ 
-          textShadow: '2px 2px 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.5)',
-          pointerEvents: 'none'
+      {/* Main tile rectangle - clean flat color */}
+      <rect
+        x={x}
+        y={y}
+        width={width}
+        height={height}
+        style={{
+          fill: tileColor,
+          stroke: '#ffffff',
+          strokeWidth: 2,
+          cursor: 'pointer',
         }}
-      >
-        {name}
-      </text>
-      {showValue && size && (
-        <text 
-          x={x + width / 2} 
-          y={valueY} 
-          textAnchor="middle" 
-          fill="#fff" 
-          fontSize={fontSize - 1}
-          fontWeight="700"
-          style={{ 
-            textShadow: '2px 2px 4px rgba(0,0,0,0.9), 0 0 8px rgba(0,0,0,0.5)',
-            pointerEvents: 'none'
+        rx={4}
+        ry={4}
+      />
+      
+      {/* Name text with stroke outline for readability */}
+      {showText && displayName && (
+        <text
+          x={centerX}
+          y={showValue ? centerY - valueFontSize * 0.5 : centerY}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          style={{
+            fill: textColor,
+            fontSize: `${nameFontSize}px`,
+            fontWeight: 700,
+            fontFamily: HEBREW_FONT,
+            pointerEvents: 'none',
+            stroke: strokeColor,
+            strokeWidth: 2.5,
+            paintOrder: 'stroke fill',
           }}
         >
-          ₪{size.toLocaleString()}
+          {displayName}
+        </text>
+      )}
+      
+      {/* Value text with stroke outline */}
+      {showValue && size && (
+        <text
+          x={centerX}
+          y={centerY + nameFontSize * 0.7}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          style={{
+            fill: textColor,
+            fontSize: `${valueFontSize}px`,
+            fontWeight: 600,
+            fontFamily: HEBREW_FONT,
+            pointerEvents: 'none',
+            stroke: strokeColor,
+            strokeWidth: 2,
+            paintOrder: 'stroke fill',
+            opacity: 0.9,
+          }}
+        >
+          {formatCurrency(size)}
         </text>
       )}
     </g>
@@ -68,4 +140,3 @@ const CustomTreemapContent = (props) => {
 };
 
 export default CustomTreemapContent;
-

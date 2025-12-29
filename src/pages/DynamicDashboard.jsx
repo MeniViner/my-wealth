@@ -9,6 +9,7 @@ import ChartRenderer from '../components/ChartRenderer';
 import { Cloud, Trash2, Edit2, Filter, X, Settings, Eye, EyeOff } from 'lucide-react';
 import { confirmAlert, successAlert, errorAlert } from '../utils/alerts';
 import { Link } from 'react-router-dom';
+import CustomSelect from '../components/CustomSelect';
 
 const DynamicDashboard = () => {
   const { user } = useAuth();
@@ -160,7 +161,7 @@ const DynamicDashboard = () => {
           <div className="flex flex-col md:flex-row items-start md:items-center gap-3 mb-2">
             <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">דשבורד מותאם אישית</h2>
             <Link
-              to="/settings#charts"
+              to="/chart-builder"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition border border-slate-200 dark:border-slate-700 hover:border-emerald-200 dark:hover:border-emerald-700"
               title="ערוך דשבורדים"
             >
@@ -225,9 +226,9 @@ const DynamicDashboard = () => {
               <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">קיבוץ:</span>
               <div className="flex gap-1 bg-white dark:bg-slate-800 rounded-lg p-1 border border-slate-200 dark:border-slate-700">
                 {[
-                  { value: 'category', label: 'קטגוריה' },
-                  { value: 'platform', label: 'פלטפורמה' },
-                  { value: 'instrument', label: 'כלי' },
+                  { value: 'category', label: 'אפיקי השקעה' },
+                  { value: 'platform', label: 'חשבונות וארנקים' },
+                  { value: 'instrument', label: 'מטבעות בסיס' },
                   { value: 'tags', label: 'תגיות' },
                   { value: 'currency', label: 'מטבע' }
                 ].map(group => (
@@ -252,49 +253,60 @@ const DynamicDashboard = () => {
               <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">פילטרים:</span>
               
               {/* Category Filter */}
-              <select
-                value={mainChartConfig.filters.category}
-                onChange={(e) => setMainChartConfig(prev => ({
+              <CustomSelect
+                value={mainChartConfig.filters.category || ''}
+                onChange={(val) => setMainChartConfig(prev => ({
                   ...prev,
-                  filters: { ...prev.filters, category: e.target.value }
+                  filters: { ...prev.filters, category: val }
                 }))}
-                className="px-2 py-1.5 text-xs border border-slate-300 dark:border-slate-600 rounded bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-slate-400"
-              >
-                <option value="">כל הקטגוריות</option>
-                {uniqueCategories.map(cat => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
+                options={[
+                  { value: '', label: 'כל הקטגוריות' },
+                  ...uniqueCategories.map(cat => ({
+                    value: cat,
+                    label: cat,
+                    iconColor: systemData?.categories?.find(c => c.name === cat)?.color
+                  }))
+                ]}
+                placeholder="כל הקטגוריות"
+                className="text-xs min-w-[120px]"
+              />
 
               {/* Platform Filter */}
-              <select
-                value={mainChartConfig.filters.platform}
-                onChange={(e) => setMainChartConfig(prev => ({
+              <CustomSelect
+                value={mainChartConfig.filters.platform || ''}
+                onChange={(val) => setMainChartConfig(prev => ({
                   ...prev,
-                  filters: { ...prev.filters, platform: e.target.value }
+                  filters: { ...prev.filters, platform: val }
                 }))}
-                className="px-2 py-1.5 text-xs border border-slate-300 rounded bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-400"
-              >
-                <option value="">כל הפלטפורמות</option>
-                {uniquePlatforms.map(plat => (
-                  <option key={plat} value={plat}>{plat}</option>
-                ))}
-              </select>
+                options={[
+                  { value: '', label: 'כל הפלטפורמות' },
+                  ...uniquePlatforms.map(plat => ({
+                    value: plat,
+                    label: plat,
+                    iconColor: systemData?.platforms?.find(p => p.name === plat)?.color
+                  }))
+                ]}
+                placeholder="כל הפלטפורמות"
+                className="text-xs min-w-[120px]"
+              />
 
               {/* Currency Filter */}
-              <select
-                value={mainChartConfig.filters.currency}
-                onChange={(e) => setMainChartConfig(prev => ({
+              <CustomSelect
+                value={mainChartConfig.filters.currency || ''}
+                onChange={(val) => setMainChartConfig(prev => ({
                   ...prev,
-                  filters: { ...prev.filters, currency: e.target.value }
+                  filters: { ...prev.filters, currency: val }
                 }))}
-                className="px-2 py-1.5 text-xs border border-slate-300 rounded bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-slate-400"
-              >
-                <option value="">כל המטבעות</option>
-                {uniqueCurrencies.map(curr => (
-                  <option key={curr} value={curr}>{curr}</option>
-                ))}
-              </select>
+                options={[
+                  { value: '', label: 'כל המטבעות' },
+                  ...uniqueCurrencies.map(curr => ({
+                    value: curr,
+                    label: curr
+                  }))
+                ]}
+                placeholder="כל המטבעות"
+                className="text-xs min-w-[120px]"
+              />
 
               {/* Clear Filters Button */}
               {hasActiveFilters && (
@@ -313,7 +325,7 @@ const DynamicDashboard = () => {
 
         {/* Chart Display */}
         <div className="p-6">
-          <div className="h-96">
+          <div className="h-80">
             <ChartRenderer
               config={mainChartConfig}
               chartData={mainChartData}
@@ -331,7 +343,7 @@ const DynamicDashboard = () => {
             <h3 className="text-lg font-semibold text-slate-700 dark:text-white">גרפים שמורים</h3>
             <div className="flex flex-wrap items-center gap-2">
               <Link
-                to="/settings#charts"
+                to="/chart-builder"
                 className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition"
                 title="ערוך דשבורדים"
               >
@@ -359,10 +371,10 @@ const DynamicDashboard = () => {
                 large: 'lg:col-span-2 lg:row-span-2'
               };
               
-              // Height based on size
+              // Height based on size - larger for bar charts
               const heightClasses = {
-                small: 'h-80',
-                medium: 'h-80',
+                small: 'h-96',
+                medium: 'h-[450px]',
                 large: 'h-[640px]'
               };
 

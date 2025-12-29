@@ -3,18 +3,26 @@ import { doc, onSnapshot, getDoc, setDoc } from 'firebase/firestore';
 import { db, appId } from '../services/firebase';
 import { DEFAULT_SYSTEM_DATA } from '../constants/defaults';
 
+// Empty system data for new users (not DEFAULT_SYSTEM_DATA)
+const EMPTY_SYSTEM_DATA = {
+  platforms: [],
+  instruments: [],
+  categories: [],
+  symbols: []
+};
+
 /**
  * Custom hook for managing system data (platforms, instruments, categories)
  * @param {User} user - Firebase user object
  * @returns {{ systemData: Object, setSystemData: Function }}
  */
 export const useSystemData = (user) => {
-  const [systemData, setSystemDataState] = useState(DEFAULT_SYSTEM_DATA);
+  const [systemData, setSystemDataState] = useState(EMPTY_SYSTEM_DATA);
 
   // Listen to system data
   useEffect(() => {
     if (!user || !db) {
-      setSystemDataState(DEFAULT_SYSTEM_DATA);
+      setSystemDataState(EMPTY_SYSTEM_DATA);
       return;
     }
 
@@ -31,14 +39,14 @@ export const useSystemData = (user) => {
         if (!isMounted) return;
         
         if (docSnap.exists()) {
+          // Document exists - use its data (user has already customized or initialized)
           setSystemDataState(docSnap.data());
         } else {
-          // Only create default if document doesn't exist (don't do it in onSnapshot callback)
-          setSystemDataState(DEFAULT_SYSTEM_DATA);
-          // Create document in background (don't wait for it)
-          setDoc(configRef, DEFAULT_SYSTEM_DATA).catch(err => {
-            console.warn('Failed to create default system data:', err);
-          });
+          // For new users, start with empty data (not DEFAULT_SYSTEM_DATA)
+          // DEFAULT_SYSTEM_DATA should only be used when clicking reset button
+          setSystemDataState(EMPTY_SYSTEM_DATA);
+          // Create document with empty data immediately to prevent race conditions
+          await setDoc(configRef, EMPTY_SYSTEM_DATA);
         }
         
         // Now set up real-time listener
@@ -46,6 +54,9 @@ export const useSystemData = (user) => {
           if (!isMounted) return;
           if (snapshot.exists()) {
             setSystemDataState(snapshot.data());
+          } else {
+            // If document doesn't exist, use empty data
+            setSystemDataState(EMPTY_SYSTEM_DATA);
           }
         }, (error) => {
           if (!isMounted) return;
@@ -54,7 +65,7 @@ export const useSystemData = (user) => {
       } catch (error) {
         if (!isMounted) return;
         console.error('Error loading system data:', error);
-        setSystemDataState(DEFAULT_SYSTEM_DATA);
+        setSystemDataState(EMPTY_SYSTEM_DATA);
       }
     };
 

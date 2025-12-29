@@ -8,6 +8,226 @@ import CustomTreemapContent from './CustomTreemapContent';
 import CustomTreemapTooltip from './CustomTreemapTooltip';
 import { getColorForItem } from '../utils/chartUtils';
 
+// Hebrew font stack for SVG text elements
+const HEBREW_FONT = "'Assistant', 'Heebo', 'Rubik', sans-serif";
+
+// Custom RTL Legend component
+const RTLLegend = ({ payload, align = 'right' }) => {
+  if (!payload || payload.length === 0) return null;
+  
+  return (
+    <div 
+      dir="rtl"
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        justifyContent: align === 'right' ? 'flex-end' : 'flex-start',
+        gap: '12px',
+        padding: '8px 0',
+        fontFamily: HEBREW_FONT,
+      }}
+    >
+      {payload.map((entry, index) => (
+        <div
+          key={`legend-${index}`}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontSize: '12px',
+            color: '#475569',
+          }}
+        >
+          <span
+            style={{
+              width: '10px',
+              height: '10px',
+              borderRadius: '3px',
+              backgroundColor: entry.color || entry.payload?.fill,
+              flexShrink: 0,
+            }}
+          />
+          <span style={{ fontWeight: 500 }}>
+            {entry.value || entry.payload?.name}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// Custom RTL Legend for Pie/Radial with percentages
+const RTLLegendWithPercentage = ({ payload, totalValue }) => {
+  if (!payload || payload.length === 0) return null;
+  
+  // Check if dark mode is active
+  const isDarkMode = typeof window !== 'undefined' && document.documentElement.classList.contains('dark');
+  const textColor = isDarkMode ? '#e2e8f0' : '#475569';
+  const percentageColor = isDarkMode ? '#ffffff' : '#1e293b';
+  
+  return (
+    <div 
+      dir="rtl"
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '8px',
+        padding: '8px 0',
+        fontFamily: HEBREW_FONT,
+        maxHeight: '200px',
+        overflowY: 'auto',
+      }}
+    >
+      {payload.map((entry, index) => {
+        const value = entry.payload?.value || 0;
+        const percentage = totalValue > 0 ? ((value / totalValue) * 100).toFixed(1) : 0;
+        
+        return (
+          <div
+            key={`legend-${index}`}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '12px',
+              color: textColor,
+            }}
+          >
+            <span
+              style={{
+                width: '10px',
+                height: '10px',
+                borderRadius: '3px',
+                backgroundColor: entry.color || entry.payload?.fill,
+                flexShrink: 0,
+              }}
+            />
+            <span style={{ fontWeight: 500, flex: 1 }}>
+              {entry.payload?.name}
+            </span>
+            <span style={{ 
+              fontWeight: 600, 
+              color: percentageColor,
+              fontFamily: 'system-ui, sans-serif',
+            }}>
+              {percentage}%
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+// Format axis tick for Hebrew locale (numbers only)
+const formatAxisTick = (value) => {
+  if (typeof value === 'number') {
+    if (value >= 1000000) {
+      return `${(value / 1000000).toFixed(1)}M`;
+    }
+    if (value >= 1000) {
+      return `${(value / 1000).toFixed(0)}K`;
+    }
+    return value.toLocaleString('he-IL');
+  }
+  return value;
+};
+
+// Format axis tick with truncation (for vertical bar charts)
+const formatAxisTickTruncated = (value) => {
+  if (typeof value === 'number') {
+    if (value >= 1000000) {
+      return `${(value / 1000000).toFixed(1)}M`;
+    }
+    if (value >= 1000) {
+      return `${(value / 1000).toFixed(0)}K`;
+    }
+    return value.toLocaleString('he-IL');
+  }
+  if (typeof value === 'string' && value.length > 8) {
+    return value.substring(0, 7) + '…';
+  }
+  return value;
+};
+
+// Common axis props for RTL
+const rtlAxisProps = {
+  tick: { 
+    fontSize: 11, 
+    fontFamily: HEBREW_FONT,
+    fill: '#64748b',
+  },
+  axisLine: { stroke: '#e2e8f0' },
+  tickLine: { stroke: '#e2e8f0' },
+};
+
+// Empty state component
+const NoDataMessage = ({ message = 'אין נתונים להצגה' }) => (
+  <div 
+    dir="rtl"
+    style={{
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      color: '#94a3b8',
+      fontFamily: HEBREW_FONT,
+      textAlign: 'center',
+      padding: '20px',
+    }}
+  >
+    <svg 
+      width="48" 
+      height="48" 
+      viewBox="0 0 24 24" 
+      fill="none" 
+      stroke="currentColor" 
+      strokeWidth="1.5"
+      style={{ marginBottom: '12px', opacity: 0.5 }}
+    >
+      <path d="M3 3v18h18" />
+      <path d="M7 16l4-4 4 4 6-6" />
+    </svg>
+    <span style={{ fontSize: '14px', fontWeight: 500 }}>{message}</span>
+    <span style={{ fontSize: '12px', marginTop: '4px', opacity: 0.7 }}>
+      נסה להוסיף נכסים או לשנות את הפילטרים
+    </span>
+  </div>
+);
+
+// Custom pie label renderer with black text outside the pie (white in dark mode)
+const renderPieLabel = ({ name, value, cx, cy, midAngle, outerRadius, totalValue }) => {
+  const pct = totalValue > 0 ? ((value / totalValue) * 100).toFixed(1) : 0;
+  if (parseFloat(pct) < 5) return null;
+  
+  const RADIAN = Math.PI / 180;
+  const radius = outerRadius * 1.15;
+  const x = cx + radius * Math.cos(-midAngle * RADIAN);
+  const y = cy + radius * Math.sin(-midAngle * RADIAN);
+  
+  // Check if dark mode is active
+  const isDarkMode = typeof window !== 'undefined' && document.documentElement.classList.contains('dark');
+  const textColor = isDarkMode ? '#ffffff' : '#1e293b';
+  
+  return (
+    <text 
+      x={x} 
+      y={y} 
+      fill={textColor}
+      textAnchor={x > cx ? 'start' : 'end'} 
+      dominantBaseline="central"
+      style={{ 
+        fontSize: '11px', 
+        fontWeight: 600, 
+        fontFamily: HEBREW_FONT,
+      }}
+    >
+      {name}
+    </text>
+  );
+};
+
 /**
  * Render a chart based on configuration
  * @param {Object} config - Chart configuration
@@ -16,28 +236,50 @@ import { getColorForItem } from '../utils/chartUtils';
  * @param {number} totalValue - Total value for percentage calculations
  */
 const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
+  // Handle empty data state
   if (!chartData || chartData.length === 0) {
-    return (
-      <div className="h-80 flex items-center justify-center text-slate-400">
-        אין נתונים להצגה
-      </div>
-    );
+    return <NoDataMessage />;
   }
+
+  // Get minimum height based on chart type
+  const getMinHeight = (chartType) => {
+    switch (chartType) {
+      case 'BarChart':
+        return '320px'; // Reduced - margins are now smaller
+      case 'HorizontalBarChart':
+        return '280px';
+      case 'PieChart':
+      case 'RadialBar':
+        return '280px';
+      case 'Treemap':
+        return '280px';
+      default:
+        return '250px';
+    }
+  };
+
+  // Common responsive container wrapper with dynamic min-height
+  const ResponsiveWrapper = ({ children, chartType }) => (
+    <div style={{ width: '100%', height: '100%', minHeight: getMinHeight(chartType), overflow: 'visible' }}>
+      <ResponsiveContainer width="100%" height="100%">
+        {children}
+      </ResponsiveContainer>
+    </div>
+  );
 
   switch (config.chartType) {
     case 'PieChart':
       return (
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveWrapper chartType="PieChart">
           <PieChart>
             <Pie
               data={chartData}
-              cx="50%"
+              cx="40%"
               cy="50%"
-              labelLine={false}
-              label={({ name, value }) => 
-                `${name}: ${((value / totalValue) * 100).toFixed(1)}%`
-              }
-              outerRadius={100}
+              labelLine={{ stroke: '#64748b', strokeWidth: 1 }}
+              label={(props) => renderPieLabel({ ...props, totalValue })}
+              outerRadius="65%"
+              innerRadius="0%"
               fill="#8884d8"
               dataKey="value"
             >
@@ -48,26 +290,42 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
                 />
               ))}
             </Pie>
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip 
+              content={<CustomTooltip totalValue={totalValue} showPercentage />} 
+              wrapperStyle={{ zIndex: 1000 }}
+            />
             <Legend 
-              iconSize={12} 
-              layout="vertical" 
-              verticalAlign="middle" 
-              wrapperStyle={{ right: 0 }}
-              formatter={(value, entry) => `${entry.payload.name}: ${((entry.payload.value / totalValue) * 100).toFixed(1)}%`}
+              content={<RTLLegendWithPercentage totalValue={totalValue} />}
+              layout="vertical"
+              align="right"
+              verticalAlign="middle"
+              wrapperStyle={{ 
+                paddingRight: '10px',
+                right: 0,
+              }}
             />
           </PieChart>
-        </ResponsiveContainer>
+        </ResponsiveWrapper>
       );
 
     case 'BarChart':
       return (
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData} margin={{ bottom: 20 }}>
-            <XAxis dataKey="name" tick={{ fontSize: 10 }} interval={0} height={40} />
-            <YAxis hide />
-            <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f8fafc' }} />
-            <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+        <ResponsiveWrapper chartType="BarChart">
+          <BarChart 
+            data={chartData} 
+            margin={{ top: 10, right: 10, left: 5, bottom: 5 }}
+          >
+            <YAxis 
+              {...rtlAxisProps}
+              tickFormatter={formatAxisTick}
+              width={45}
+            />
+            <Tooltip 
+              content={<CustomTooltip totalValue={totalValue} showPercentage />} 
+              cursor={{ fill: 'rgba(0, 0, 0, 0.05)' }}
+              wrapperStyle={{ zIndex: 1000 }}
+            />
+            <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={60}>
               {chartData.map((entry, index) => (
                 <Cell 
                   key={`cell-${index}`} 
@@ -75,18 +333,56 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
                 />
               ))}
             </Bar>
+            <XAxis 
+              dataKey="name" 
+              {...rtlAxisProps}
+              tick={{
+                ...rtlAxisProps.tick,
+                style: { zIndex: 1000, pointerEvents: 'none' }
+              }}
+              tickFormatter={formatAxisTickTruncated}
+              interval={0}
+              angle={-35}
+              textAnchor="end"
+              height={60}
+              dy={5}
+            />
           </BarChart>
-        </ResponsiveContainer>
+        </ResponsiveWrapper>
       );
 
     case 'HorizontalBarChart':
       return (
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData} layout="vertical" margin={{ left: 20, right: 20 }}>
-            <XAxis type="number" tick={{ fontSize: 11 }} />
-            <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={100} />
-            <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f8fafc' }} />
-            <Bar dataKey="value" radius={[0, 4, 4, 0]}>
+        <ResponsiveWrapper chartType="HorizontalBarChart">
+          <BarChart 
+            data={chartData} 
+            layout="vertical" 
+            margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
+          >
+            <XAxis 
+              type="number" 
+              {...rtlAxisProps}
+              tickFormatter={formatAxisTick}
+            />
+            <YAxis 
+              dataKey="name" 
+              type="category" 
+              tick={{ 
+                fontSize: 11, 
+                fontFamily: HEBREW_FONT,
+                fill: '#64748b',
+              }}
+              axisLine={{ stroke: '#e2e8f0' }}
+              tickLine={{ stroke: '#e2e8f0' }}
+              width={100}
+              orientation="right"
+            />
+            <Tooltip 
+              content={<CustomTooltip totalValue={totalValue} showPercentage />} 
+              cursor={{ fill: 'rgba(0, 0, 0, 0.05)' }}
+              wrapperStyle={{ zIndex: 1000 }}
+            />
+            <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={50}>
               {chartData.map((entry, index) => (
                 <Cell 
                   key={`cell-${index}`} 
@@ -95,48 +391,73 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
               ))}
             </Bar>
           </BarChart>
-        </ResponsiveContainer>
+        </ResponsiveWrapper>
       );
 
     case 'RadarChart':
       return (
-        <ResponsiveContainer width="100%" height="100%">
-          <RadarChart data={chartData}>
-            <PolarGrid />
-            <PolarAngleAxis dataKey="name" tick={{ fontSize: 11 }} />
-            <PolarRadiusAxis angle={90} domain={[0, 'auto']} tick={{ fontSize: 10 }} />
+        <ResponsiveWrapper chartType="RadarChart">
+          <RadarChart data={chartData} cx="50%" cy="50%" outerRadius="70%">
+            <PolarGrid stroke="#e2e8f0" />
+            <PolarAngleAxis 
+              dataKey="name" 
+              tick={{ 
+                fontSize: 11, 
+                fontFamily: HEBREW_FONT,
+                fill: '#64748b',
+              }}
+            />
+            <PolarRadiusAxis 
+              angle={90} 
+              domain={[0, 'auto']} 
+              tick={{ 
+                fontSize: 10, 
+                fontFamily: HEBREW_FONT,
+                fill: '#94a3b8',
+              }}
+              tickFormatter={formatAxisTick}
+            />
             <Radar 
               name="ערך" 
               dataKey="value" 
               stroke="#3b82f6" 
               fill="#3b82f6" 
-              fillOpacity={0.6} 
+              fillOpacity={0.5} 
             />
-            <Tooltip content={<CustomTooltip />} />
-            <Legend />
+            <Tooltip 
+              content={<CustomTooltip totalValue={totalValue} />} 
+              wrapperStyle={{ zIndex: 1000 }}
+            />
+            <Legend content={<RTLLegend />} />
           </RadarChart>
-        </ResponsiveContainer>
+        </ResponsiveWrapper>
       );
 
     case 'RadialBar':
       return (
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveWrapper chartType="RadialBar">
           <RadialBarChart 
-            cx="50%" 
+            cx="40%" 
             cy="50%" 
             innerRadius="20%" 
-            outerRadius="80%" 
-            data={chartData.slice(0, 10)} 
+            outerRadius="90%" 
+            data={chartData.slice(0, 8)} 
             startAngle={90} 
             endAngle={-270}
           >
             <RadialBar 
               minAngle={15} 
-              label={{ position: 'insideStart', fill: '#fff' }} 
-              background 
+              label={{ 
+                position: 'insideStart', 
+                fill: '#fff',
+                fontFamily: HEBREW_FONT,
+                fontSize: 10,
+              }} 
+              background={{ fill: '#f1f5f9' }}
               dataKey="value"
+              cornerRadius={4}
             >
-              {chartData.slice(0, 10).map((entry, index) => (
+              {chartData.slice(0, 8).map((entry, index) => (
                 <Cell 
                   key={`cell-${index}`} 
                   fill={getColorForItem(entry.name, config.dataKey, systemData)} 
@@ -144,41 +465,57 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
               ))}
             </RadialBar>
             <Legend 
-              iconSize={10} 
-              layout="vertical" 
-              verticalAlign="middle" 
-              wrapperStyle={{ right: 0 }}
+              content={<RTLLegendWithPercentage totalValue={totalValue} />}
+              layout="vertical"
+              align="right"
+              verticalAlign="middle"
+              wrapperStyle={{ 
+                paddingRight: '10px',
+                right: 0,
+              }}
             />
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip 
+              content={<CustomTooltip totalValue={totalValue} showPercentage />} 
+              wrapperStyle={{ zIndex: 1000 }}
+            />
           </RadialBarChart>
-        </ResponsiveContainer>
+        </ResponsiveWrapper>
       );
 
     case 'Treemap':
       const treemapData = chartData.map(item => ({
         name: item.name,
-        size: item.value,
-        fill: getColorForItem(item.name, config.dataKey, systemData)
+        size: item.value || item.size,
+        fill: item.fill || getColorForItem(item.name, config.dataKey, systemData),
+        category: item.category,
+        platform: item.platform,
+        instrument: item.instrument,
       }));
+      
       return (
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveWrapper chartType="Treemap">
           <Treemap 
             data={treemapData} 
             dataKey="size" 
             aspectRatio={4 / 3} 
             stroke="#fff" 
-            strokeWidth={1}
+            strokeWidth={2}
             content={<CustomTreemapContent />}
+            animationDuration={300}
           >
-            <Tooltip content={<CustomTreemapTooltip />} />
+            <Tooltip 
+              content={<CustomTreemapTooltip totalValue={totalValue} />} 
+              wrapperStyle={{ zIndex: 1000 }}
+            />
           </Treemap>
-        </ResponsiveContainer>
+        </ResponsiveWrapper>
       );
 
     default:
-      return <div className="h-80 flex items-center justify-center text-slate-400">סוג גרף לא נתמך</div>;
+      return (
+        <NoDataMessage message="סוג גרף לא נתמך" />
+      );
   }
 };
 
 export default ChartRenderer;
-

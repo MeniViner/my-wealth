@@ -50,45 +50,52 @@ service cloud.firestore {
         // Admins can read all user metadata, regular users can only read their own
         allow read: if isAuthenticated() && (isOwner(userId) || isAdminInContext(appId));
         
+        // Users can create/update their own user document, admins can update any
+        allow create: if isAuthenticated() && isOwner(userId);
+        allow update: if isAuthenticated() && (isOwner(userId) || isAdminInContext(appId));
+        
+        // Allow admins to delete user documents
+        allow delete: if isAdminInContext(appId);
+        
         // Assets collection - user's financial assets
         match /assets/{assetId} {
           // Admins can read all, users can only read/write their own
           allow read: if isAdminOrOwner(userId, appId);
-          allow write: if isOwner(userId);
+          allow write: if isOwner(userId) || isAdminInContext(appId);
         }
         
         // Settings subcollection
         match /settings/{settingId} {
           // Admins can read all, users can only read/write their own
           allow read: if isAdminOrOwner(userId, appId);
-          allow write: if isOwner(userId);
+          allow write: if isOwner(userId) || isAdminInContext(appId);
         }
         
         // Reports collection - AI advisor reports
         match /reports/{reportId} {
           // Admins can read all, users can only read/write their own
           allow read: if isAdminOrOwner(userId, appId);
-          allow write: if isOwner(userId);
+          allow write: if isOwner(userId) || isAdminInContext(appId);
         }
         
         // Dashboard widgets collection - chart configurations
         match /dashboard_widgets/{widgetId} {
           // Admins can read all, users can only read/write their own
           allow read: if isAdminOrOwner(userId, appId);
-          allow write: if isOwner(userId);
+          allow write: if isOwner(userId) || isAdminInContext(appId);
         }
         
         // Chats collection - AI chat conversations
         match /chats/{chatId} {
           // Admins can read all, users can only read/write their own
           allow read: if isAdminOrOwner(userId, appId);
-          allow write: if isOwner(userId);
+          allow write: if isOwner(userId) || isAdminInContext(appId);
           
           // Messages subcollection within each chat
           match /messages/{messageId} {
             // Admins can read all, users can only read/write their own
             allow read: if isAdminOrOwner(userId, appId);
-            allow write: if isOwner(userId);
+            allow write: if isOwner(userId) || isAdminInContext(appId);
           }
         }
       }

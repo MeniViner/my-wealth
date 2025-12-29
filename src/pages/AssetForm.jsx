@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Sparkles, Loader2, Plus } from 'lucide-react';
+import { ArrowLeft, Sparkles, Loader2, Plus, ArrowRight } from 'lucide-react';
 import { callGeminiAI } from '../services/gemini';
 import { infoAlert, successToast } from '../utils/alerts';
 import { generateRandomColor } from '../constants/defaults';
 import TickerSearch from '../components/TickerSearch';
+import CustomSelect from '../components/CustomSelect';
 
 const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioContext = "" }) => {
   const navigate = useNavigate();
@@ -64,7 +65,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
     if (!newPlatformValue.trim()) return;
     const trimmedValue = newPlatformValue.trim();
     if (systemData.platforms.find(p => p.name === trimmedValue)) {
-      infoAlert('שגיאה', 'הפלטפורמה כבר קיימת');
+      infoAlert('שגיאה', 'חשבון או ארנק זה כבר קיים');
       return;
     }
     const newPlatform = { name: trimmedValue, color: generateRandomColor() };
@@ -73,7 +74,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
     setFormData({ ...formData, platform: trimmedValue });
     setNewPlatformValue('');
     setShowNewPlatform(false);
-    successToast('פלטפורמה נוספה בהצלחה', 1500);
+    successToast('חשבון או ארנק נוסף בהצלחה', 1500);
   };
 
   // Handle adding new instrument
@@ -81,7 +82,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
     if (!newInstrumentValue.trim()) return;
     const trimmedValue = newInstrumentValue.trim();
     if (systemData.instruments.find(i => i.name === trimmedValue)) {
-      infoAlert('שגיאה', 'המכשיר כבר קיים');
+      infoAlert('שגיאה', 'מטבע בסיס זה כבר קיים');
       return;
     }
     const newInstrument = { name: trimmedValue, color: generateRandomColor() };
@@ -90,7 +91,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
     setFormData({ ...formData, instrument: trimmedValue });
     setNewInstrumentValue('');
     setShowNewInstrument(false);
-    successToast('מכשיר נוסף בהצלחה', 1500);
+    successToast('מטבע בסיס נוסף בהצלחה', 1500);
   };
 
   useEffect(() => {
@@ -271,12 +272,12 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
 
   return (
     <div className="max-w-3xl mx-auto pb-12">
-      <header className="flex items-center gap-4 mb-8">
+      <header className="flex items-center gap-4 mb-8 mr-12 md:mr-0">
         <button 
           onClick={() => navigate('/assets')} 
           className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition"
         >
-          <ArrowLeft size={24} className="text-slate-800 dark:text-slate-200" />
+          <ArrowRight size={24} className="text-slate-800 dark:text-slate-200" />
         </button>
         <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">
           {editAsset ? 'עריכת נכס' : 'הוספת נכס חדש'}
@@ -285,32 +286,28 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
       <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">פלטפורמה</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">חשבונות וארנקים</label>
             {!showNewPlatform ? (
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-2 border border-slate-200 dark:border-slate-600 rounded-lg p-3 bg-white dark:bg-slate-700 flex-1">
-                  <div 
-                    className="w-4 h-4 rounded-full" 
-                    style={{ backgroundColor: currentColor('platforms', formData.platform) }}
-                  ></div>
-                  <select 
-                    className="w-full outline-none bg-transparent text-slate-900 dark:text-slate-100" 
-                    value={formData.platform} 
-                    onChange={e => {
-                      if (e.target.value === '__NEW__') {
-                        setShowNewPlatform(true);
-                      } else {
-                        setFormData({...formData, platform: e.target.value});
-                      }
-                    }}
-                  >
-                    {systemData.platforms.map(p => (
-                      <option key={p.name} value={p.name}>{p.name}</option>
-                    ))}
-                    <option value="__NEW__">+ הוסף חדש</option>
-                  </select>
-                </div>
-              </div>
+              <CustomSelect
+                value={formData.platform}
+                onChange={(val) => {
+                  if (val === '__NEW__') {
+                    setShowNewPlatform(true);
+                  } else {
+                    setFormData({...formData, platform: val});
+                  }
+                }}
+                options={[
+                  ...systemData.platforms.map(p => ({
+                    value: p.name,
+                    label: p.name,
+                    iconColor: p.color
+                  })),
+                  { value: '__NEW__', label: 'הוסף חדש' }
+                ]}
+                placeholder="בחר חשבונות וארנקים"
+                iconColor={currentColor('platforms', formData.platform)}
+              />
             ) : (
               <div className="flex items-center gap-2">
                 <input
@@ -326,7 +323,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                       setNewPlatformValue('');
                     }
                   }}
-                  placeholder="הזן שם פלטפורמה חדשה"
+                  placeholder="הזן שם חשבון או ארנק חדש"
                   className="flex-1 p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100"
                   autoFocus
                 />
@@ -335,7 +332,6 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                   onClick={handleAddPlatform}
                   className="px-4 py-3 bg-emerald-600 dark:bg-emerald-700 text-white rounded-lg hover:bg-emerald-700 dark:hover:bg-emerald-600 flex items-center gap-2"
                 >
-                  <Plus size={16} />
                   הוסף
                 </button>
                 <button
@@ -352,32 +348,28 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
             )}
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">מכשיר</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">מטבעות בסיס</label>
             {!showNewInstrument ? (
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-2 border border-slate-200 dark:border-slate-600 rounded-lg p-3 bg-white dark:bg-slate-700 flex-1">
-                  <div 
-                    className="w-4 h-4 rounded-full" 
-                    style={{ backgroundColor: currentColor('instruments', formData.instrument) }}
-                  ></div>
-                  <select 
-                    className="w-full outline-none bg-transparent" 
-                    value={formData.instrument} 
-                    onChange={e => {
-                      if (e.target.value === '__NEW__') {
-                        setShowNewInstrument(true);
-                      } else {
-                        setFormData({...formData, instrument: e.target.value});
-                      }
-                    }}
-                  >
-                    {systemData.instruments.map(i => (
-                      <option key={i.name} value={i.name}>{i.name}</option>
-                    ))}
-                    <option value="__NEW__">+ הוסף חדש</option>
-                  </select>
-                </div>
-              </div>
+              <CustomSelect
+                value={formData.instrument}
+                onChange={(val) => {
+                  if (val === '__NEW__') {
+                    setShowNewInstrument(true);
+                  } else {
+                    setFormData({...formData, instrument: val});
+                  }
+                }}
+                options={[
+                  ...systemData.instruments.map(i => ({
+                    value: i.name,
+                    label: i.name,
+                    iconColor: i.color
+                  })),
+                  { value: '__NEW__', label: 'הוסף חדש' }
+                ]}
+                placeholder="בחר מטבע בסיס"
+                iconColor={currentColor('instruments', formData.instrument)}
+              />
             ) : (
               <div className="flex items-center gap-2">
                 <input
@@ -393,7 +385,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                       setNewInstrumentValue('');
                     }
                   }}
-                  placeholder="הזן שם מכשיר חדש"
+                  placeholder="הזן שם מטבע בסיס חדש"
                   className="flex-1 p-3 border rounded-lg"
                   autoFocus
                 />
@@ -402,7 +394,6 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                   onClick={handleAddInstrument}
                   className="px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2"
                 >
-                  <Plus size={16} />
                   הוסף
                 </button>
                 <button
@@ -420,16 +411,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
           </div>
           <div className="md:col-span-2">
             <div className="flex justify-between items-center mb-2">
-              <label className="block text-sm font-medium text-slate-700">שם הנכס</label>
-              <button 
-                type="button" 
-                onClick={handleAISuggest} 
-                disabled={aiSuggestLoading || !formData.name}
-                className="text-xs text-purple-600 font-bold flex gap-1 items-center hover:text-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="הצע קטגוריה, סמל ותגיות בהתבסס על הפורטפוליו שלך"
-              >
-                {aiSuggestLoading ? <Loader2 size={12} className="animate-spin"/> : <Sparkles size={12}/>} AI Suggest
-              </button>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">שם הנכס</label>
             </div>
             <input 
               type="text" 
@@ -440,11 +422,11 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
             />
           </div>
           <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-slate-700 mb-2">סמל נכס / Ticker</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">סמל נכס / Ticker</label>
             {(formData.category === 'מניות' || formData.category === 'קריפטו') ? (
-              // Smart Ticker Search for Stocks and Crypto
+              // Smart Ticker Search with Category Selector
               <TickerSearch
-                type={formData.category === 'קריפטו' ? 'crypto' : 'stock'}
+                type={formData.category === 'קריפטו' ? 'crypto' : 'us-stock'} // Default type (will be overridden by selector)
                 value={formData.symbol}
                 onSelect={(asset) => {
                   if (asset) {
@@ -452,8 +434,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                       ...formData,
                       symbol: asset.symbol,
                       apiId: asset.id,
-                      marketDataSource: asset.marketDataSource || 
-                        (formData.category === 'קריפטו' ? 'coingecko' : 'yahoo')
+                      marketDataSource: asset.marketDataSource || 'yahoo'
                     });
                   } else {
                     setFormData({
@@ -464,42 +445,49 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                     });
                   }
                 }}
-                placeholder={formData.category === 'קריפטו' 
-                  ? 'חפש קריפטו (BTC, ETH, SOL...)' 
-                  : 'חפש מניה (AAPL, TSLA, SPY...)'}
                 allowManual={true}
+                showCategorySelector={true}
               />
             ) : (
               // Manual input for Cash, Real Estate, and Other categories
               <>
                 {!showNewSymbol ? (
                   <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <select
-                        className="flex-1 p-3 border rounded-lg"
-                        value={formData.symbol || ''}
-                        onChange={e => {
-                          if (e.target.value === '__NEW__') {
-                            setShowNewSymbol(true);
-                          } else {
-                            setFormData({...formData, symbol: e.target.value});
-                          }
-                        }}
-                      >
-                        <option value="">-- בחר סמל --</option>
-                        {systemData.symbols && systemData.symbols.length > 0 && systemData.symbols.map(s => {
-                          const symbolName = typeof s === 'string' ? s : s.name;
-                          return <option key={symbolName} value={symbolName}>{symbolName}</option>;
-                        })}
-                        <option value="__NEW__">+ הוסף סמל חדש</option>
-                      </select>
-                    </div>
+                    <CustomSelect
+                      value={formData.symbol || ''}
+                      onChange={(val) => {
+                        if (val === '__NEW__') {
+                          setShowNewSymbol(true);
+                        } else {
+                          setFormData({...formData, symbol: val});
+                        }
+                      }}
+                      options={[
+                        { value: '', label: '-- בחר סמל --' },
+                        ...(systemData.symbols && systemData.symbols.length > 0 
+                          ? systemData.symbols.map(s => {
+                              const symbolName = typeof s === 'string' ? s : s.name;
+                              const symbolColor = typeof s === 'string' ? '#94a3b8' : s.color;
+                              return {
+                                value: symbolName,
+                                label: symbolName,
+                                iconColor: symbolColor
+                              };
+                            })
+                          : []
+                        ),
+                        { value: '__NEW__', label: 'הוסף סמל חדש' }
+                      ]}
+                      placeholder="-- בחר סמל --"
+                      iconColor={currentColor('symbols', formData.symbol)}
+                    />
                     <input
                       type="text"
-                      className="w-full p-3 border rounded-lg font-mono"
+                      className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 font-mono"
                       placeholder="או הזן סמל ידנית"
                       value={formData.symbol}
                       onChange={e => setFormData({...formData, symbol: e.target.value.toUpperCase()})}
+                      dir="ltr"
                     />
                   </div>
                 ) : (
@@ -518,15 +506,15 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                         }
                       }}
                       placeholder="הזן סמל חדש"
-                      className="flex-1 p-3 border rounded-lg font-mono"
+                      className="flex-1 p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 font-mono"
                       autoFocus
+                      dir="ltr"
                     />
                     <button
                       type="button"
                       onClick={handleAddSymbol}
-                      className="px-4 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2"
+                      className="px-4 py-3 bg-emerald-600 dark:bg-emerald-700 text-white rounded-lg hover:bg-emerald-700 dark:hover:bg-emerald-600 flex items-center gap-2"
                     >
-                      <Plus size={16} />
                       הוסף
                     </button>
                     <button
@@ -535,7 +523,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                         setShowNewSymbol(false);
                         setNewSymbolValue('');
                       }}
-                      className="px-4 py-3 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300"
+                      className="px-4 py-3 bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-500"
                     >
                       ביטול
                     </button>
@@ -543,25 +531,43 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                 )}
               </>
             )}
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1" dir="rtl">
               {formData.category === 'מניות' || formData.category === 'קריפטו' 
                 ? 'חיפוש חכם - נבחר אוטומטית מהמאגר הרשמי' 
                 : 'מזהה סטנדרטי לזיהוי נכסים זהים על פני פלטפורמות שונות'}
             </p>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">מטבע</label>
-            <select 
-              className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100" 
-              value={formData.currency} 
-              onChange={e => setFormData({...formData, currency: e.target.value})}
-            >
-              <option value="ILS">₪ שקל</option>
-              <option value="USD">$ דולר</option>
-            </select>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">מטבע</label>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setFormData({...formData, currency: 'ILS'})}
+                className={`flex-1 px-4 py-3 rounded-xl border-2 transition-all font-medium ${
+                  formData.currency === 'ILS'
+                    ? 'bg-emerald-600 dark:bg-emerald-500 text-white border-emerald-600 dark:border-emerald-500 shadow-md'
+                    : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:border-emerald-400 dark:hover:border-emerald-500'
+                }`}
+              >
+                <span className="text-2xl mb-1 block">₪</span>
+                <span className="text-sm">שקל ישראלי</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormData({...formData, currency: 'USD'})}
+                className={`flex-1 px-4 py-3 rounded-xl border-2 transition-all font-medium ${
+                  formData.currency === 'USD'
+                    ? 'bg-emerald-600 dark:bg-emerald-500 text-white border-emerald-600 dark:border-emerald-500 shadow-md'
+                    : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:border-emerald-400 dark:hover:border-emerald-500'
+                }`}
+              >
+                <span className="text-2xl mb-1 block">$</span>
+                <span className="text-sm">דולר אמריקאי</span>
+              </button>
+            </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">שווי מקור</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">שווי מקור</label>
             <input 
               type="number" 
               required 
@@ -571,7 +577,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
             />
           </div>
           <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-slate-700 mb-2">קטגוריה</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">אפיקי השקעה</label>
             <div className="flex gap-2 flex-wrap">
               {systemData.categories.map(cat => (
                 <button 
@@ -589,13 +595,13 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
           </div>
           <div className="md:col-span-2">
             <div className="flex justify-between mb-2">
-              <label className="text-sm font-medium text-slate-700">תגיות</label>
+              <label className="text-sm font-medium text-slate-700 dark:text-slate-200">תגיות</label>
               <button 
                 type="button" 
                 onClick={handleGenerateTags} 
-                className="text-xs text-purple-600 font-bold flex gap-1 items-center"
+                className="text-xs text-purple-600 dark:text-purple-400 font-bold flex gap-1 items-center"
               >
-                {tagLoading ? <Loader2 size={12} className="animate-spin"/> : <Sparkles size={12}/>} AI צור
+                {tagLoading ? <Loader2 size={12} className="animate-spin"/> : <Sparkles size={12}/>}    צור עם AI
               </button>
             </div>
             <input 

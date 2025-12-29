@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { doc, getDoc, setDoc, onSnapshot, collection, addDoc } from 'firebase/firestore';
 import { Scale, Target, Loader2, Save, Sparkles, AlertCircle, TrendingUp, TrendingDown, Plus, Trash2, X, Tag, Database, Palette, DollarSign, Layers, Copy, Check, Eye, Percent } from 'lucide-react';
 import { db, appId } from '../services/firebase';
@@ -7,15 +8,17 @@ import MarkdownRenderer from '../components/MarkdownRenderer';
 import { successToast, errorAlert, confirmAlert } from '../utils/alerts';
 
 const GROUP_TYPES = {
-  category: { label: 'קטגוריה', icon: Tag, color: '#3B82F6' },
-  platform: { label: 'פלטפורמה', icon: Database, color: '#10B981' },
-  instrument: { label: 'כלי', icon: Palette, color: '#8B5CF6' },
+  category: { label: 'אפיקי השקעה', icon: Tag, color: '#3B82F6' },
+  platform: { label: 'חשבונות וארנקים', icon: Database, color: '#10B981' },
+  instrument: { label: 'מטבעות בסיס', icon: Palette, color: '#8B5CF6' },
   symbol: { label: 'סמל', icon: Layers, color: '#F59E0B' },
   tags: { label: 'תגיות', icon: Tag, color: '#EF4444' },
   currency: { label: 'מטבע', icon: DollarSign, color: '#6366F1' }
 };
 
 const Rebalancing = ({ assets, systemData, user, currencyRate, portfolioContext = "" }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [groups, setGroups] = useState([]);
   const [lastAnalysis, setLastAnalysis] = useState('');
   const [saving, setSaving] = useState(false);
@@ -26,7 +29,20 @@ const Rebalancing = ({ assets, systemData, user, currencyRate, portfolioContext 
   const [groupAILoading, setGroupAILoading] = useState({});
   const [activeGroupView, setActiveGroupView] = useState(null); // For tabs
   const [copied, setCopied] = useState(false);
-  const [showAmounts, setShowAmounts] = useState(true); // Toggle between showing amounts (₪) or percentages (%)
+  const [showAmounts, setShowAmounts] = useState(true); // החלף בין הצגת סכומים (₪) או אחוזים (%)
+  const [firebaseLoaded, setFirebaseLoaded] = useState(false); // Track if Firebase data was loaded
+  
+  // Check URL hash for tab navigation
+  useEffect(() => {
+    if (location.hash === '#reports') {
+      setActiveTab('reports');
+    }
+  }, [location.hash]);
+  
+  const [activeTab, setActiveTab] = useState(() => {
+    // Check if URL has #reports hash
+    return location.hash === '#reports' ? 'reports' : 'rebalancing';
+  });
 
   // Load rebalancing settings from Firebase
   useEffect(() => {
@@ -35,9 +51,11 @@ const Rebalancing = ({ assets, systemData, user, currencyRate, portfolioContext 
     const rebalancingRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'rebalancing');
     
     const unsubscribe = onSnapshot(rebalancingRef, (snapshot) => {
+      setFirebaseLoaded(true); // Mark as loaded after first snapshot
+      
       if (snapshot.exists()) {
         const data = snapshot.data();
-        if (data.groups && Array.isArray(data.groups)) {
+        if (data.groups && Array.isArray(data.groups) && data.groups.length > 0) {
           setGroups(prevGroups => {
             // Only update if groups actually changed (to avoid overriding local changes)
             const groupsChanged = JSON.stringify(prevGroups) !== JSON.stringify(data.groups);
@@ -57,27 +75,27 @@ const Rebalancing = ({ assets, systemData, user, currencyRate, portfolioContext 
           const migratedGroup = {
             id: 'category-default',
             type: 'category',
-            targets: data.targets
+            targets: data.targets || {}
           };
           setGroups([migratedGroup]);
           setActiveGroupView('category-default');
-        } else {
-          setGroups([]);
         }
+        // Don't set groups to [] if snapshot exists but has no groups - let default init handle it
         setLastAnalysis(data.lastAnalysis || '');
-      } else {
-        setGroups([]);
       }
+      // Don't set groups to [] if snapshot doesn't exist - let default init handle it
     }, (error) => {
       console.error('Error loading rebalancing settings:', error);
+      setFirebaseLoaded(true); // Mark as loaded even on error to allow default init
     });
 
     return () => unsubscribe();
   }, [user]);
 
   // Initialize default groups (category and symbol)
+  // Only initialize if Firebase has been checked and no groups exist
   useEffect(() => {
-    if (systemData && groups.length === 0) {
+    if (systemData && groups.length === 0 && firebaseLoaded) {
       const defaultGroups = [];
       
       if (systemData.categories && systemData.categories.length > 0) {
@@ -110,7 +128,7 @@ const Rebalancing = ({ assets, systemData, user, currencyRate, portfolioContext 
         setActiveGroupView(defaultGroups[0].id);
       }
     }
-  }, [systemData, groups.length]);
+  }, [systemData, groups.length, firebaseLoaded]);
 
   // Calculate total wealth
   const totalWealth = useMemo(() => {
@@ -192,7 +210,13 @@ const Rebalancing = ({ assets, systemData, user, currencyRate, portfolioContext 
 
   // Calculate total percentage for a group
   const getGroupTotalPercentage = (group) => {
-    return Object.values(group.targets || {}).reduce((sum, val) => sum + (Number(val) || 0), 0);
+    if (!group || !group.targets || typeof group.targets !== 'object') {
+      return 0;
+    }
+    return Object.values(group.targets).reduce((sum, val) => {
+      const numVal = Number(val);
+      return sum + (isNaN(numVal) ? 0 : numVal);
+    }, 0);
   };
 
   // Handle target change
@@ -642,12 +666,21 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
 
   // Calculate all group totals for warning banner
   const allGroupTotals = useMemo(() => {
-    return groups.map(group => ({
-      id: group.id,
-      type: group.type,
-      total: getGroupTotalPercentage(group),
-      isValid: Math.abs(getGroupTotalPercentage(group) - 100) < 0.01
-    }));
+    if (!groups || groups.length === 0) return [];
+    return groups.map(group => {
+      const total = getGroupTotalPercentage(group);
+      // Check if all targets are 0 (initial state - not an error)
+      const allTargetsZero = Object.values(group.targets || {}).every(val => {
+        const numVal = Number(val);
+        return isNaN(numVal) || numVal === 0;
+      });
+      return {
+        id: group.id,
+        type: group.type,
+        total: total,
+        isValid: Math.abs(total - 100) < 0.01 || allTargetsZero
+      };
+    });
   }, [groups]);
 
   const hasInvalidGroups = allGroupTotals.some(g => !g.isValid);
@@ -655,7 +688,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-24 md:pb-12" dir="rtl">
       {/* Header */}
-      <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-6 border-b border-slate-200 dark:border-slate-700">
+      <header className="flex flex-col mr-12 md:mr-0 md:flex-row md:items-center md:justify-between gap-4 pb-6 border-b border-slate-200 dark:border-slate-700">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg">
             <Scale className="text-white" size={24} />
@@ -673,8 +706,33 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
         </div>
       </header>
 
-      {/* Total Percentage Warning Banner */}
-      {hasInvalidGroups && (
+
+      {/* Tabs */}
+      <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700">
+        <button
+          onClick={() => setActiveTab('rebalancing')}
+          className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 ${
+            activeTab === 'rebalancing'
+              ? 'border-emerald-600 dark:border-emerald-400 text-emerald-600 dark:text-emerald-400'
+              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+          }`}
+        >
+          איזון תיק
+        </button>
+        <button
+          onClick={() => setActiveTab('reports')}
+          className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 ${
+            activeTab === 'reports'
+              ? 'border-emerald-600 dark:border-emerald-400 text-emerald-600 dark:text-emerald-400'
+              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+          }`}
+        >
+          דוחות וניתוחים
+        </button>
+      </div>
+
+      {/* Total Percentage Warning Banner - Only show in rebalancing tab */}
+      {activeTab === 'rebalancing' && hasInvalidGroups && (
         <div className="bg-red-50 dark:bg-red-900/20 border-r-4 border-red-500 dark:border-red-600 rounded-2xl p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -697,9 +755,12 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
         </div>
       )}
 
-      {/* Section A: Set Targets - Card-based Design */}
-      <section className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+      {/* Tab Content */}
+      {activeTab === 'rebalancing' && (
+        <>
+          {/* Section A: Set Targets - Card-based Design */}
+          <section className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 bg-gradient-to-r from-slate-50 to-white dark:from-slate-800 dark:to-slate-800">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div className="flex items-center gap-3">
               <Target className="text-emerald-600 dark:text-emerald-400" size={20} />
@@ -760,8 +821,8 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
 
         <div className="p-6">
           {groups.length === 0 ? (
-            <div className="text-center py-12 text-slate-400">
-              <Target className="mx-auto mb-3 text-slate-300" size={48} />
+            <div className="text-center py-12 text-slate-400 dark:text-slate-500">
+              <Target className="mx-auto mb-3 text-slate-300 dark:text-slate-600" size={48} />
               <p className="text-sm">אין קבוצות איזון. לחץ על "הוסף קבוצה" כדי להתחיל.</p>
             </div>
           ) : (
@@ -781,8 +842,8 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
                         onClick={() => setActiveGroupView(group.id)}
                         className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
                           isActive
-                            ? 'bg-emerald-600 text-white shadow-md'
-                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                            ? 'bg-emerald-600 dark:bg-emerald-700 text-white shadow-md'
+                            : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
                         }`}
                       >
                         <Icon size={16} />
@@ -804,7 +865,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
                 return (
                   <div key={group.id} className="space-y-4">
                     {/* Group Header */}
-                    <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+                    <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-700">
                       <div className="flex items-center gap-3">
                         <div 
                           className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm"
@@ -814,7 +875,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
                         </div>
                         <div>
                           <h4 className="text-base font-bold text-slate-900 dark:text-white">{groupConfig?.label || group.type}</h4>
-                          <p className="text-xs text-slate-500">קיבוץ לפי {groupConfig?.label}</p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">קיבוץ לפי {groupConfig?.label}</p>
                         </div>
                       </div>
                       {groups.length > 2 && (
@@ -829,9 +890,9 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
                     </div>
 
                     {/* AI Distribution Input */}
-                    <div className="p-4 bg-gradient-to-r from-purple-50 via-pink-50 to-purple-50 rounded-2xl border border-purple-200 shadow-sm">
+                    <div className="p-4 bg-gradient-to-r from-purple-50 via-pink-50 to-purple-50 dark:from-purple-900/30 dark:via-pink-900/30 dark:to-purple-900/30 rounded-2xl border border-purple-200 dark:border-purple-800 shadow-sm">
                       <div className="flex items-center gap-2 mb-3">
-                        <Sparkles size={16} className="text-purple-600" />
+                        <Sparkles size={16} className="text-purple-600 dark:text-purple-400" />
                         <label className="text-sm font-semibold text-slate-800 dark:text-slate-100">
                           חלוקה אוטומטית עם AI
                         </label>
@@ -872,7 +933,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
 
                     {/* Target Cards - Horizontal Scrollable */}
                     {availableItems.length === 0 ? (
-                      <div className="text-center py-8 text-slate-400 text-sm">
+                      <div className="text-center py-8 text-slate-400 dark:text-slate-500 text-sm">
                         אין פריטים זמינים עבור {groupConfig?.label}
                       </div>
                     ) : (
@@ -886,11 +947,11 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
                             return (
                               <div
                                 key={itemName}
-                                className="bg-gradient-to-br from-white to-slate-50 rounded-2xl p-5 border border-slate-200 shadow-sm hover:shadow-md transition-all min-w-[180px] md:min-w-0"
+                                className="bg-gradient-to-br from-white to-slate-50 dark:from-slate-800 dark:to-slate-700 rounded-2xl p-5 border border-slate-200 dark:border-slate-600 shadow-sm hover:shadow-md transition-all min-w-[180px] md:min-w-0"
                               >
                                 <div className="flex items-center gap-3 mb-4">
                                   <div 
-                                    className="w-5 h-5 rounded-full border-2 border-white shadow-sm flex-shrink-0"
+                                    className="w-5 h-5 rounded-full border-2 border-white dark:border-slate-700 shadow-sm flex-shrink-0"
                                     style={{ backgroundColor: itemColor }}
                                   />
                                   <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{itemName}</span>
@@ -903,7 +964,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
                                     step="0.1"
                                     value={targetValue}
                                     onChange={(e) => handleTargetChange(group.id, itemName, e.target.value)}
-                                    className="flex-1 text-3xl font-black text-slate-900 bg-transparent border-none outline-none focus:ring-0 p-0 w-20 text-right"
+                                    className="flex-1 text-3xl font-black text-slate-900 dark:text-white bg-transparent border-none outline-none focus:ring-0 p-0 w-20 text-right"
                                     style={{ fontFamily: 'system-ui, -apple-system, sans-serif' }}
                                   />
                                   <span className="text-xl font-bold text-slate-500 dark:text-slate-400">%</span>
@@ -919,7 +980,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
               })}
 
               {/* Save Button */}
-              <div className="pt-4 border-t border-slate-200">
+              <div className="pt-4 border-t border-slate-200 dark:border-slate-700">
                 <div className="flex items-center gap-3">
                   {/* Current Group Status - 3/4 width */}
                   <div className="flex-1" style={{ flex: '3' }}>
@@ -937,7 +998,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
                       const groupConfig = GROUP_TYPES[activeGroup.type];
                       
                       return (
-                        <div className="flex items-center justify-between px-4 py-3 bg-slate-50 rounded-xl border border-slate-200 h-full">
+                        <div className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-700/50 rounded-xl border border-slate-200 dark:border-slate-600 h-full">
                           <div className="flex items-center gap-3">
                             <div 
                               className="w-8 h-8 rounded-lg flex items-center justify-center"
@@ -949,7 +1010,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
                             </div>
                             <div>
                               <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">{groupConfig?.label || activeGroup.type}</div>
-                              <div className="text-lg font-black text-slate-900">{groupTotal.toFixed(1)}%</div>
+                              <div className="text-lg font-black text-slate-900 dark:text-white">{groupTotal.toFixed(1)}%</div>
                             </div>
                           </div>
                           <div className="text-right">
@@ -1001,23 +1062,48 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
           )}
         </div>
       </section>
+        </>
+      )}
 
-       {/* Section B: Analysis & Progress - Comparison Table */}
-       <section className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
-         <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+      {activeTab === 'reports' && (
+        <>
+          {/* Create New AI Report Button - Top */}
+          <div className="flex justify-end">
+            <button
+              onClick={handleAnalyze}
+              disabled={analyzing || groups.length === 0 || !assets || assets.length === 0 || hasInvalidGroups}
+              className="bg-slate-700 dark:bg-slate-600 text-white px-6 py-3 rounded-lg hover:bg-slate-800 dark:hover:bg-slate-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-2 text-sm font-medium"
+            >
+              {analyzing ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  מנתח...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={18} />
+                  צור דוח AI חדש
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Section B: Analysis & Progress - Comparison Table */}
+          <section className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
+         <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 bg-gradient-to-r from-slate-50 to-white dark:from-slate-800 dark:to-slate-800">
            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
              <div className="flex items-center gap-3">
-               <TrendingUp className="text-emerald-600" size={20} />
+               <TrendingUp className="text-emerald-600 dark:text-emerald-400" size={20} />
                <div>
-                 <h3 className="text-lg font-bold text-slate-900">ניתוח והשוואה</h3>
-                 <p className="text-xs text-slate-500">נוכחי מול יעד</p>
+                 <h3 className="text-lg font-bold text-slate-900 dark:text-white">ניתוח והשוואה</h3>
+                 <p className="text-xs text-slate-500 dark:text-slate-400">נוכחי מול יעד</p>
                </div>
              </div>
              <div className="flex items-center gap-2">
-               {/* Toggle button for showing amounts vs percentages */}
+               {/* כפתור החלפה להצגת סכומים או אחוזים */}
                <button
                  onClick={() => setShowAmounts(!showAmounts)}
-                 className="p-2 rounded-lg hover:bg-slate-100 transition-all text-slate-600 hover:text-slate-900 border border-slate-200"
+                 className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-all text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 border border-slate-200 dark:border-slate-600"
                  title={showAmounts ? 'הצג אחוזים במקום סכומים' : 'הצג סכומים במקום אחוזים'}
                >
                  {showAmounts ? (
@@ -1026,31 +1112,14 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
                    <DollarSign size={18} />
                  )}
                </button>
-               <button
-                 onClick={handleAnalyze}
-                 disabled={analyzing || groups.length === 0 || !assets || assets.length === 0 || hasInvalidGroups}
-                 className="bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-3 rounded-xl hover:from-purple-700 hover:to-pink-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-2 text-sm font-bold shadow-lg shadow-purple-200"
-               >
-                 {analyzing ? (
-                   <>
-                     <Loader2 size={18} className="animate-spin" />
-                     מנתח...
-                   </>
-                 ) : (
-                   <>
-                     <Sparkles size={18} />
-                     נתח עם AI
-                   </>
-                 )}
-               </button>
              </div>
            </div>
          </div>
 
         <div className="p-6">
           {groups.length === 0 ? (
-            <div className="text-center py-12 text-slate-400">
-              <AlertCircle className="mx-auto mb-3 text-slate-300" size={48} />
+            <div className="text-center py-12 text-slate-400 dark:text-slate-500">
+              <AlertCircle className="mx-auto mb-3 text-slate-300 dark:text-slate-600" size={48} />
               <p className="text-sm">אין קבוצות איזון מוגדרות. אנא הוסף קבוצות איזון תחילה.</p>
             </div>
           ) : (
@@ -1069,8 +1138,8 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
                         onClick={() => setActiveGroupView(group.id)}
                         className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
                           isActive
-                            ? 'bg-emerald-600 text-white shadow-md'
-                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                            ? 'bg-emerald-600 dark:bg-emerald-700 text-white shadow-md'
+                            : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
                         }`}
                       >
                         <Icon size={16} />
@@ -1096,7 +1165,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
 
                 if (itemsWithData.length === 0) {
                   return (
-                    <div key={group.id} className="text-center py-12 text-slate-400">
+                    <div key={group.id} className="text-center py-12 text-slate-400 dark:text-slate-500">
                       <p className="text-sm">אין נתונים להצגה עבור {groupConfig?.label}</p>
                     </div>
                   );
@@ -1106,15 +1175,15 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
                   <div key={group.id} className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
-                        <tr className="border-b-2 border-slate-200">
-                          <th className="text-right py-3 px-4 text-sm font-bold text-slate-700">פריט</th>
-                          <th className="text-center py-3 px-4 text-sm font-bold text-slate-700 min-w-[200px]">הקצאה</th>
-                          <th className="text-center py-3 px-4 text-sm font-bold text-slate-700 min-w-[80px]">נוכחי</th>
-                          <th className="text-center py-3 px-4 text-sm font-bold text-slate-700 min-w-[80px]">יעד</th>
-                          <th className="text-center py-3 px-4 text-sm font-bold text-slate-700 min-w-[100px] hidden md:table-cell">הפרש</th>
+                        <tr className="border-b-2 border-slate-200 dark:border-slate-700">
+                          <th className="text-right py-3 px-4 text-sm font-bold text-slate-700 dark:text-slate-300">פריט</th>
+                          <th className="text-center py-3 px-4 text-sm font-bold text-slate-700 dark:text-slate-300 min-w-[200px]">הקצאה</th>
+                          <th className="text-center py-3 px-4 text-sm font-bold text-slate-700 dark:text-slate-300 min-w-[80px]">נוכחי</th>
+                          <th className="text-center py-3 px-4 text-sm font-bold text-slate-700 dark:text-slate-300 min-w-[80px]">יעד</th>
+                          <th className="text-center py-3 px-4 text-sm font-bold text-slate-700 dark:text-slate-300 min-w-[100px] hidden md:table-cell">הפרש</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100">
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
                         {itemsWithData.map((item) => {
                           const itemName = typeof item === 'string' ? item : item.name;
                           const { current, target, diff, diffAmount, currentValue, targetValue } = getItemDifference(group, itemName);
@@ -1128,24 +1197,24 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
                           const isBalanced = !isUnderweight && !isOverweight;
 
                           return (
-                            <tr key={itemName} className="hover:bg-slate-50 transition-colors">
+                            <tr key={itemName} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
                               <td className="py-4 px-4">
                                 <div className="flex items-center gap-3">
                                   <div 
-                                    className="w-4 h-4 rounded-full border-2 border-white shadow-sm flex-shrink-0"
+                                    className="w-4 h-4 rounded-full border-2 border-white dark:border-slate-700 shadow-sm flex-shrink-0"
                                     style={{ backgroundColor: itemColor }}
                                   />
-                                  <span className="text-sm font-semibold text-slate-900">{itemName}</span>
+                                  <span className="text-sm font-semibold text-slate-900 dark:text-white">{itemName}</span>
                                 </div>
                               </td>
                               <td className="py-4 px-4">
                                 {/* Percentage labels above the bar */}
                                 <div className="relative mb-1 h-4 flex justify-between items-center">
-                                  <span className="text-[9px] font-bold text-slate-600">0%</span>
-                                  <span className="text-[9px] font-bold text-slate-600">100%</span>
+                                  <span className="text-[9px] font-bold text-slate-600 dark:text-slate-400">0%</span>
+                                  <span className="text-[9px] font-bold text-slate-600 dark:text-slate-400">100%</span>
                                 </div>
                                 
-                                <div className="relative h-10 bg-slate-100 rounded-full overflow-hidden border border-slate-200 shadow-inner">
+                                <div className="relative h-10 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden border border-slate-200 dark:border-slate-600 shadow-inner">
                                   {/* Current allocation bar - בר נוכחי */}
                                   {/* RTL: starts from right (0%) and extends leftward */}
                                   <div
@@ -1233,11 +1302,11 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
                                   </div>
                                 </div>
                                 
-                                {/* Legend below the bar */}
+                                  {/* Legend below the bar */}
                                 <div className="flex items-center gap-4 mt-2 text-xs text-slate-600 dark:text-slate-300">
                                   <div className="flex items-center gap-1.5">
                                     <div 
-                                      className="w-3 h-3 rounded-full border border-white shadow-sm"
+                                      className="w-3 h-3 rounded-full border border-white dark:border-slate-700 shadow-sm"
                                       style={{ backgroundColor: itemColor }}
                                     />
                                     <span>נוכחי</span>
@@ -1245,13 +1314,13 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
                                   {target > 0 && (
                                     <>
                                       <div className="flex items-center gap-1.5">
-                                        <div className="w-0.5 h-3 bg-blue-600" />
+                                        <div className="w-0.5 h-3 bg-blue-600 dark:bg-blue-400" />
                                         <span>יעד</span>
                                       </div>
                                       {absDiffAmount > 1 && (
                                         <div className="flex items-center gap-1.5">
                                           <div className={`w-3 h-3 rounded-full border-2 border-dashed ${
-                                            isUnderweight ? 'bg-emerald-400 border-emerald-600' : 'bg-red-400 border-red-600'
+                                            isUnderweight ? 'bg-emerald-400 dark:bg-emerald-500 border-emerald-600 dark:border-emerald-400' : 'bg-red-400 dark:bg-red-500 border-red-600 dark:border-red-400'
                                           }`} />
                                           <span>{isUnderweight 
                                             ? (showAmounts ? `צריך להוסיף ₪${absDiffAmount.toLocaleString()}` : `צריך להוסיף ${absDiff.toFixed(1)}%`)
@@ -1261,7 +1330,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
                                       )}
                                       {isBalanced && target > 0 && (
                                         <div className="flex items-center gap-1.5">
-                                          <div className="w-3 h-3 rounded-full border-2 border-slate-400 bg-slate-200" />
+                                          <div className="w-3 h-3 rounded-full border-2 border-slate-400 dark:border-slate-500 bg-slate-200 dark:bg-slate-600" />
                                           <span className="text-slate-500 dark:text-slate-400">מאוזן</span>
                                         </div>
                                       )}
@@ -1270,23 +1339,23 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
                                 </div>
                               </td>
                               <td className="py-4 px-4 text-center">
-                                <span className="text-sm font-bold text-slate-900">{current.toFixed(1)}%</span>
+                                <span className="text-sm font-bold text-slate-900 dark:text-white">{current.toFixed(1)}%</span>
                               </td>
                               <td className="py-4 px-4 text-center">
                                 {target > 0 ? (
-                                  <span className="text-sm font-bold text-slate-700">{target}%</span>
+                                  <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{target}%</span>
                                 ) : (
-                                  <span className="text-xs text-slate-400">—</span>
+                                  <span className="text-xs text-slate-400 dark:text-slate-500">—</span>
                                 )}
                               </td>
                               <td className="py-4 px-4 text-center hidden md:table-cell">
                                 {absDiffAmount > 1 && target > 0 && (
                                   <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold ${
                                     isUnderweight
-                                      ? 'bg-emerald-100 text-emerald-700'
+                                      ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
                                       : isOverweight
-                                      ? 'bg-red-100 text-red-700'
-                                      : 'bg-slate-100 text-slate-600'
+                                      ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                                      : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                                   }`}>
                                     {isUnderweight ? (
                                       <>
@@ -1299,12 +1368,12 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
                                         {showAmounts ? `הסר ₪${absDiffAmount.toLocaleString()}` : `הסר ${absDiff.toFixed(1)}%`}
                                       </>
                                     ) : (
-                                      <span className="text-slate-500">מאוזן</span>
+                                      <span className="text-slate-500 dark:text-slate-400">מאוזן</span>
                                     )}
                                   </span>
                                 )}
                                 {isBalanced && target > 0 && (
-                                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600">
+                                  <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
                                     מאוזן
                                   </span>
                                 )}
@@ -1320,16 +1389,16 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
 
               {/* AI Analysis Result - Chat Bubble Style */}
               {lastAnalysis && (
-                <div className="mt-8 pt-6 border-t border-slate-200">
-                  <div className="bg-gradient-to-br from-purple-50 via-pink-50 to-purple-50 rounded-2xl p-6 border-2 border-purple-200 shadow-lg relative">
+                <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
+                  <div className="bg-gradient-to-br from-purple-50 via-pink-50 to-purple-50 dark:from-slate-800 dark:via-slate-800 dark:to-slate-800 rounded-2xl p-6 border-2 border-purple-200 dark:border-slate-700 shadow-lg relative">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center shadow-md">
                           <Sparkles className="text-white" size={20} />
                         </div>
                         <div>
-                          <h4 className="text-base font-bold text-slate-900">המלצות AI</h4>
-                          <p className="text-xs text-slate-600">ניתוח מותאם אישית</p>
+                          <h4 className="text-base font-bold text-slate-900 dark:text-white">המלצות AI</h4>
+                          <p className="text-xs text-slate-600 dark:text-slate-400">ניתוח מותאם אישית</p>
                         </div>
                       </div>
                       <button
@@ -1340,7 +1409,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
                         {copied ? <Check size={18} /> : <Copy size={18} />}
                       </button>
                     </div>
-                    <div className="bg-white/80 rounded-xl p-6 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm">
                       <MarkdownRenderer content={lastAnalysis} />
                     </div>
                   </div>
@@ -1348,36 +1417,18 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
               )}
 
               {!lastAnalysis && (
-                <div className="text-center py-12 text-slate-400 border-t border-slate-200 mt-6">
-                  <Sparkles className="mx-auto mb-3 text-slate-300" size={48} />
-                  <p className="text-sm font-medium">לחץ על "נתח עם AI" כדי לקבל המלצות מותאמות אישית</p>
+                <div className="text-center py-12 text-slate-400 dark:text-slate-500 border-t border-slate-200 dark:border-slate-700 mt-6">
+                  <Sparkles className="mx-auto mb-3 text-slate-300 dark:text-slate-600" size={48} />
+                  <p className="text-sm font-medium">לחץ על "צור דוח AI חדש" כדי לקבל המלצות מותאמות אישית</p>
                 </div>
               )}
             </div>
           )}
         </div>
       </section>
+        </>
+      )}
 
-      {/* Mobile FAB for Analyze */}
-      <div className="fixed bottom-6 left-6 right-6 md:hidden z-50">
-        <button
-          onClick={handleAnalyze}
-          disabled={analyzing || groups.length === 0 || !assets || assets.length === 0 || hasInvalidGroups}
-          className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-4 rounded-2xl hover:from-purple-700 hover:to-pink-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-3 text-base font-bold shadow-2xl"
-        >
-          {analyzing ? (
-            <>
-              <Loader2 size={20} className="animate-spin" />
-              מנתח...
-            </>
-          ) : (
-            <>
-              <Sparkles size={20} />
-              נתח עם AI
-            </>
-          )}
-        </button>
-      </div>
     </div>
   );
 };

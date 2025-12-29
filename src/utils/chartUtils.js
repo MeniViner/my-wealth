@@ -1,6 +1,81 @@
 /**
  * Utility functions for chart data aggregation and rendering
+ * RTL and Hebrew locale aware
  */
+
+// Hebrew font stack
+export const HEBREW_FONT = "'Assistant', 'Heebo', 'Rubik', sans-serif";
+
+// App color palette for charts
+export const CHART_COLORS = [
+  '#3b82f6', // blue
+  '#10b981', // emerald
+  '#f59e0b', // amber
+  '#ef4444', // red
+  '#8b5cf6', // violet
+  '#06b6d4', // cyan
+  '#ec4899', // pink
+  '#14b8a6', // teal
+  '#6366f1', // indigo
+  '#84cc16', // lime
+];
+
+/**
+ * Format currency for Hebrew locale with proper spacing
+ * @param {number} value - The value to format
+ * @param {string} currency - Currency code (default: ILS)
+ * @returns {string} Formatted currency string
+ */
+export const formatCurrency = (value, currency = 'ILS') => {
+  if (typeof value !== 'number' || isNaN(value)) return '—';
+  return new Intl.NumberFormat('he-IL', {
+    style: 'currency',
+    currency: currency,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
+};
+
+/**
+ * Format percentage for Hebrew locale
+ * @param {number} value - The value
+ * @param {number} total - The total for percentage calculation
+ * @returns {string} Formatted percentage string
+ */
+export const formatPercentage = (value, total) => {
+  if (!total || total === 0) return '0%';
+  const pct = (value / total) * 100;
+  return `${pct.toFixed(1)}%`;
+};
+
+/**
+ * Format axis tick value for display
+ * @param {number|string} value - The value to format
+ * @returns {string} Formatted tick string
+ */
+export const formatAxisTick = (value) => {
+  if (typeof value === 'number') {
+    if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
+    if (value >= 1000) return `${(value / 1000).toFixed(0)}K`;
+    return value.toLocaleString('he-IL');
+  }
+  // Truncate long Hebrew text
+  if (typeof value === 'string' && value.length > 12) {
+    return value.substring(0, 11) + '…';
+  }
+  return value;
+};
+
+/**
+ * Truncate text with ellipsis if too long
+ * @param {string} text - The text to truncate
+ * @param {number} maxLength - Maximum length before truncation
+ * @returns {string} Truncated text
+ */
+export const truncateText = (text, maxLength) => {
+  if (!text || text.length <= maxLength) return text;
+  return text.substring(0, maxLength - 1) + '…';
+};
 
 /**
  * Aggregate assets data based on grouping key
@@ -10,6 +85,8 @@
  * @returns {Array} Aggregated data in format [{ name, value }]
  */
 export const aggregateData = (assets, groupBy, filters = {}) => {
+  if (!assets || assets.length === 0) return [];
+  
   // Apply filters first
   let filteredAssets = assets;
   
@@ -72,17 +149,76 @@ export const aggregateData = (assets, groupBy, filters = {}) => {
  * @returns {string} Color hex code
  */
 export const getColorForItem = (name, dataKey, systemData) => {
+  if (!systemData) {
+    // Fallback to palette
+    return CHART_COLORS[Math.abs(name?.charCodeAt(0) || 0) % CHART_COLORS.length];
+  }
+  
   if (dataKey === 'category') {
-    return systemData.categories.find(c => c.name === name)?.color || '#3b82f6';
+    const category = systemData.categories?.find(c => c.name === name);
+    return category?.color || '#3b82f6';
   }
   if (dataKey === 'platform') {
-    return systemData.platforms.find(p => p.name === name)?.color || '#10b981';
+    const platform = systemData.platforms?.find(p => p.name === name);
+    return platform?.color || '#10b981';
   }
   if (dataKey === 'instrument') {
-    return systemData.instruments.find(i => i.name === name)?.color || '#f59e0b';
+    const instrument = systemData.instruments?.find(i => i.name === name);
+    return instrument?.color || '#f59e0b';
   }
-  // Default colors for other groupings
-  const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#6366f1', '#ec4899', '#14b8a6'];
-  return colors[Math.abs(name.charCodeAt(0)) % colors.length];
+  if (dataKey === 'symbol') {
+    const symbol = systemData.symbols?.find(s => {
+      const symbolName = typeof s === 'string' ? s : s.name;
+      return symbolName === name;
+    });
+    if (symbol && typeof symbol !== 'string') {
+      return symbol.color || '#94a3b8';
+    }
+  }
+  
+  // Default: use color palette based on name hash
+  return CHART_COLORS[Math.abs(name?.charCodeAt(0) || 0) % CHART_COLORS.length];
 };
 
+/**
+ * Common axis props for RTL charts
+ */
+export const getRTLAxisProps = () => ({
+  tick: { 
+    fontSize: 11, 
+    fontFamily: HEBREW_FONT,
+    fill: '#64748b',
+  },
+  axisLine: { stroke: '#e2e8f0' },
+  tickLine: { stroke: '#e2e8f0' },
+});
+
+/**
+ * Get responsive font size based on container width
+ * @param {number} containerWidth - The container width
+ * @param {number} minSize - Minimum font size
+ * @param {number} maxSize - Maximum font size
+ * @returns {number} Calculated font size
+ */
+export const getResponsiveFontSize = (containerWidth, minSize = 10, maxSize = 16) => {
+  const calculated = Math.floor(containerWidth / 25);
+  return Math.min(Math.max(calculated, minSize), maxSize);
+};
+
+/**
+ * Calculate if content should be shown based on container dimensions
+ * @param {number} width - Container width
+ * @param {number} height - Container height
+ * @param {string} contentType - Type of content ('text', 'value', 'both')
+ * @returns {boolean} Whether content should be shown
+ */
+export const shouldShowContent = (width, height, contentType = 'text') => {
+  const MIN_DIMS = {
+    text: { width: 50, height: 35 },
+    value: { width: 70, height: 50 },
+    both: { width: 80, height: 60 },
+  };
+  
+  const dims = MIN_DIMS[contentType] || MIN_DIMS.text;
+  return width >= dims.width && height >= dims.height;
+};

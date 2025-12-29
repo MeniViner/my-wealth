@@ -4,7 +4,7 @@
 
 body {
   margin: 0;
-  font-family: 'Assistant', 'Heebo', 'Rubik', 'Segoe UI', 'Arial Hebrew', 'David', 
+  font-family: 'Assistant', 'Heebo', 'Rubik', 'Inter', 'Segoe UI', 'Arial Hebrew', 'David', 
     -apple-system, BlinkMacSystemFont, 'Roboto', 'Oxygen',
     'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
     sans-serif;
@@ -12,6 +12,15 @@ body {
   -moz-osx-font-smoothing: grayscale;
   direction: rtl;
   text-align: right;
+  font-feature-settings: 'kern' 1, 'liga' 1;
+  letter-spacing: -0.01em;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Assistant', 'Heebo', 'Rubik', sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
 }
 
 #root {
@@ -84,5 +93,290 @@ body {
 
 .animate-fade-in {
   animation: fadeIn 0.3s ease-out forwards;
+}
+
+/* Slide up animation for mobile modals */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Gradient animation */
+@keyframes gradient {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.animate-gradient {
+  background-size: 200% auto;
+  animation: gradient 3s ease infinite;
+}
+
+/* Twinkle animation for stars */
+@keyframes twinkle {
+  0%, 100% {
+    opacity: 0.2;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+.twinkle {
+  animation: twinkle 2s ease-in-out infinite;
+}
+
+/* ===== Onboarding Styles ===== */
+
+/* Pulse animation for spotlight ring */
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 15px rgba(16, 185, 129, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Bounce animation */
+@keyframes bounce-gentle {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.animate-bounce-gentle {
+  animation: bounce-gentle 2s ease-in-out infinite;
+}
+
+/* Shimmer effect for buttons */
+@keyframes shimmer {
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.2) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+/* Confetti fall animation */
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(-100vh) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+.animate-confetti {
+  animation: confetti-fall 3s linear forwards;
+}
+
+/* Scale in animation */
+@keyframes scale-in {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-scale-in {
+  animation: scale-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Floating animation */
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-5px) rotate(1deg);
+  }
+  75% {
+    transform: translateY(5px) rotate(-1deg);
+  }
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+/* Glow effect */
+.glow-emerald {
+  box-shadow: 0 0 20px rgba(16, 185, 129, 0.3),
+              0 0 40px rgba(16, 185, 129, 0.2),
+              0 0 60px rgba(16, 185, 129, 0.1);
+}
+
+.glow-purple {
+  box-shadow: 0 0 20px rgba(139, 92, 246, 0.3),
+              0 0 40px rgba(139, 92, 246, 0.2),
+              0 0 60px rgba(139, 92, 246, 0.1);
+}
+
+/* Mobile-specific adjustments */
+@media (max-width: 768px) {
+  .onboarding-card {
+    border-radius: 1rem;
+    padding: 1.25rem;
+  }
+}
+
+/* ===== Global Chart RTL Styles ===== */
+
+/* Recharts SVG text elements - Hebrew font */
+.recharts-wrapper text,
+.recharts-wrapper .recharts-text,
+.recharts-wrapper .recharts-cartesian-axis-tick-value,
+.recharts-wrapper .recharts-legend-item-text,
+.recharts-wrapper .recharts-pie-label-text {
+  font-family: 'Assistant', 'Heebo', 'Rubik', sans-serif !important;
+  direction: rtl;
+}
+
+/* RTL Tooltip container */
+.recharts-tooltip-wrapper {
+  direction: rtl !important;
+  text-align: right !important;
+}
+
+.chart-tooltip-rtl {
+  direction: rtl !important;
+  text-align: right !important;
+}
+
+/* Legend RTL alignment */
+.recharts-legend-wrapper {
+  direction: rtl;
+}
+
+/* Treemap specific styles - clean reset */
+.recharts-treemap {
+  font-family: 'Assistant', 'Heebo', 'Rubik', sans-serif;
+}
+
+.recharts-treemap rect {
+  transition: opacity 0.2s ease;
+}
+
+.recharts-treemap g:hover rect {
+  opacity: 0.85;
+}
+
+/* Pie chart label positioning for RTL */
+.recharts-pie-label-text {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Bar chart improvements */
+.recharts-bar-rectangle {
+  transition: opacity 0.2s ease;
+}
+
+.recharts-bar-rectangle:hover {
+  opacity: 0.85;
+}
+
+/* Axis tick improvements */
+.recharts-cartesian-axis-tick-value {
+  font-size: 11px;
+  fill: #64748b;
+}
+
+/* Grid line styling */
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: #e2e8f0;
+}
+
+.dark .recharts-cartesian-grid-horizontal line,
+.dark .recharts-cartesian-grid-vertical line {
+  stroke: #334155;
+}
+
+/* Dark mode chart adjustments */
+.dark .recharts-cartesian-axis-tick-value {
+  fill: #94a3b8;
+}
+
+.dark .recharts-legend-item-text {
+  fill: #cbd5e1;
+}
+
+/* Responsive chart containers */
+.recharts-responsive-container {
+  min-height: 200px;
+}
+
+/* Mobile chart optimizations */
+@media (max-width: 640px) {
+  .recharts-wrapper text {
+    font-size: 10px !important;
+  }
+  
+  .recharts-pie-label-text {
+    font-size: 9px !important;
+  }
+  
+  .recharts-legend-item-text {
+    font-size: 10px !important;
+  }
+  
+  .recharts-cartesian-axis-tick-value {
+    font-size: 9px !important;
+  }
+}
+
+/* Animation improvements */
+.recharts-area-area,
+.recharts-line-curve {
+  transition: stroke-dashoffset 0.3s ease;
+}
+
+/* Focus states for accessibility */
+.recharts-wrapper:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+  border-radius: 8px;
 }
 

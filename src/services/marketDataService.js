@@ -79,12 +79,15 @@ export const searchCryptoAssets = async (query) => {
 };
 
 /**
- * Search stock assets using Finnhub API
+ * Search stock assets using Finnhub API (LEGACY - use searchUSStocks or searchIsraeliStocks instead)
  * Note: Requires API key. Falls back to manual entry if unavailable.
  * @param {string} query - Search query
  * @returns {Promise<Array>} Array of asset objects with { id, symbol, name, image }
+ * @deprecated Use searchUSStocks or searchIsraeliStocks for better filtering
  */
 export const searchStockAssets = async (query) => {
+  // Legacy function - kept for backward compatibility
+  // Uses same logic as US stocks (without Israeli filter)
   if (!query || query.trim().length < 2) {
     return [];
   }
@@ -219,16 +222,290 @@ export const searchStockAssets = async (query) => {
 };
 
 /**
+ * Search Israeli stocks (TASE - Tel Aviv Stock Exchange)
+ * Filters for stocks with .TA suffix or TASE exchange
+ * @param {string} query - Search query
+ * @returns {Promise<Array>} Array of asset objects
+ */
+export const searchIsraeliStocks = async (query) => {
+  if (!query || query.trim().length < 1) {
+    return [];
+  }
+
+  const cacheKey = `il-stock:${query.toLowerCase().trim()}`;
+  const cached = getCachedResult(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  // Try local TASE stocks database first (supports Hebrew, Security IDs, symbols, English names)
+  try {
+    const { searchTASEStocks } = await import('../data/taseStocks');
+    const localResults = searchTASEStocks(query);
+    
+    if (localResults.length > 0) {
+      // Map local results to our format
+      const results = localResults.map(stock => ({
+        id: stock.symbol, // Use symbol as ID
+        symbol: stock.symbol, // Ticker symbol (e.g., "POLI.TA")
+        name: `${stock.nameHe} (${stock.symbol})`, // Hebrew name + symbol for display
+        nameHe: stock.nameHe, // Hebrew name
+        nameEn: stock.nameEn, // English name
+        securityId: stock.securityId, // TASE Security ID
+        image: null,
+        marketDataSource: 'tase-local'
+      }));
+
+      setCachedResult(cacheKey, results);
+      return results;
+    }
+  } catch (error) {
+    console.warn('Failed to load TASE stocks database:', error);
+  }
+
+  // Fallback: Use Yahoo Finance with TASE filter (for stocks not in local database)
+  try {
+    const targetUrl = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query.trim())}&quotesCount=20&newsCount=0`;
+    
+    // Try corsproxy.io first
+    let proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+    let response = await fetch(proxyUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      }
+    });
+
+    // If corsproxy.io fails, try allorigins.win as fallback
+    let usingAllOrigins = false;
+    if (!response.ok) {
+      proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+      response = await fetch(proxyUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        }
+      });
+      usingAllOrigins = true;
+    }
+
+    if (response.ok) {
+      let data;
+      const responseText = await response.text();
+      
+      // Try to parse as JSON
+      try {
+        const parsed = JSON.parse(responseText);
+        
+        if (usingAllOrigins && parsed.contents) {
+          data = JSON.parse(parsed.contents);
+        } else {
+          data = parsed;
+        }
+      } catch (parseError) {
+        console.warn('Failed to parse Yahoo Finance response:', parseError);
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            const parsed = JSON.parse(jsonMatch[0]);
+            if (parsed.contents) {
+              data = JSON.parse(parsed.contents);
+            } else {
+              data = parsed;
+            }
+          } catch (e) {
+            throw new Error('Could not parse Yahoo Finance response');
+          }
+        } else {
+          throw new Error('Could not parse Yahoo Finance response');
+        }
+      }
+      
+      // Yahoo returns results in data.quotes
+      if (data && data.quotes && Array.isArray(data.quotes)) {
+        // Filter for Israeli stocks: symbols ending with .TA or exchange is TASE
+        const israeliStocks = data.quotes.filter(quote => {
+          const symbol = quote.symbol || '';
+          const exchange = quote.exchange || '';
+          // Check if symbol ends with .TA or exchange contains TASE/Tel Aviv
+          return symbol.endsWith('.TA') || 
+                 exchange.toUpperCase().includes('TASE') || 
+                 exchange.toUpperCase().includes('TEL AVIV') ||
+                 exchange.toUpperCase().includes('TA');
+        });
+        
+        // Map to our format
+        const results = israeliStocks.slice(0, 10).map(quote => ({
+          id: quote.symbol, // Use symbol as ID
+          symbol: quote.symbol, // Ticker symbol (e.g., "POLI.TA")
+          name: quote.shortname || quote.longname || quote.symbol, // Company name
+          image: null,
+          marketDataSource: 'yahoo'
+        }));
+
+        setCachedResult(cacheKey, results);
+        return results;
+      }
+    }
+  } catch (error) {
+    console.warn('Error searching Israeli stocks via Yahoo Finance:', error);
+  }
+
+  // If all APIs fail, return empty array (allows manual entry)
+  return [];
+};
+
+/**
+ * Search US stocks (exclude Israeli stocks)
+ * @param {string} query - Search query
+ * @returns {Promise<Array>} Array of asset objects
+ */
+export const searchUSStocks = async (query) => {
+  if (!query || query.trim().length < 2) {
+    return [];
+  }
+
+  const cacheKey = `us-stock:${query.toLowerCase().trim()}`;
+  const cached = getCachedResult(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  // Try Finnhub first (free tier available)
+  const finnhubApiKey = import.meta.env.VITE_FINNHUB_API_KEY;
+  
+  if (finnhubApiKey) {
+    try {
+      const response = await fetch(
+        `https://finnhub.io/api/v1/search?q=${encodeURIComponent(query.trim())}&token=${finnhubApiKey}`
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Map Finnhub results to our format
+        const results = (data.result || []).slice(0, 10).map(stock => ({
+          id: stock.symbol, // Use symbol as ID for stocks
+          symbol: stock.symbol, // Ticker symbol (e.g., "AAPL")
+          name: stock.description || stock.symbol, // Company name or symbol
+          image: null, // Finnhub doesn't provide images
+          marketDataSource: 'finnhub'
+        }));
+
+        setCachedResult(cacheKey, results);
+        return results;
+      }
+    } catch (error) {
+      console.error('Error searching stocks via Finnhub:', error);
+    }
+  }
+
+  // Fallback: Try Yahoo Finance autocomplete via CORS proxy
+  try {
+    const targetUrl = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query.trim())}&quotesCount=20&newsCount=0`;
+    
+    let proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+    let response = await fetch(proxyUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      }
+    });
+
+    let usingAllOrigins = false;
+    if (!response.ok) {
+      proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+      response = await fetch(proxyUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        }
+      });
+      usingAllOrigins = true;
+    }
+
+    if (response.ok) {
+      let data;
+      const responseText = await response.text();
+      
+      try {
+        const parsed = JSON.parse(responseText);
+        
+        if (usingAllOrigins && parsed.contents) {
+          data = JSON.parse(parsed.contents);
+        } else {
+          data = parsed;
+        }
+      } catch (parseError) {
+        console.warn('Failed to parse Yahoo Finance response:', parseError);
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            const parsed = JSON.parse(jsonMatch[0]);
+            if (parsed.contents) {
+              data = JSON.parse(parsed.contents);
+            } else {
+              data = parsed;
+            }
+          } catch (e) {
+            throw new Error('Could not parse Yahoo Finance response');
+          }
+        } else {
+          throw new Error('Could not parse Yahoo Finance response');
+        }
+      }
+      
+      if (data && data.quotes && Array.isArray(data.quotes)) {
+        // Filter to only include EQUITY and ETF types, EXCLUDE Israeli stocks (.TA)
+        const usStocks = data.quotes.filter(quote => {
+          const symbol = quote.symbol || '';
+          const exchange = quote.exchange || '';
+          // Exclude Israeli stocks
+          const isIsraeli = symbol.endsWith('.TA') || 
+                          exchange.toUpperCase().includes('TASE') || 
+                          exchange.toUpperCase().includes('TEL AVIV') ||
+                          exchange.toUpperCase().includes('TA');
+          // Include only US stocks (EQUITY/ETF and not Israeli)
+          return (quote.quoteType === 'EQUITY' || quote.quoteType === 'ETF') && !isIsraeli;
+        });
+        
+        // Map Yahoo Finance results to our format
+        const results = usStocks.slice(0, 10).map(quote => ({
+          id: quote.symbol, // Use symbol as ID for stocks
+          symbol: quote.symbol, // Ticker symbol (e.g., "AAPL")
+          name: quote.shortname || quote.longname || quote.symbol, // Company name
+          image: null, // Yahoo Finance doesn't provide easy logos in search
+          marketDataSource: 'yahoo'
+        }));
+
+        setCachedResult(cacheKey, results);
+        return results;
+      }
+    }
+  } catch (error) {
+    console.warn('Error searching US stocks via Yahoo Finance (CORS/Network):', error);
+  }
+
+  // If all APIs fail, return empty array (allows manual entry)
+  return [];
+};
+
+/**
  * Main search function that routes to appropriate API based on asset type
  * @param {string} query - Search query
- * @param {string} assetType - "crypto" | "stock"
+ * @param {string} assetType - "crypto" | "us-stock" | "il-stock" | "stock" (legacy)
  * @returns {Promise<Array>} Array of asset objects
  */
 export const searchAssets = async (query, assetType) => {
   if (assetType === 'crypto') {
     return await searchCryptoAssets(query);
+  } else if (assetType === 'us-stock') {
+    return await searchUSStocks(query);
+  } else if (assetType === 'il-stock') {
+    return await searchIsraeliStocks(query);
   } else if (assetType === 'stock') {
-    return await searchStockAssets(query);
+    // Legacy: default to US stocks
+    return await searchUSStocks(query);
   }
   
   return [];

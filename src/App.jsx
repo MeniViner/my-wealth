@@ -1,11 +1,12 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useMemo, useEffect } from 'react';
-import { collection, getDocs, writeBatch, doc } from 'firebase/firestore';
+import { collection, getDocs, writeBatch, doc, getDoc, setDoc } from 'firebase/firestore';
 import { useAuth } from './hooks/useAuth';
 import { useAssets } from './hooks/useAssets';
 import { useSystemData } from './hooks/useSystemData';
 import { useCurrency } from './hooks/useCurrency';
 import { useAIConfig } from './hooks/useAIConfig';
+import { useOnboarding } from './hooks/useOnboarding';
 import { db, appId } from './services/firebase';
 import { generatePortfolioContext } from './utils/aiContext';
 import Layout from './components/Layout';
@@ -19,6 +20,10 @@ import ChartBuilder from './pages/ChartBuilder';
 import DynamicDashboard from './pages/DynamicDashboard';
 import UserManagement from './pages/UserManagement';
 import Rebalancing from './pages/Rebalancing';
+import Profile from './pages/Profile';
+import OnboardingWizard from './components/OnboardingWizard';
+import CoachmarkTour from './components/CoachmarkTour';
+import { DemoDataProvider } from './contexts/DemoDataContext';
 import { DEFAULT_SYSTEM_DATA } from './constants/defaults';
 import { confirmAlert, successAlert, errorAlert } from './utils/alerts';
 
@@ -28,6 +33,25 @@ function App() {
   const { systemData, setSystemData } = useSystemData(user);
   const { assets, addAsset, updateAsset, deleteAsset, initializeAssets } = useAssets(user, currencyRate.rate);
   const { aiConfig } = useAIConfig(user);
+  const { 
+    hasCompletedOnboarding, 
+    showCoachmarks, 
+    loading: onboardingLoading,
+    completeOnboarding,
+    dismissCoachmarks,
+    resetOnboarding, // For testing - can be called from console
+    startCoachmarks
+  } = useOnboarding(user);
+
+  // Expose reset function for testing (can call window.__resetOnboarding() in console)
+  useEffect(() => {
+    if (user && resetOnboarding) {
+      window.__resetOnboarding = resetOnboarding;
+    }
+    return () => {
+      delete window.__resetOnboarding;
+    };
+  }, [user, resetOnboarding]);
 
   // // Debug: Log user info when user changes
   // useEffect(() => {
@@ -50,6 +74,39 @@ function App() {
   const portfolioContextString = useMemo(() => {
     return generatePortfolioContext(assets);
   }, [assets]);
+
+  // Create user document when user first logs in
+  useEffect(() => {
+    const createUserDocument = async () => {
+      if (!user || !db) return;
+      
+      try {
+        const userRef = doc(db, 'artifacts', appId, 'users', user.uid);
+        const userSnap = await getDoc(userRef);
+        
+        // Only create if doesn't exist
+        if (!userSnap.exists()) {
+          await setDoc(userRef, {
+            email: user.email || user.uid,
+            displayName: user.displayName || null,
+            photoURL: user.photoURL || null,
+            createdAt: new Date(),
+            lastLogin: new Date()
+          });
+          console.log('User document created:', user.uid);
+        } else {
+          // Update last login
+          await setDoc(userRef, {
+            lastLogin: new Date()
+          }, { merge: true });
+        }
+      } catch (error) {
+        console.error('Error creating/updating user document:', error);
+      }
+    };
+
+    createUserDocument();
+  }, [user]);
 
   // Handle asset save (both add and update)
   const handleSaveAsset = async (assetData) => {
@@ -122,12 +179,12 @@ function App() {
   };
 
   // Loading state
-  if (authLoading) {
+  if (authLoading || (user && onboardingLoading)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="min-h-screen flex items-center justify-center bg-slate-900">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
-          <p className="text-slate-600">טוען...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mx-auto mb-4"></div>
+          <p className="text-slate-400">טוען...</p>
         </div>
       </div>
     );
@@ -138,9 +195,29 @@ function App() {
     return <Login />;
   }
 
+  // Show onboarding wizard for new users
+  if (!hasCompletedOnboarding) {
+    return (
+      <OnboardingWizard
+        user={user}
+        onComplete={completeOnboarding}
+        onAddAsset={addAsset}
+        systemData={systemData}
+        setSystemData={setSystemData}
+      />
+    );
+  }
+
   return (
-    <Layout totalWealth={totalWealth} currencyRate={currencyRate} user={user}>
-      <Routes>
+    <DemoDataProvider>
+      {/* Coachmark Tour - shown after onboarding */}
+      <CoachmarkTour 
+        isActive={showCoachmarks} 
+        onComplete={dismissCoachmarks}
+      />
+      
+      <Layout totalWealth={totalWealth} currencyRate={currencyRate} user={user}>
+        <Routes>
         <Route 
           path="/" 
           element={<Dashboard assets={assets} systemData={systemData} currencyRate={currencyRate} />} 
@@ -155,7 +232,9 @@ function App() {
             <AssetManager 
               assets={assets} 
               onDelete={deleteAsset} 
-              systemData={systemData} 
+              systemData={systemData}
+              setSystemData={setSystemData}
+              onResetData={handleInitializeDB}
             />
           } 
         />
@@ -196,6 +275,8 @@ function App() {
               user={user} 
               onResetData={handleInitializeDB}
               onRefreshCurrency={refreshCurrencyRate}
+              onResetOnboarding={resetOnboarding}
+              onStartCoachmarks={startCoachmarks}
             />
           } 
         />
@@ -223,9 +304,21 @@ function App() {
           path="/admin/users" 
           element={<UserManagement user={user} />} 
         />
+        <Route 
+          path="/profile" 
+          element={
+            <Profile 
+              user={user}
+              assets={assets}
+              totalWealth={totalWealth}
+              systemData={systemData}
+            />
+          } 
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>
+    </DemoDataProvider>
   );
 }
 

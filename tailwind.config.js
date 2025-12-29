@@ -7,6 +7,10 @@ export default {
   darkMode: 'class',
   theme: {
     extend: {
+      fontFamily: {
+        'hebrew': ['Assistant', 'Heebo', 'Rubik', 'Arial Hebrew', 'David', 'sans-serif'],
+        'sans': ['Inter', 'Segoe UI', 'Roboto', 'system-ui', 'sans-serif'],
+      },
       animation: {
         'fade-in': 'fadeIn 0.3s ease-in-out',
       },
