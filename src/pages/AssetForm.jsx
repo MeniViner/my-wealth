@@ -22,6 +22,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
   const [formData, setFormData] = useState({
     name: '',
     symbol: '',
+    displayName: '', // Hebrew/display name for UI
     apiId: '', // API ID for price fetching (e.g., "bitcoin" for CoinGecko)
     marketDataSource: '', // "coingecko" | "yahoo" | "manual"
     instrument: systemData.instruments[0]?.name || '',
@@ -35,12 +36,14 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
     assetMode: 'QUANTITY', // 'QUANTITY' | 'LEGACY'
     quantity: '',
     purchasePrice: '',
-    purchaseDate: new Date().toISOString().split('T')[0] // Today's date as default
+    purchaseDate: new Date().toISOString().split('T')[0], // Today's date as default
+    totalCost: '' // For reverse calculation
   });
   const [tagLoading, setTagLoading] = useState(false);
   const [aiSuggestLoading, setAiSuggestLoading] = useState(false);
   const [priceLoading, setPriceLoading] = useState(false);
   const [currentPriceData, setCurrentPriceData] = useState(null);
+  const [lastEditedField, setLastEditedField] = useState(null); // Track which field was edited last
   const [showNewSymbol, setShowNewSymbol] = useState(false);
   const [newSymbolValue, setNewSymbolValue] = useState('');
   const [showNewPlatform, setShowNewPlatform] = useState(false);
@@ -158,6 +161,35 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
     }
   }, [formData.category]);
 
+  // Auto-switch to LEGACY mode for Cash category
+  useEffect(() => {
+    if (formData.category === 'מזומן' && formData.assetMode !== 'LEGACY') {
+      setFormData(prev => ({
+        ...prev,
+        assetMode: 'LEGACY',
+        quantity: '',
+        purchasePrice: '',
+        purchaseDate: '',
+        totalCost: '',
+        apiId: '',
+        marketDataSource: ''
+      }));
+    }
+  }, [formData.category]);
+
+  // Auto-set currency based on symbol for Cash category
+  useEffect(() => {
+    if (formData.category === 'מזומן' && formData.symbol) {
+      const symbol = formData.symbol;
+      // Check if symbol is exactly ILS or USD, or contains them in parentheses
+      if (symbol === 'ILS' || symbol === 'מזומן (ILS)' || symbol.includes('(ILS)')) {
+        setFormData(prev => ({ ...prev, currency: 'ILS' }));
+      } else if (symbol === 'USD' || symbol === 'מזומן (USD)' || symbol.includes('(USD)')) {
+        setFormData(prev => ({ ...prev, currency: 'USD' }));
+      }
+    }
+  }, [formData.category, formData.symbol]);
+
   // Fetch current price when asset is selected (for QUANTITY mode)
   const handleFetchCurrentPrice = async () => {
     if (!formData.apiId && !formData.symbol) {
@@ -236,6 +268,84 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
     }
     return Number(formData.originalValue) || 0;
   }, [formData.assetMode, formData.quantity, formData.purchasePrice, formData.originalValue]);
+
+  // Auto-calculate: when totalCost changes → update quantity, when quantity changes → update totalCost
+  useEffect(() => {
+    if (formData.assetMode !== 'QUANTITY') return;
+
+    const price = Number(formData.purchasePrice) || 0;
+    
+    // Need price to calculate anything
+    if (price <= 0) return;
+
+    const quantity = Number(formData.quantity) || 0;
+    const totalCost = Number(formData.totalCost) || 0;
+
+    // User edited totalCost → calculate quantity
+    if (lastEditedField === 'totalCost' && totalCost > 0) {
+      const calculatedQuantity = totalCost / price;
+      if (calculatedQuantity > 0 && !isNaN(calculatedQuantity) && isFinite(calculatedQuantity)) {
+        const newQuantity = calculatedQuantity.toFixed(6);
+        if (newQuantity !== formData.quantity) {
+          setFormData(prev => ({
+            ...prev,
+            quantity: newQuantity
+          }));
+        }
+      }
+    }
+    
+    // User edited quantity → calculate totalCost
+    if (lastEditedField === 'quantity' && quantity > 0) {
+      const calculatedTotal = quantity * price;
+      if (calculatedTotal > 0 && !isNaN(calculatedTotal) && isFinite(calculatedTotal)) {
+        const newTotal = calculatedTotal.toFixed(2);
+        if (newTotal !== formData.totalCost) {
+          setFormData(prev => ({
+            ...prev,
+            totalCost: newTotal
+          }));
+        }
+      }
+    }
+  }, [formData.quantity, formData.purchasePrice, formData.totalCost, formData.assetMode, lastEditedField]);
+
+  // Auto-fetch historical price when date changes and we have an asset selected
+  useEffect(() => {
+    const fetchPriceForDate = async () => {
+      if (
+        formData.assetMode !== 'QUANTITY' ||
+        !formData.purchaseDate ||
+        (!formData.apiId && !formData.symbol) ||
+        formData.purchasePrice // Don't auto-fetch if price already exists
+      ) {
+        return;
+      }
+
+      setPriceLoading(true);
+      try {
+        const historicalPrice = await fetchAssetHistoricalPrice({
+          apiId: formData.apiId,
+          marketDataSource: formData.marketDataSource,
+          symbol: formData.symbol
+        }, formData.purchaseDate);
+
+        if (historicalPrice !== null && historicalPrice > 0) {
+          setFormData(prev => ({
+            ...prev,
+            purchasePrice: historicalPrice.toFixed(4)
+          }));
+        }
+      } catch (error) {
+        console.error('Error auto-fetching historical price:', error);
+      }
+      setPriceLoading(false);
+    };
+
+    // Debounce the fetch
+    const timeoutId = setTimeout(fetchPriceForDate, 500);
+    return () => clearTimeout(timeoutId);
+  }, [formData.purchaseDate, formData.apiId, formData.symbol, formData.marketDataSource, formData.assetMode]);
 
   // Smart AI Suggest - suggests category, symbol, and tags based on portfolio patterns
   const handleAISuggest = async () => {
@@ -396,7 +506,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
   };
 
   return (
-    <div className="max-w-3xl mx-auto pb-12">
+    <div className="max-w-3xl mx-auto pb-safe" style={{ paddingBottom: 'max(3rem, env(safe-area-inset-bottom))' }}>
       <header className="flex items-center gap-4 mb-8 mr-12 md:mr-0">
         <button 
           onClick={() => navigate('/assets')} 
@@ -544,6 +654,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
               className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100" 
               value={formData.name} 
               onChange={e => setFormData({...formData, name: e.target.value})} 
+              placeholder="לדוג': מחקה מדד נאסד''ק"
             />
           </div>
           <div className="md:col-span-2">
@@ -565,11 +676,30 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
           </div>
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">סמל נכס / Ticker</label>
-            {(formData.category === 'מניות' || formData.category === 'קריפטו') ? (
+            {formData.category === 'מזומן' ? (
+              // For Cash category, show only instruments (currencies)
+              <CustomSelect
+                value={formData.symbol || ''}
+                onChange={(val) => {
+                  setFormData({...formData, symbol: val});
+                }}
+                options={[
+                  { value: '', label: '-- בחר מטבע --' },
+                  ...(systemData.instruments || []).map(i => ({
+                    value: i.name,
+                    label: i.name,
+                    iconColor: i.color
+                  }))
+                ]}
+                placeholder="בחר מטבע בסיס"
+                iconColor={currentColor('instruments', formData.symbol)}
+              />
+            ) : (formData.category === 'מניות' || formData.category === 'קריפטו') ? (
               // Smart Ticker Search with Category Selector
               <TickerSearch
                 type={formData.category === 'קריפטו' ? 'crypto' : 'us-stock'} // Default type (will be overridden by selector)
                 value={formData.symbol}
+                displayValue={formData.displayName || formData.name} // Show Hebrew name
                 onSelect={(asset) => {
                   if (asset) {
                     // Determine asset type from the selection
@@ -582,20 +712,28 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                       assetType = 'ETF';
                     }
 
+                    // Get the best display name (Hebrew if available)
+                    const displayName = asset.nameHe || asset.name || asset.symbol;
+
                     setFormData({
                       ...formData,
-                      name: formData.name || asset.name || asset.symbol,
-                      symbol: asset.symbol,
+                      name: formData.name || displayName, // Use Hebrew name for display
+                      displayName: displayName, // Store display name separately
+                      symbol: asset.symbol, // Always store the ticker
                       apiId: asset.id,
                       marketDataSource: asset.marketDataSource || 'yahoo',
-                      assetType: assetType
+                      assetType: assetType,
+                      // Reset price when asset changes so it can be auto-fetched
+                      purchasePrice: ''
                     });
                     // Clear price data when asset changes
                     setCurrentPriceData(null);
+                    setLastEditedField(null);
                   } else {
                     setFormData({
                       ...formData,
                       symbol: '',
+                      displayName: '',
                       apiId: '',
                       marketDataSource: '',
                       assetType: 'STOCK'
@@ -607,7 +745,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                 showCategorySelector={true}
               />
             ) : (
-              // Manual input for Cash, Real Estate, and Other categories
+              // Manual input for Real Estate and Other categories
               <>
                 {!showNewSymbol ? (
                   <div className="space-y-2">
@@ -645,7 +783,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                       placeholder="או הזן סמל ידנית"
                       value={formData.symbol}
                       onChange={e => setFormData({...formData, symbol: e.target.value.toUpperCase()})}
-                      dir="ltr"
+                      
                     />
                   </div>
                 ) : (
@@ -666,7 +804,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                       placeholder="הזן סמל חדש"
                       className="flex-1 p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 font-mono"
                       autoFocus
-                      dir="ltr"
+                      
                     />
                     <button
                       type="button"
@@ -695,92 +833,115 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                 : 'מזהה סטנדרטי לזיהוי נכסים זהים על פני פלטפורמות שונות'}
             </p>
           </div>
-          {/* Mode Toggle: Quantity vs Legacy */}
-          <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">מצב מעקב</label>
-            <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-700 rounded-lg">
-              <button
-                type="button"
-                onClick={() => setFormData({...formData, assetMode: 'QUANTITY'})}
-                className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                  formData.assetMode === 'QUANTITY'
-                    ? 'bg-white dark:bg-slate-600 text-emerald-600 dark:text-emerald-400 shadow-sm'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <Hash size={16} />
-                כמות × מחיר (מומלץ)
-              </button>
-              <button
-                type="button"
-                onClick={() => setFormData({...formData, assetMode: 'LEGACY'})}
-                className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                  formData.assetMode === 'LEGACY'
-                    ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <Calculator size={16} />
-                שווי סטטי
-              </button>
+          {/* Mode Toggle: Quantity vs Legacy - Hidden for Cash */}
+          {formData.category !== 'מזומן' && (
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">מצב מעקב</label>
+              <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-700 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setFormData({...formData, assetMode: 'QUANTITY'})}
+                  className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                    formData.assetMode === 'QUANTITY'
+                      ? 'bg-white dark:bg-slate-600 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Hash size={16} />
+                  כמות × מחיר (מומלץ)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormData({...formData, assetMode: 'LEGACY'})}
+                  className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${
+                    formData.assetMode === 'LEGACY'
+                      ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
+                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Calculator size={16} />
+                  שווי סטטי
+                </button>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                {formData.assetMode === 'QUANTITY' 
+                  ? '✨ מאפשר מעקב אוטומטי אחר שינויי מחיר וחישוב רווח/הפסד' 
+                  : 'הזנת שווי כולל ללא מעקב אוטומטי'}
+              </p>
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-              {formData.assetMode === 'QUANTITY' 
-                ? '✨ מאפשר מעקב אוטומטי אחר שינויי מחיר וחישוב רווח/הפסד' 
-                : 'הזנת שווי כולל ללא מעקב אוטומטי'}
-            </p>
-          </div>
+          )}
 
-          {/* Currency selector */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">מטבע</label>
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => setFormData({...formData, currency: 'ILS'})}
-                className={`flex-1 px-4 py-3 rounded-xl border-2 transition-all font-medium ${
-                  formData.currency === 'ILS'
-                    ? 'bg-emerald-600 dark:bg-emerald-500 text-white border-emerald-600 dark:border-emerald-500 shadow-md'
-                    : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:border-emerald-400 dark:hover:border-emerald-500'
-                }`}
-              >
-                <span className="text-2xl mb-1 block">₪</span>
-                <span className="text-sm">שקל ישראלי</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setFormData({...formData, currency: 'USD'})}
-                className={`flex-1 px-4 py-3 rounded-xl border-2 transition-all font-medium ${
-                  formData.currency === 'USD'
-                    ? 'bg-emerald-600 dark:bg-emerald-500 text-white border-emerald-600 dark:border-emerald-500 shadow-md'
-                    : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:border-emerald-400 dark:hover:border-emerald-500'
-                }`}
-              >
-                <span className="text-2xl mb-1 block">$</span>
-                <span className="text-sm">דולר אמריקאי</span>
-              </button>
+          {/* Currency selector - Hidden for Cash category */}
+          {formData.category !== 'מזומן' && (
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">מטבע</label>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setFormData({...formData, currency: 'ILS'})}
+                  className={`flex-1 px-4 py-1 rounded-xl border-2 transition-all font-medium ${
+                    formData.currency === 'ILS'
+                      ? 'bg-emerald-600 dark:bg-emerald-500 text-white border-emerald-600 dark:border-emerald-500 shadow-md'
+                      : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:border-emerald-400 dark:hover:border-emerald-500'
+                  }`}
+                >
+                  <span className="text-2xl mb-1 block">₪</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormData({...formData, currency: 'USD'})}
+                  className={`flex-1 px-4 py-1 rounded-xl border-2 transition-all font-medium ${
+                    formData.currency === 'USD'
+                      ? 'bg-emerald-600 dark:bg-emerald-500 text-white border-emerald-600 dark:border-emerald-500 shadow-md'
+                      : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:border-emerald-400 dark:hover:border-emerald-500'
+                  }`}
+                >
+                  <span className="text-2xl mb-1 mt-1 block">$</span>
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* QUANTITY Mode Fields */}
-          {formData.assetMode === 'QUANTITY' ? (
+          {/* QUANTITY Mode Fields - Hidden for Cash category */}
+          {formData.category === 'מזומן' ? (
+            /* Cash category - only show amount */
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">סכום</label>
+              <div className="relative">
+                <input 
+                  type="number" 
+                  required 
+                  step="any"
+                  className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 font-mono pr-12" 
+                  value={formData.originalValue} 
+                  onChange={e => setFormData({...formData, originalValue: e.target.value})} 
+                  placeholder="הזן סכום"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 text-sm font-bold">
+                  {formData.currency === 'ILS' ? '₪' : '$'}
+                </span>
+              </div>
+            </div>
+          ) : formData.assetMode === 'QUANTITY' ? (
             <>
+              {/* Row 1: Date + Price (auto-fetched) */}
               <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">
                   <span className="flex items-center gap-2">
-                    <Hash size={14} />
-                    כמות יחידות
+                    <Calendar size={14} />
+                    תאריך רכישה
+                    <span className="text-xs text-slate-500">(ישמש למחיר היחידה)</span>
                   </span>
                 </label>
                 <input 
-                  type="number" 
-                  step="any"
-                  required 
-                  className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 font-mono" 
-                  value={formData.quantity} 
-                  onChange={e => setFormData({...formData, quantity: e.target.value})}
-                  placeholder="לדוגמה: 2.5 (BTC) או 10 (מניות)"
-                  dir="ltr"
+                  type="date" 
+                  className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100" 
+                  value={formData.purchaseDate} 
+                  onChange={e => {
+                    setFormData({...formData, purchaseDate: e.target.value, purchasePrice: ''});
+                    setLastEditedField('purchaseDate');
+                  }}
+                  max={new Date().toISOString().split('T')[0]}
                 />
               </div>
 
@@ -788,7 +949,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                 <div className="flex justify-between items-center mb-2">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
                     <span className="flex items-center gap-2">
-                      💰 מחיר רכישה ליחידה
+                      הצגת מחיר היחידה
                     </span>
                   </label>
                   <div className="flex gap-1">
@@ -815,46 +976,124 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                     </button>
                   </div>
                 </div>
-                <input 
-                  type="number" 
-                  step="any"
-                  required 
-                  className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 font-mono" 
-                  value={formData.purchasePrice} 
-                  onChange={e => setFormData({...formData, purchasePrice: e.target.value})}
-                  placeholder={`מחיר ב-${formData.currency}`}
-                  dir="ltr"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">
-                  <span className="flex items-center gap-2">
-                    <Calendar size={14} />
-                    תאריך רכישה
+                <div className="relative">
+                  <input 
+                    type="number" 
+                    step="any"
+                    className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-600 text-slate-900 dark:text-slate-100 font-mono pr-12" 
+                    value={formData.purchasePrice} 
+                    onChange={e => {
+                      setFormData({...formData, purchasePrice: e.target.value});
+                      setLastEditedField('purchasePrice');
+                    }}
+                    placeholder="נשלף אוטומטית"
+                  />
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 text-sm">
+                    {formData.currency === 'ILS' ? '₪' : '$'}
                   </span>
-                </label>
-                <input 
-                  type="date" 
-                  className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100" 
-                  value={formData.purchaseDate} 
-                  onChange={e => setFormData({...formData, purchaseDate: e.target.value})}
-                  max={new Date().toISOString().split('T')[0]}
-                />
+                  {priceLoading && (
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2">
+                      <Loader2 size={16} className="animate-spin text-blue-500"/>
+                    </span>
+                  )}
+                </div>
               </div>
 
-              {/* Estimated Value Display */}
-              <div className="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 p-4 rounded-xl border border-emerald-200 dark:border-emerald-800">
-                <label className="block text-sm font-medium text-emerald-700 dark:text-emerald-300 mb-1">
-                  💵 שווי רכישה משוער (Cost Basis)
-                </label>
-                <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 font-mono" dir="ltr">
-                  {formData.currency === 'ILS' ? '₪' : '$'}
-                  {estimatedValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              {/* Row 2: Total Cost OR Quantity - user chooses which to fill */}
+              <div className="md:col-span-2">
+                <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-200 dark:border-blue-800">
+                  {/* <p className="text-sm text-blue-700 dark:text-blue-300 mb-3 font-medium">
+                    💡 בחר אחד מהשניים - השני יחושב אוטומטית:
+                  </p> */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Total Cost Input */}
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">
+                        <span className="flex items-center gap-2">
+                          💵 סכום ההשקעה (כמה כסף השקעת?)
+                        </span>
+                      </label>
+                      <div className="relative">
+                        <input 
+                          type="number" 
+                          step="any"
+                          className={`w-full p-3 border rounded-lg text-slate-900 dark:text-slate-100 font-mono pr-12 transition-all ${
+                            lastEditedField === 'totalCost' 
+                              ? 'border-blue-400 dark:border-blue-500 bg-white dark:bg-slate-700 ring-2 ring-blue-200 dark:ring-blue-800' 
+                              : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700'
+                          }`}
+                          value={formData.totalCost} 
+                          onChange={e => {
+                            setFormData({...formData, totalCost: e.target.value});
+                            setLastEditedField('totalCost');
+                          }}
+                          placeholder={`לדוגמה: 500`}
+                          
+                        />
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 text-sm font-bold">
+                          {formData.currency === 'ILS' ? '₪' : '$'}
+                        </span>
+                      </div>
+                      {lastEditedField === 'totalCost' && formData.purchasePrice && formData.totalCost && (
+                        <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 font-medium">
+                          ✓ כמות: {(Number(formData.totalCost) / Number(formData.purchasePrice)).toFixed(6)} יחידות
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Quantity Input */}
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">
+                        <span className="flex items-center gap-2">
+                          <Hash size={14} />
+                          כמות יחידות (כמה קנית?)
+                        </span>
+                      </label>
+                      <input 
+                        type="number" 
+                        step="any"
+                        className={`w-full p-3 border rounded-lg text-slate-900 dark:text-slate-100 font-mono transition-all ${
+                          lastEditedField === 'quantity' 
+                            ? 'border-blue-400 dark:border-blue-500 bg-white dark:bg-slate-700 ring-2 ring-blue-200 dark:ring-blue-800' 
+                            : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700'
+                        }`}
+                        value={formData.quantity} 
+                        onChange={e => {
+                          setFormData({...formData, quantity: e.target.value});
+                          setLastEditedField('quantity');
+                        }}
+                        placeholder="לדוגמה: 2.5"
+                        
+                      />
+                      {lastEditedField === 'quantity' && formData.purchasePrice && formData.quantity && (
+                        <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 font-medium">
+                          ✓ עלות: {formData.currency === 'ILS' ? '₪' : '$'}{(Number(formData.quantity) * Number(formData.purchasePrice)).toLocaleString('he-IL', {maximumFractionDigits: 2})}
+                        </p>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                <p className="text-xs text-emerald-600/70 dark:text-emerald-400/70 mt-1">
-                  {formData.quantity || 0} יחידות × {formData.purchasePrice || 0} {formData.currency}
-                </p>
+              </div>
+
+              {/* Summary Display */}
+              <div className="md:col-span-2 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 p-4 rounded-xl border border-emerald-200 dark:border-emerald-800">
+                <label className="block text-sm font-medium text-emerald-700 dark:text-emerald-300 mb-1">
+                  📊 סיכום עסקה
+                </label>
+                <div className="flex flex-wrap gap-4 items-center">
+                  <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 font-mono" >
+                    {formData.currency === 'ILS' ? '₪' : '$'}
+                    {estimatedValue.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <div className="text-sm text-emerald-600/80 dark:text-emerald-400/80">
+                    = {formData.quantity || '?'} יחידות × {formData.purchasePrice ? `${formData.currency === 'ILS' ? '₪' : '$'}${Number(formData.purchasePrice).toLocaleString('he-IL', {maximumFractionDigits: 4})}` : '?'} ליחידה
+                  </div>
+                </div>
+                {!formData.purchasePrice && formData.apiId && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                    ⏳ בחר תאריך רכישה כדי לשלוף מחיר אוטומטית
+                  </p>
+                )}
               </div>
             </>
           ) : (

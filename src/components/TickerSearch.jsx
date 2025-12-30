@@ -8,7 +8,8 @@ import { searchAssets, POPULAR_INDICES } from '../services/marketDataService';
  * 
  * @param {string} type - Asset type: "crypto" | "us-stock" | "il-stock" | "stock" (legacy)
  * @param {Function} onSelect - Callback when user selects an asset: (asset) => void
- * @param {string} value - Current selected value (for controlled component)
+ * @param {string} value - Current selected value (ticker symbol for controlled component)
+ * @param {string} displayValue - Display name (Hebrew or full name) to show in input
  * @param {string} placeholder - Placeholder text
  * @param {boolean} allowManual - Allow manual entry if API fails (default: true)
  * @param {boolean} showCategorySelector - Show category selector tabs (default: true)
@@ -17,6 +18,7 @@ const TickerSearch = ({
   type, 
   onSelect, 
   value = '', 
+  displayValue = '',
   placeholder = 'חפש טיקר...',
   allowManual = true,
   showCategorySelector = true
@@ -29,6 +31,7 @@ const TickerSearch = ({
   const [error, setError] = useState(null);
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
+  const [selectedAsset, setSelectedAsset] = useState(null); // Track full selected asset info
   
   const inputRef = useRef(null);
   const dropdownRef = useRef(null);
@@ -101,6 +104,7 @@ const TickerSearch = ({
     setResults([]);
     setShowDropdown(false);
     setSelectedIndex(-1);
+    setSelectedAsset(null);
     onSelect(null); // Clear selection when switching categories
   };
 
@@ -130,7 +134,11 @@ const TickerSearch = ({
 
   // Handle selection from dropdown
   const handleSelect = (asset) => {
-    setQuery(asset.symbol);
+    // Store the full asset info for display
+    setSelectedAsset(asset);
+    // Set query to display format (Hebrew name + ticker)
+    const displayText = asset.nameHe || asset.name || asset.symbol;
+    setQuery(`${displayText} (${asset.symbol})`);
     setShowDropdown(false);
     setResults([]);
     setSelectedIndex(-1);
@@ -210,12 +218,17 @@ const TickerSearch = ({
     };
   }, [query, allowManual]);
 
-  // Update query when value prop changes (for controlled component)
+  // Update query when value/displayValue props change (for controlled component)
   useEffect(() => {
-    if (value !== query) {
-      setQuery(value || '');
+    if (value) {
+      // If we have a displayValue, show it with the symbol
+      if (displayValue && displayValue !== value) {
+        setQuery(`${displayValue} (${value})`);
+      } else if (!query || !query.includes(value)) {
+        setQuery(value);
+      }
     }
-  }, [value]);
+  }, [value, displayValue]);
 
   // Cleanup debounce timer on unmount
   useEffect(() => {
@@ -308,6 +321,7 @@ const TickerSearch = ({
               setQuery('');
               setResults([]);
               setShowDropdown(false);
+              setSelectedAsset(null);
               onSelect(null);
             }}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"

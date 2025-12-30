@@ -131,4 +131,3 @@ export const callGeminiAIWithHistory = async (messages = [], portfolioContext = 
     return `שגיאה בקבלת תשובה מה-AI (Puter): ${error.message || "שגיאה לא ידועה"}`;
   }
 };
-

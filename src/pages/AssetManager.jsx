@@ -4,7 +4,7 @@ import { Plus, Search, Edit2, Trash2, Eye, ArrowUpDown, LayoutGrid, Layers, Buil
 import Modal from '../components/Modal';
 import { confirmAlert, successToast } from '../utils/alerts';
 import CustomSelect from '../components/CustomSelect';
-import { generateRandomColor } from '../constants/defaults';
+import { generateRandomColor, FIXED_INSTRUMENTS, FIXED_CATEGORIES } from '../constants/defaults';
 import TickerSearch from '../components/TickerSearch';
 import { useDemoData } from '../contexts/DemoDataContext';
 import { useAdmin } from '../hooks/useAdmin';
@@ -193,6 +193,15 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
   };
 
   const handleDeleteSource = async (type, name) => {
+    // Check if trying to delete fixed data
+    const isFixedInstrument = type === 'instruments' && FIXED_INSTRUMENTS.some(fi => fi.name === name);
+    const isFixedCategory = type === 'categories' && FIXED_CATEGORIES.some(fc => fc.name === name);
+    
+    if (isFixedInstrument || isFixedCategory) {
+      await confirmAlert('שגיאה', `${name} הוא נתון קבוע ולא ניתן למחיקה. ניתן לערוך רק את הצבע.`, 'error', false);
+      return;
+    }
+
     const confirmed = await confirmAlert('מחיקה', `למחוק את ${name}?`, 'warning', true);
     if (confirmed) {
       const newList = systemData[type].filter(item => {
@@ -258,14 +267,14 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                 <span className="hidden sm:inline">{pricesLoading ? 'מעדכן...' : 'רענן מחירים'}</span>
               </button>
             )}
-            <button 
-              onClick={() => navigate('/assets/add')} 
-              className="bg-emerald-600 dark:bg-emerald-700 text-white px-5 py-1.5 md:py-2.5 rounded-lg flex items-center gap-2 font-medium hover:bg-emerald-700 dark:hover:bg-emerald-600 transition-colors shadow-sm"
-            >
-              <Plus size={18} /> 
-              <span className="hidden sm:inline">הוסף נכס</span>
-              <span className="sm:hidden">הוסף</span>
-            </button>
+          <button 
+            onClick={() => navigate('/assets/add')} 
+            className="bg-emerald-600 dark:bg-emerald-700 text-white px-5 py-1.5 md:py-2.5 rounded-lg flex items-center gap-2 font-medium hover:bg-emerald-700 dark:hover:bg-emerald-600 transition-colors shadow-sm"
+          >
+            <Plus size={18} /> 
+            <span className="hidden sm:inline">הוסף נכס</span>
+            <span className="sm:hidden">הוסף</span>
+          </button>
           </div>
         )}
       </header>
@@ -299,16 +308,17 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
         <>
           {/* Reset Database Button (Admin only) or Demo Mode Button (Regular users) */}
           <div className="mb-6 flex justify-end">
-            {isAdmin && onResetData ? (
+            {isAdmin && onResetData && (
               <button 
                 onClick={onResetData} 
                 className="text-sm text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 px-4 py-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all flex items-center gap-2 border border-slate-200 dark:border-slate-700 hover:border-red-200 dark:hover:border-red-800 font-medium"
                 title="אתחול מסד נתונים - ימחק את כל הנתונים"
               >
                 <RefreshCw size={16} />
-                <span>אתחול מסד נתונים</span>
+                <span>אפס לנתונים ראשוניים⚠️</span>
               </button>
-            ) : (
+            )}
+            
               <button 
                 onClick={async () => {
                   toggleDemoMode();
@@ -329,7 +339,7 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                 <TestTube size={16} />
                 <span>{isDemoActive ? 'כבה מצב דמו' : 'הפעל מצב דמו'}</span>
               </button>
-            )}
+            
           </div>
           <SourcesConfiguration
             systemData={systemData}
@@ -772,7 +782,7 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                   <div className="text-xs text-emerald-500 flex items-center gap-1 mt-1">
                     <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
                     מחיר חי
-                  </div>
+              </div>
                 )}
               </div>
               {selectedAsset.profitLoss !== null && selectedAsset.profitLoss !== undefined ? (
@@ -786,12 +796,12 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                   </div>
                 </div>
               ) : (
-                <div className="bg-slate-50 dark:bg-slate-700 p-4 rounded-xl">
-                  <div className="text-sm text-slate-500 dark:text-slate-400">שווי מקור</div>
-                  <div className="text-2xl font-bold text-slate-800 dark:text-white" dir="ltr">
+              <div className="bg-slate-50 dark:bg-slate-700 p-4 rounded-xl">
+                <div className="text-sm text-slate-500 dark:text-slate-400">שווי מקור</div>
+                <div className="text-2xl font-bold text-slate-800 dark:text-white" dir="ltr">
                     {formatMoney(selectedAsset.originalValue || 0, selectedAsset.currency)}
-                  </div>
                 </div>
+              </div>
               )}
             </div>
 
@@ -1070,6 +1080,9 @@ const SourcesConfiguration = ({ systemData, onAdd, onUpdate, onDelete, getSource
                             >
                               <Edit2 size={18} />
                             </button>
+                            {/* Hide delete button for fixed data */}
+                            {!(type === 'instruments' && FIXED_INSTRUMENTS.some(fi => fi.name === itemName)) &&
+                             !(type === 'categories' && FIXED_CATEGORIES.some(fc => fc.name === itemName)) && (
                             <button
                               onClick={() => onDelete(type, itemName)}
                               className="p-2 text-slate-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
@@ -1077,6 +1090,7 @@ const SourcesConfiguration = ({ systemData, onAdd, onUpdate, onDelete, getSource
                             >
                               <Trash2 size={18} />
                             </button>
+                            )}
                           </div>
                         </div>
                       </div>

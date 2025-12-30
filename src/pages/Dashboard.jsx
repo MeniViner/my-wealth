@@ -3,7 +3,7 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, 
   AreaChart, Area, CartesianGrid, LineChart, Line
 } from 'recharts';
-import { Cloud, TestTube, Eye, EyeOff } from 'lucide-react';
+import { Cloud, Eye, EyeOff } from 'lucide-react';
 import CustomTooltip from '../components/CustomTooltip';
 import TreemapChart from '../components/TreemapChart';
 import { useDemoData } from '../contexts/DemoDataContext';
@@ -304,20 +304,6 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-10" dir="rtl">
-      {/* Demo Mode Banner */}
-      {isDemoActive && (
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3 rounded-xl shadow-lg border-2 border-blue-400/50">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
-              <TestTube className="w-5 h-5" />
-            </div>
-            <div className="flex-1">
-              <div className="font-bold text-sm">מצב דמו פעיל</div>
-              <div className="text-xs text-blue-100">נתוני דמו מוצגים - הנתונים מקומיים בלבד</div>
-            </div>
-          </div>
-        </div>
-      )}
 
       <header className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mr-12 md:mr-0">
         <div>

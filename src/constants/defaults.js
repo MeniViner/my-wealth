@@ -12,6 +12,18 @@ export const generateRandomColor = () => {
   return colors[Math.floor(Math.random() * colors.length)];
 };
 
+// Fixed data that cannot be deleted (always present)
+export const FIXED_INSTRUMENTS = [
+  { name: "ILS", color: "#10B981", isFixed: true },
+  { name: "USD", color: "#22C55E", isFixed: true }
+];
+
+export const FIXED_CATEGORIES = [
+  { name: "מניות", color: "#3B82F6", isFixed: true }, // Blue
+  { name: "קריפטו", color: "#F59E0B", isFixed: true }, // Yellow
+  { name: "מזומן", color: "#10B981", isFixed: true } // Green
+];
+
 export const DEFAULT_SYSTEM_DATA = {
   platforms: [
     { name: "פסגות", color: "#A855F7" },
@@ -24,6 +36,7 @@ export const DEFAULT_SYSTEM_DATA = {
     { name: "אחר", color: "#94A3B8" }
   ],
   instruments: [
+    ...FIXED_INSTRUMENTS,
     { name: "מזומן (ILS)", color: "#10B981" },
     { name: "מזומן (USD)", color: "#22C55E" },
     { name: "מניה בודדת", color: "#3B82F6" },
@@ -38,9 +51,7 @@ export const DEFAULT_SYSTEM_DATA = {
     { name: "אחר", color: "#64748B" }
   ],
   categories: [
-    { name: "מניות", color: "#3B82F6" },
-    { name: "קריפטו", color: "#F59E0B" },
-    { name: "מזומן", color: "#10B981" },
+    ...FIXED_CATEGORIES,
     { name: "נדלן", color: "#8B5CF6" },
     { name: "אחר", color: "#64748B" }
   ],

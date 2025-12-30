@@ -21,7 +21,8 @@ import {
   CreditCard,
   Target,
   Filter,
-  Search
+  Search,
+  Layers
 } from 'lucide-react';
 import { useDemoData } from '../contexts/DemoDataContext';
 
@@ -64,16 +65,6 @@ const COACHMARKS = [
     openMobileMenu: false,
   },
   {
-    id: 'add-asset',
-    title: 'הוסף נכסים חדשים',
-    description: 'לחץ כאן כדי להוסיף מניות, קריפטו, חשבונות בנק, ועוד.',
-    icon: Plus,
-    route: '/',
-    targetSelector: 'a[href="/assets/add"]',
-    spotlightSize: 'medium',
-    openMobileMenu: true,
-  },
-  {
     id: 'asset-manager',
     title: 'ניהול הנכסים שלך',
     description: 'כאן תוכל לראות את כל הנכסים שלך מקובצים לפי חשבונות וארנקים, אפיקי השקעה, או מטבעות בסיס.',
@@ -83,6 +74,57 @@ const COACHMARKS = [
     spotlightSize: 'extra-large',
     position: 'center',
     openMobileMenu: false,
+  },
+  {
+    id: 'add-asset',
+    title: 'הוסף נכסים חדשים',
+    description: 'לחץ כאן כדי להוסיף מניות, קריפטו, חשבונות בנק, ועוד.',
+    icon: Plus,
+    route: '/assets',
+    targetSelector: 'button',
+    targetText: 'הוסף נכס',
+    fallbackSelector: 'button[class*="bg-emerald"]',
+    spotlightSize: 'medium',
+    openMobileMenu: false,
+  },
+  {
+    id: 'asset-distribution-platforms',
+    title: 'פלטפורמות',
+    description: 'כאן תראה את הנכסים שלך מקובצים לפי חשבונות וארנקים - איפה הכסף שלך נמצא.',
+    icon: Building2,
+    route: '/assets',
+    targetSelector: 'button',
+    targetText: 'ניהול המקורות שלי',
+    fallbackSelector: 'button[class*="border-b"]:nth-of-type(2)',
+    spotlightSize: 'medium',
+    openMobileMenu: false,
+    waitForTab: 'sources',
+  },
+  {
+    id: 'asset-distribution-categories',
+    title: 'קטגוריות',
+    description: 'אפיקי השקעה - החלוקה הראשית של התיק שלך.',
+    icon: Layers,
+    route: '/assets',
+    targetSelector: 'h3',
+    targetText: 'אפיקי השקעה',
+    fallbackSelector: 'div:has(h3)',
+    spotlightSize: 'medium',
+    openMobileMenu: false,
+    waitForTab: 'sources',
+  },
+  {
+    id: 'asset-distribution-symbols',
+    title: 'סמלי נכסים',
+    description: 'טיקרים וסמלים ספציפיים למעקב אחר נכסים.',
+    icon: Coins,
+    route: '/assets',
+    targetSelector: 'h3',
+    targetText: 'נכסים למעקב',
+    fallbackSelector: 'div:has(h3)',
+    spotlightSize: 'medium',
+    openMobileMenu: false,
+    waitForTab: 'sources',
   },
   {
     id: 'asset-search',
@@ -133,9 +175,25 @@ const COACHMARKS = [
     description: 'הגדר יעדי הקצאה לכל אפיק השקעה וצפה בהמלצות לאיזון התיק.',
     icon: Target,
     route: '/rebalancing',
-    targetSelector: 'h2, h3',
-    spotlightSize: 'center',
+    targetSelector: 'button',
+    targetText: 'הגדרת יעדים',
+    fallbackSelector: 'button[class*="border-b"]:first-of-type',
+    spotlightSize: 'medium',
     openMobileMenu: false,
+    waitForHash: '#rebalancing',
+  },
+  {
+    id: 'reports',
+    title: 'דוחות וניתוחי AI',
+    description: 'צפה בדוחות שמורים וניתוחי AI על התיק שלך.',
+    icon: BarChart3,
+    route: '/rebalancing',
+    targetSelector: 'button',
+    targetText: 'דוחות',
+    fallbackSelector: 'button[class*="border-b"]:last-of-type',
+    spotlightSize: 'medium',
+    openMobileMenu: false,
+    waitForHash: '#reports',
   },
   {
     id: 'chart-builder',
@@ -235,7 +293,7 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
     }
   }, [isMobile]);
 
-  // Navigate to the route for current step
+  // Navigate to the route for current step and handle tabs/hashes
   useEffect(() => {
     if (!isActive) return;
     
@@ -243,30 +301,77 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
     if (!coachmark) return;
 
     const currentPath = location.pathname;
+    const currentHash = location.hash;
     const targetRoute = coachmark.route;
+    const targetHash = coachmark.waitForHash;
+    const targetTab = coachmark.waitForTab;
 
-    if (targetRoute && currentPath !== targetRoute) {
+    // Check if we need to navigate
+    const needsNavigation = targetRoute && currentPath !== targetRoute.split('#')[0];
+    const needsHash = targetHash && currentHash !== targetHash;
+    const needsTab = targetTab && !document.querySelector(`button[class*="border-b"]:has-text("${targetTab === 'sources' ? 'ניהול המקורות שלי' : ''}")`)?.classList.contains('border-emerald');
+
+    if (needsNavigation || needsHash) {
       setIsNavigating(true);
       
       if (navigationTimeoutRef.current) {
         clearTimeout(navigationTimeoutRef.current);
       }
 
-      navigate(targetRoute, { replace: true });
+      // Navigate to route with hash if needed
+      const routeWithHash = targetHash ? `${targetRoute.split('#')[0]}${targetHash}` : targetRoute;
+      navigate(routeWithHash, { replace: true });
       
-      navigationTimeoutRef.current = setTimeout(() => {
-        setIsNavigating(false);
-      }, 200);
+      // If we need to switch tabs, do it after navigation
+      if (targetTab) {
+        navigationTimeoutRef.current = setTimeout(() => {
+          // Click the tab button
+          const tabButton = Array.from(document.querySelectorAll('button[class*="border-b"]')).find(btn => {
+            const text = btn.textContent || '';
+            if (targetTab === 'sources') return text.includes('ניהול המקורות');
+            if (targetTab === 'assets') return text.includes('נכסים');
+            return false;
+          });
+          if (tabButton) {
+            tabButton.click();
+          }
+          setIsNavigating(false);
+        }, 500);
+      } else if (targetHash) {
+        // Wait for hash navigation to complete
+        navigationTimeoutRef.current = setTimeout(() => {
+          setIsNavigating(false);
+        }, 400);
+      } else {
+        navigationTimeoutRef.current = setTimeout(() => {
+          setIsNavigating(false);
+        }, 300);
+      }
       
       return () => {
         if (navigationTimeoutRef.current) {
           clearTimeout(navigationTimeoutRef.current);
         }
       };
+    } else if (needsTab) {
+      // Just switch tab without navigation
+      setIsNavigating(true);
+      const tabButton = Array.from(document.querySelectorAll('button[class*="border-b"]')).find(btn => {
+        const text = btn.textContent || '';
+        if (targetTab === 'sources') return text.includes('ניהול המקורות');
+        if (targetTab === 'assets') return text.includes('נכסים');
+        return false;
+      });
+      if (tabButton) {
+        tabButton.click();
+        setTimeout(() => setIsNavigating(false), 200);
+      } else {
+        setIsNavigating(false);
+      }
     } else {
       setIsNavigating(false);
     }
-  }, [isActive, currentIndex, location.pathname, navigate]);
+  }, [isActive, currentIndex, location.pathname, location.hash, navigate]);
 
   // Handle mobile menu state for current step
   useEffect(() => {
@@ -302,12 +407,37 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
       return;
     }
 
-    let targetElement = document.querySelector(coachmark.targetSelector);
+    // Helper function to find element by text content
+    const findElementByText = (selector, text) => {
+      if (!selector || !text) return null;
+      // Try direct querySelector first
+      let element = document.querySelector(selector);
+      if (element) return element;
+      
+      // If selector contains :contains or :has-text, search manually
+      if (selector.includes(':contains') || selector.includes(':has-text')) {
+        const baseSelector = selector.split(':')[0];
+        const elements = document.querySelectorAll(baseSelector || '*');
+        for (const el of elements) {
+          if (el.textContent && el.textContent.includes(text)) {
+            return el;
+          }
+        }
+      }
+      
+      return null;
+    };
+
+    let targetElement = findElementByText(coachmark.targetSelector, coachmark.targetText) || 
+                       document.querySelector(coachmark.targetSelector);
     
     if (!targetElement && coachmark.fallbackSelector) {
-      targetElement = document.querySelector(coachmark.fallbackSelector);
+      targetElement = findElementByText(coachmark.fallbackSelector, coachmark.fallbackText) ||
+                     document.querySelector(coachmark.fallbackSelector);
       if (targetElement) {
-        targetElement = targetElement.closest('div[class*="rounded-xl"]') || targetElement;
+        targetElement = targetElement.closest('div[class*="rounded-xl"]') || 
+                       targetElement.closest('div[class*="rounded-2xl"]') || 
+                       targetElement;
       }
     }
 
@@ -476,22 +606,17 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
         className="fixed inset-0 z-[100]"
         dir="rtl"
       >
-        {/* Demo Banner - positioned to not overlap with close button on mobile */}
+        {/* Demo Banner - compact and subtle */}
         {showDemoBanner && (
           <motion.div
-            initial={{ opacity: 0, y: -50 }}
+            initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -50 }}
-            className="fixed top-20 md:top-6 right-4 md:right-6 left-4 md:left-auto z-[101] bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 md:px-6 py-3 rounded-xl shadow-2xl border-2 border-blue-400/50 backdrop-blur-sm"
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-0 right-0 left-0 z-[101] bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-3 py-1 text-xs border-b border-blue-400/30"
           >
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                <Rocket className="w-5 h-5" />
-              </div>
-              <div className="min-w-0">
-                <div className="font-bold text-sm">נתוני דמו מוצגים</div>
-                <div className="text-xs text-blue-100 truncate">הנתונים מקומיים בלבד ויוסרו בסוף המדריך</div>
-              </div>
+            <div className="flex items-center justify-center gap-2">
+              <Rocket className="w-3 h-3" />
+              <span className="font-medium">נתוני דמו מוצגים - מקומיים בלבד</span>
             </div>
           </motion.div>
         )}
@@ -589,8 +714,10 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
             transition={{ duration: 0.3, delay: 0.1 }}
-            className={`absolute bg-gradient-to-b from-slate-800 to-slate-900 rounded-2xl shadow-2xl border border-slate-700/50 p-6 ${
-              isMobile ? 'left-4 right-4' : 'w-[360px]'
+            className={`absolute bg-gradient-to-b from-slate-800 to-slate-900 rounded-xl md:rounded-2xl shadow-2xl border border-slate-700/50 ${
+              isMobile 
+                ? 'left-2 right-2 p-3' 
+                : 'w-[360px] p-6'
             }`}
             style={{
               ...tooltipPos,
@@ -600,22 +727,22 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
             {/* Close button inside tooltip */}
             <button
               onClick={handleSkip}
-              className="absolute top-4 left-4 p-2 rounded-xl hover:bg-slate-700/50 transition-colors"
+              className={`absolute top-2 left-2 md:top-4 md:left-4 p-1.5 md:p-2 rounded-lg md:rounded-xl hover:bg-slate-700/50 transition-colors`}
               aria-label="סגור"
             >
-              <X className="w-5 h-5 text-slate-400" />
+              <X className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'} text-slate-400`} />
             </button>
 
             {/* Icon and progress */}
-            <div className="flex items-center gap-4 mb-5">
-              <div className="w-14 h-14 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
-                <Icon className="w-7 h-7 text-white" />
+            <div className={`flex items-center gap-2 md:gap-4 ${isMobile ? 'mb-3' : 'mb-5'}`}>
+              <div className={`${isMobile ? 'w-8 h-8 rounded-lg' : 'w-14 h-14 rounded-2xl'} bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 flex-shrink-0`}>
+                <Icon className={`${isMobile ? 'w-4 h-4' : 'w-7 h-7'} text-white`} />
               </div>
-              <div className="flex-1">
-                <div className="text-sm text-slate-400 mb-2">
+              <div className="flex-1 min-w-0">
+                <div className={`${isMobile ? 'text-xs' : 'text-sm'} text-slate-400 mb-1 md:mb-2`}>
                   שלב {currentIndex + 1} מתוך {COACHMARKS.length}
                 </div>
-                <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                <div className={`${isMobile ? 'h-1.5' : 'h-2'} bg-slate-700 rounded-full overflow-hidden`}>
                   <motion.div
                     className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full"
                     initial={{ width: 0 }}
@@ -627,35 +754,35 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
             </div>
 
             {/* Content */}
-            <h3 className="text-xl font-bold text-white mb-3">{currentCoachmark.title}</h3>
-            <p className="text-slate-300 text-base leading-relaxed mb-6">{currentCoachmark.description}</p>
+            <h3 className={`${isMobile ? 'text-sm font-semibold mb-1.5' : 'text-xl font-bold mb-3'} text-white`}>{currentCoachmark.title}</h3>
+            <p className={`${isMobile ? 'text-xs leading-relaxed mb-3' : 'text-base leading-relaxed mb-6'} text-slate-300`}>{currentCoachmark.description}</p>
 
             {/* Navigation buttons */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 md:gap-3">
               {currentIndex > 0 && (
                 <button
                   onClick={handlePrev}
-                  className="flex-1 py-3 px-5 bg-slate-700 hover:bg-slate-600 text-white rounded-xl transition-all flex items-center justify-center gap-2 font-medium shadow-lg"
+                  className={`flex-1 ${isMobile ? 'py-2 px-3 text-xs' : 'py-3 px-5'} bg-slate-700 hover:bg-slate-600 text-white rounded-lg md:rounded-xl transition-all flex items-center justify-center gap-1.5 md:gap-2 font-medium shadow-lg`}
                 >
-                  <ChevronRight className="w-5 h-5" />
-                  הקודם
+                  <ChevronRight className={`${isMobile ? 'w-3.5 h-3.5' : 'w-5 h-5'}`} />
+                  <span className={isMobile ? 'text-xs' : ''}>הקודם</span>
                 </button>
               )}
               <button
                 onClick={handleNext}
-                className={`flex-1 py-3 px-5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white rounded-xl transition-all flex items-center justify-center gap-2 font-medium shadow-lg shadow-emerald-500/30 ${
+                className={`flex-1 ${isMobile ? 'py-2 px-3 text-xs' : 'py-3 px-5'} bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white rounded-lg md:rounded-xl transition-all flex items-center justify-center gap-1.5 md:gap-2 font-medium shadow-lg shadow-emerald-500/30 ${
                   currentIndex === 0 ? 'w-full' : ''
                 }`}
               >
-                {currentIndex === COACHMARKS.length - 1 ? 'סיום והתחלה!' : 'הבא'}
-                <ChevronLeft className="w-5 h-5" />
+                <span className={isMobile ? 'text-xs' : ''}>{currentIndex === COACHMARKS.length - 1 ? 'סיום והתחלה!' : 'הבא'}</span>
+                <ChevronLeft className={`${isMobile ? 'w-3.5 h-3.5' : 'w-5 h-5'}`} />
               </button>
             </div>
 
             {/* Skip option */}
             <button
               onClick={handleSkip}
-              className="w-full mt-4 py-2.5 text-slate-400 hover:text-slate-200 text-sm transition-colors"
+              className={`w-full ${isMobile ? 'mt-2 py-1.5 text-xs' : 'mt-4 py-2.5 text-sm'} text-slate-400 hover:text-slate-200 transition-colors`}
             >
               דלג על ההדרכה
             </button>

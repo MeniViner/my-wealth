@@ -209,8 +209,8 @@ const OnboardingWizard = ({
     const Icon = screen.icon;
 
     return (
-      <div className={`min-h-[100svh] md:min-h-screen flex flex-col bg-gradient-to-b ${screen.gradient}`}>
-        <div className="flex-1 flex flex-col items-center justify-center px-8 py-12">
+      <div className={`h-[100svh] md:h-screen flex flex-col bg-gradient-to-b ${screen.gradient}`}>
+        <div className="flex-1 flex flex-col items-center justify-center px-8 py-12 overflow-y-auto">
           {/* Icon */}
           <motion.div
             initial={{ scale: 0, rotate: -180 }}
@@ -252,8 +252,8 @@ const OnboardingWizard = ({
           </motion.p>
         </div>
 
-        {/* Progress & Navigation */}
-        <div className="px-8 pb-8 pt-4">
+        {/* Progress & Navigation - Sticky Footer */}
+        <div className="px-8 pt-4 pb-safe flex-shrink-0" style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom))' }}>
           <ProgressDots currentStep={currentStep} totalSteps={totalSteps} />
           
           <motion.button
@@ -284,8 +284,8 @@ const OnboardingWizard = ({
   // Render Currency Selection step
   const renderCurrencyStep = () => {
     return (
-      <div className="min-h-[100svh] md:min-h-screen flex flex-col bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950">
-        <div className="flex-1 flex flex-col items-center justify-center px-8 py-12">
+      <div className="h-[100svh] md:h-screen flex flex-col bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950">
+        <div className="flex-1 flex flex-col items-center justify-center px-8 py-12 overflow-y-auto">
           <motion.div
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
@@ -367,8 +367,8 @@ const OnboardingWizard = ({
           </div>
         </div>
 
-        {/* Navigation */}
-        <div className="px-8 pb-8 pt-4">
+        {/* Navigation - Sticky Footer */}
+        <div className="px-8 pt-4 pb-safe flex-shrink-0" style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom))' }}>
           <ProgressDots currentStep={currentStep} totalSteps={totalSteps} />
           
           <button
@@ -394,12 +394,13 @@ const OnboardingWizard = ({
   // Render First Asset step
   const renderFirstAssetStep = () => {
     return (
-      <div className="min-h-[100svh] md:min-h-screen flex flex-col bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950">
-        <div className="flex-1 flex flex-col px-6 py-8 overflow-y-auto">
+      <div className="h-[100svh] md:h-screen flex flex-col bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950">
+        {/* Header - Fixed */}
+        <div className="flex-shrink-0 px-6 pt-8 pb-4">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-center mb-6"
+            className="text-center"
           >
             <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">
               בואו נוסיף את הנכס הראשון
@@ -408,7 +409,10 @@ const OnboardingWizard = ({
               לא חייבים להיות מדויקים - תמיד אפשר לערוך אחר כך
             </p>
           </motion.div>
+        </div>
 
+        {/* Form Content - Scrollable */}
+        <div className="flex-1 flex flex-col px-6 py-4 overflow-y-auto">
           {/* Asset Type Selection */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -513,8 +517,8 @@ const OnboardingWizard = ({
           </motion.p>
         </div>
 
-        {/* Navigation */}
-        <div className="px-6 pb-8 pt-4 bg-gradient-to-t from-slate-900 to-transparent">
+        {/* Navigation - Sticky Footer */}
+        <div className="px-6 pt-4 pb-safe flex-shrink-0 bg-gradient-to-t from-slate-900 to-transparent" style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom))' }}>
           <ProgressDots currentStep={currentStep} totalSteps={totalSteps} />
           
           <button
@@ -540,10 +544,10 @@ const OnboardingWizard = ({
   // Render Completion step
   const renderCompletionStep = () => {
     return (
-      <div className="min-h-[100svh] md:min-h-screen flex flex-col bg-gradient-to-b from-emerald-900/30 via-slate-900 to-slate-950">
+      <div className="h-[100svh] md:h-screen flex flex-col bg-gradient-to-b from-emerald-900/30 via-slate-900 to-slate-950">
         {showConfetti && <Confetti />}
         
-        <div className="flex-1 flex flex-col items-center justify-center px-8 py-12">
+        <div className="flex-1 flex flex-col items-center justify-center px-8 py-12 overflow-y-auto">
           <motion.div
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
@@ -592,8 +596,8 @@ const OnboardingWizard = ({
           </motion.div>
         </div>
 
-        {/* Navigation */}
-        <div className="px-8 pb-8 pt-4">
+        {/* Navigation - Sticky Footer */}
+        <div className="px-8 pt-4 pb-safe flex-shrink-0" style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom))' }}>
           <ProgressDots currentStep={currentStep} totalSteps={totalSteps} />
           
           <motion.button

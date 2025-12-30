@@ -1,13 +1,32 @@
 import { useState, useEffect } from 'react';
 import { doc, onSnapshot, getDoc, setDoc } from 'firebase/firestore';
 import { db, appId } from '../services/firebase';
-import { DEFAULT_SYSTEM_DATA } from '../constants/defaults';
+import { DEFAULT_SYSTEM_DATA, FIXED_INSTRUMENTS, FIXED_CATEGORIES } from '../constants/defaults';
+
+// Helper to ensure fixed data is always present
+const ensureFixedData = (data) => {
+  // Ensure fixed instruments are present
+  const existingInstrumentNames = (data.instruments || []).map(i => i.name);
+  const fixedInstruments = FIXED_INSTRUMENTS.filter(fi => !existingInstrumentNames.includes(fi.name));
+  const instruments = [...(data.instruments || []), ...fixedInstruments];
+
+  // Ensure fixed categories are present
+  const existingCategoryNames = (data.categories || []).map(c => c.name);
+  const fixedCategories = FIXED_CATEGORIES.filter(fc => !existingCategoryNames.includes(fc.name));
+  const categories = [...(data.categories || []), ...fixedCategories];
+
+  return {
+    ...data,
+    instruments,
+    categories
+  };
+};
 
 // Empty system data for new users (not DEFAULT_SYSTEM_DATA)
 const EMPTY_SYSTEM_DATA = {
   platforms: [],
-  instruments: [],
-  categories: [],
+  instruments: [...FIXED_INSTRUMENTS],
+  categories: [...FIXED_CATEGORIES],
   symbols: []
 };
 
@@ -40,7 +59,8 @@ export const useSystemData = (user) => {
         
         if (docSnap.exists()) {
           // Document exists - use its data (user has already customized or initialized)
-          setSystemDataState(docSnap.data());
+          const data = docSnap.data();
+          setSystemDataState(ensureFixedData(data));
         } else {
           // For new users, start with empty data (not DEFAULT_SYSTEM_DATA)
           // DEFAULT_SYSTEM_DATA should only be used when clicking reset button
@@ -53,7 +73,8 @@ export const useSystemData = (user) => {
         unsubscribe = onSnapshot(configRef, (snapshot) => {
           if (!isMounted) return;
           if (snapshot.exists()) {
-            setSystemDataState(snapshot.data());
+            const data = snapshot.data();
+            setSystemDataState(ensureFixedData(data));
           } else {
             // If document doesn't exist, use empty data
             setSystemDataState(EMPTY_SYSTEM_DATA);
@@ -80,7 +101,8 @@ export const useSystemData = (user) => {
   const setSystemData = async (newData) => {
     if (!user || !db) return;
     const configRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'config');
-    await setDoc(configRef, newData);
+    // Ensure fixed data is always present before saving
+    await setDoc(configRef, ensureFixedData(newData));
   };
 
   return {

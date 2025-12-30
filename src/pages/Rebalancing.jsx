@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { doc, getDoc, setDoc, onSnapshot, collection, addDoc, query, orderBy } from 'firebase/firestore';
-import { Scale, Target, Loader2, Save, Sparkles, AlertCircle, TrendingUp, TrendingDown, Plus, Trash2, X, Tag, Database, Palette, DollarSign, Layers, Copy, Check, Eye, Percent, FileText } from 'lucide-react';
+import { Scale, Target, Loader2, Save, Sparkles, AlertCircle, TrendingUp, TrendingDown, Plus, Trash2, X, Tag, Database, Palette, DollarSign, Layers, Copy, Check, Eye, Percent, FileText, ChevronDown, ChevronUp } from 'lucide-react';
 import { db, appId } from '../services/firebase';
 import { callGeminiAI } from '../services/gemini';
 import MarkdownRenderer from '../components/MarkdownRenderer';
@@ -33,6 +33,7 @@ const Rebalancing = ({ assets, systemData, user, currencyRate, portfolioContext 
   const [firebaseLoaded, setFirebaseLoaded] = useState(false); // Track if Firebase data was loaded
   const [reports, setReports] = useState([]); // List of saved reports
   const [selectedReport, setSelectedReport] = useState(null); // Currently selected report
+  const [showAllReports, setShowAllReports] = useState(false); // Show all reports or just the latest
   const [activeTab, setActiveTab] = useState(() => {
     // Check if URL has #reports or #analysis hash
     if (location.hash === '#reports') return 'reports';
@@ -753,7 +754,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
               : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
           }`}
         >
-          איזון תיק
+          הגדרת יעדים
         </button>
         <button
           onClick={() => setActiveTab('analysis')}
@@ -763,7 +764,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
               : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
           }`}
         >
-          ניתוחים
+          סטטוס יעדים
         </button>
         <button
           onClick={() => setActiveTab('reports')}
@@ -773,7 +774,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
               : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
           }`}
         >
-          דוחות
+           דוחות וניתוחי AI
         </button>
       </div>
 
@@ -936,9 +937,9 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
                     </div>
 
                     {/* AI Distribution Input */}
-                    <div className="p-4 bg-gradient-to-r from-purple-50 via-pink-50 to-purple-50 dark:from-purple-900/30 dark:via-pink-900/30 dark:to-purple-900/30 rounded-2xl border border-purple-200 dark:border-purple-800 shadow-sm">
+                    <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700">
                       <div className="flex items-center gap-2 mb-3">
-                        <Sparkles size={16} className="text-purple-600 dark:text-purple-400" />
+                        <Sparkles size={16} className="text-slate-600 dark:text-slate-400" />
                         <label className="text-sm font-semibold text-slate-800 dark:text-slate-100">
                           חלוקה אוטומטית עם AI
                         </label>
@@ -949,7 +950,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
                           value={groupAIPrompts[group.id] || ''}
                           onChange={(e) => setGroupAIPrompts(prev => ({ ...prev, [group.id]: e.target.value }))}
                           placeholder="לדוגמה: 60% מניות, 30% קריפטו, 10% מזומן"
-                          className="flex-1 border border-purple-300 dark:border-purple-600 rounded-xl px-4 py-2.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-purple-200 focus:border-purple-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100"
+                          className="flex-1 border border-slate-300 dark:border-slate-600 rounded-xl px-4 py-2.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100"
                           onKeyDown={(e) => {
                             if (e.key === 'Enter' && !e.shiftKey) {
                               e.preventDefault();
@@ -960,7 +961,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
                         <button
                           onClick={() => handleAIDistribute(group.id)}
                           disabled={groupAILoading[group.id] || !groupAIPrompts[group.id]?.trim()}
-                          className="bg-purple-600 text-white px-5 py-2.5 rounded-xl hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 text-sm font-medium whitespace-nowrap"
+                          className="bg-slate-700 dark:bg-slate-600 text-white px-5 py-2.5 rounded-xl hover:bg-slate-800 dark:hover:bg-slate-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 text-sm font-medium whitespace-nowrap"
                         >
                           {groupAILoading[group.id] ? (
                             <>
@@ -1113,27 +1114,6 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
 
       {activeTab === 'analysis' && (
         <>
-          {/* Create New AI Analysis Button - Top */}
-          <div className="flex justify-end">
-            <button
-              onClick={handleAnalyze}
-              disabled={analyzing || groups.length === 0 || !assets || assets.length === 0 || hasInvalidGroups}
-              className="bg-slate-700 dark:bg-slate-600 text-white px-6 py-3 rounded-lg hover:bg-slate-800 dark:hover:bg-slate-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-2 text-sm font-medium"
-            >
-              {analyzing ? (
-                <>
-                  <Loader2 size={18} className="animate-spin" />
-                  מנתח...
-                </>
-              ) : (
-                <>
-                  <Sparkles size={18} />
-                  צור ניתוח AI חדש
-                </>
-              )}
-            </button>
-          </div>
-
           {/* Section B: Analysis & Progress - Comparison Table */}
           <section className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
          <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 bg-gradient-to-r from-slate-50 to-white dark:from-slate-800 dark:to-slate-800">
@@ -1436,11 +1416,11 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
               {/* AI Analysis Result - Chat Bubble Style */}
               {lastAnalysis && (
                 <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
-                  <div className="bg-gradient-to-br from-purple-50 via-pink-50 to-purple-50 dark:from-slate-800 dark:via-slate-800 dark:to-slate-800 rounded-2xl p-6 border-2 border-purple-200 dark:border-slate-700 shadow-lg relative">
+                  <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700 relative">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center shadow-md">
-                          <Sparkles className="text-white" size={20} />
+                        <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
+                          <Sparkles className="text-slate-600 dark:text-slate-300" size={20} />
                         </div>
                         <div>
                           <h4 className="text-base font-bold text-slate-900 dark:text-white">המלצות AI</h4>
@@ -1449,13 +1429,13 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
                       </div>
                       <button
                         onClick={handleCopy}
-                        className="p-2 rounded-xl hover:bg-white/50 dark:hover:bg-slate-700/50 transition-all text-slate-600 dark:text-slate-300 hover:text-purple-600 dark:hover:text-purple-400"
+                        className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-all text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100"
                         title="העתק ללוח"
                       >
                         {copied ? <Check size={18} /> : <Copy size={18} />}
                       </button>
                     </div>
-                    <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm">
+                    <div className="bg-slate-50 dark:bg-slate-900 rounded-xl p-6 border border-slate-200 dark:border-slate-700">
                       <MarkdownRenderer content={lastAnalysis} />
                     </div>
                   </div>
@@ -1465,7 +1445,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
               {!lastAnalysis && (
                 <div className="text-center py-12 text-slate-400 dark:text-slate-500 border-t border-slate-200 dark:border-slate-700 mt-6">
                   <Sparkles className="mx-auto mb-3 text-slate-300 dark:text-slate-600" size={48} />
-                  <p className="text-sm font-medium">לחץ על "צור ניתוח AI חדש" כדי לקבל המלצות מותאמות אישית</p>
+                  <p className="text-sm font-medium">אין ניתוח AI להצגה. עבור לטאב "דוחות AI" כדי ליצור דוח חדש</p>
                 </div>
               )}
             </div>
@@ -1499,7 +1479,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
           </div>
 
           {/* Reports List */}
-          <section className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
+          <section className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 bg-gradient-to-r from-slate-50 to-white dark:from-slate-800 dark:to-slate-800">
               <div className="flex items-center gap-3">
                 <FileText className="text-emerald-600 dark:text-emerald-400" size={20} />
@@ -1511,89 +1491,110 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
             </div>
 
             <div className="p-6">
-              {reports.filter(r => r.source === 'rebalancing').length === 0 ? (
-                <div className="text-center py-12 text-slate-400 dark:text-slate-500">
-                  <FileText className="mx-auto mb-3 text-slate-300 dark:text-slate-600" size={48} />
-                  <p className="text-sm font-medium">אין דוחות שמורים</p>
-                  <p className="text-xs mt-2">לחץ על "צור דוח AI חדש" כדי ליצור דוח ראשון</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {reports
-                    .filter(r => r.source === 'rebalancing')
-                    .map((report) => (
-                      <div
-                        key={report.id}
-                        onClick={() => setSelectedReport(report)}
-                        className={`p-5 rounded-xl border-2 cursor-pointer transition-all ${
-                          selectedReport?.id === report.id
-                            ? 'border-emerald-500 dark:border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 shadow-md'
-                            : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:shadow-sm'
-                        }`}
+              {(() => {
+                const rebalancingReports = reports.filter(r => r.source === 'rebalancing');
+                
+                if (rebalancingReports.length === 0) {
+                  return (
+                    <div className="text-center py-12 text-slate-400 dark:text-slate-500">
+                      <FileText className="mx-auto mb-3 text-slate-300 dark:text-slate-600" size={48} />
+                      <p className="text-sm font-medium">אין דוחות שמורים</p>
+                      <p className="text-xs mt-2">לחץ על "צור דוח AI חדש" כדי ליצור דוח ראשון</p>
+                    </div>
+                  );
+                }
+
+                // Sort by date (newest first)
+                const sortedReports = [...rebalancingReports].sort((a, b) => {
+                  const dateA = new Date(a.date || a.displayDate);
+                  const dateB = new Date(b.date || b.displayDate);
+                  return dateB - dateA;
+                });
+
+                const latestReport = sortedReports[0];
+                const otherReports = sortedReports.slice(1);
+                const hasMoreReports = otherReports.length > 0;
+
+                return (
+                  <>
+                    {/* Latest Report */}
+                    <div
+                      onClick={() => setSelectedReport(latestReport)}
+                      className={`px-3 py-2 rounded cursor-pointer transition-colors text-sm mb-2 ${
+                        selectedReport?.id === latestReport.id
+                          ? 'bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white font-medium'
+                          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      {latestReport.displayDate || new Date(latestReport.date).toLocaleDateString('he-IL')}
+                    </div>
+
+                    {/* Show All Reports Button */}
+                    {hasMoreReports && (
+                      <button
+                        onClick={() => setShowAllReports(!showAllReports)}
+                        className="w-full px-3 py-2 rounded text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors flex items-center justify-center gap-2 mb-2"
                       >
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-sm">
-                              <FileText className="text-white" size={18} />
-                            </div>
-                            <div>
-                              <div className="text-sm font-bold text-slate-900 dark:text-white">
-                                {report.displayDate || new Date(report.date).toLocaleDateString('he-IL')}
-                              </div>
-                              {report.tag && (
-                                <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 font-medium">
-                                  {report.tag}
-                                </div>
-                              )}
-                            </div>
+                        {showAllReports ? (
+                          <>
+                            <ChevronUp size={16} />
+                            הסתר דוחות נוספים ({otherReports.length})
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown size={16} />
+                            הצג דוחות נוספים ({otherReports.length})
+                          </>
+                        )}
+                      </button>
+                    )}
+
+                    {/* Other Reports Grid */}
+                    {showAllReports && hasMoreReports && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-1 mt-2">
+                        {otherReports.map((report) => (
+                          <div
+                            key={report.id}
+                            onClick={() => setSelectedReport(report)}
+                            className={`px-3 py-2 rounded cursor-pointer transition-colors text-sm ${
+                              selectedReport?.id === report.id
+                                ? 'bg-slate-100 dark:bg-slate-700 text-slate-900 dark:text-white font-medium'
+                                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+                            }`}
+                          >
+                            {report.displayDate || new Date(report.date).toLocaleDateString('he-IL')}
                           </div>
-                          {selectedReport?.id === report.id && (
-                            <div className="w-6 h-6 rounded-full bg-emerald-600 dark:bg-emerald-500 flex items-center justify-center">
-                              <Check className="text-white" size={14} />
-                            </div>
-                          )}
-                        </div>
+                        ))}
                       </div>
-                    ))}
-                </div>
-              )}
+                    )}
+                  </>
+                );
+              })()}
 
               {/* Selected Report Content */}
               {selectedReport && (
-                <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
-                  <div className="bg-gradient-to-br from-purple-50 via-pink-50 to-purple-50 dark:from-slate-800 dark:via-slate-800 dark:to-slate-800 rounded-2xl p-6 border-2 border-purple-200 dark:border-slate-700 shadow-lg relative">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center shadow-md">
-                          <Sparkles className="text-white" size={20} />
-                        </div>
-                        <div>
-                          <h4 className="text-base font-bold text-slate-900 dark:text-white">
-                            {selectedReport.displayDate || new Date(selectedReport.date).toLocaleDateString('he-IL')}
-                          </h4>
-                          <p className="text-xs text-slate-600 dark:text-slate-400">
-                            {selectedReport.tag || 'דוח ניתוח'}
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          const textToCopy = selectedReport.content || '';
-                          navigator.clipboard.writeText(textToCopy).then(() => {
-                            setCopied(true);
-                            successToast('הועתק ללוח', 1500);
-                            setTimeout(() => setCopied(false), 2000);
-                          });
-                        }}
-                        className="p-2 rounded-xl hover:bg-white/50 dark:hover:bg-slate-700/50 transition-all text-slate-600 dark:text-slate-300 hover:text-purple-600 dark:hover:text-purple-400"
-                        title="העתק ללוח"
-                      >
-                        {copied ? <Check size={18} /> : <Copy size={18} />}
-                      </button>
+                <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-sm font-medium text-slate-900 dark:text-white">
+                      {selectedReport.displayDate || new Date(selectedReport.date).toLocaleDateString('he-IL')}
                     </div>
-                    <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm">
-                      <MarkdownRenderer content={selectedReport.content || ''} />
-                    </div>
+                    <button
+                      onClick={() => {
+                        const textToCopy = selectedReport.content || '';
+                        navigator.clipboard.writeText(textToCopy).then(() => {
+                          setCopied(true);
+                          successToast('הועתק ללוח', 1500);
+                          setTimeout(() => setCopied(false), 2000);
+                        });
+                      }}
+                      className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-600 dark:text-slate-400"
+                      title="העתק ללוח"
+                    >
+                      {copied ? <Check size={16} /> : <Copy size={16} />}
+                    </button>
+                  </div>
+                  <div className="max-h-96 overflow-y-auto">
+                    <MarkdownRenderer content={selectedReport.content || ''} />
                   </div>
                 </div>
               )}
