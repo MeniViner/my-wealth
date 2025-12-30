@@ -763,18 +763,63 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
       <Modal isOpen={!!selectedAsset} onClose={() => setSelectedAsset(null)} title={selectedAsset?.name}>
         {selectedAsset && (
           <div className="space-y-6">
+            {/* Value Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-slate-50 dark:bg-slate-700 p-4 rounded-xl">
-                <div className="text-sm text-slate-500 dark:text-slate-400">שווי בשקלים</div>
+                <div className="text-sm text-slate-500 dark:text-slate-400">שווי נוכחי</div>
                 <div className="text-2xl font-bold text-slate-800 dark:text-white">₪{selectedAsset.value.toLocaleString()}</div>
+                {selectedAsset.hasLivePrice && (
+                  <div className="text-xs text-emerald-500 flex items-center gap-1 mt-1">
+                    <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                    מחיר חי
+                  </div>
+                )}
               </div>
-              <div className="bg-slate-50 dark:bg-slate-700 p-4 rounded-xl">
-                <div className="text-sm text-slate-500 dark:text-slate-400">שווי מקור</div>
-                <div className="text-2xl font-bold text-slate-800 dark:text-white" dir="ltr">
-                  {formatMoney(selectedAsset.originalValue, selectedAsset.currency)}
+              {selectedAsset.profitLoss !== null && selectedAsset.profitLoss !== undefined ? (
+                <div className={`p-4 rounded-xl ${selectedAsset.profitLoss >= 0 ? 'bg-emerald-50 dark:bg-emerald-900/20' : 'bg-red-50 dark:bg-red-900/20'}`}>
+                  <div className="text-sm text-slate-500 dark:text-slate-400">רווח/הפסד</div>
+                  <div className={`text-2xl font-bold ${selectedAsset.profitLoss >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                    {selectedAsset.profitLoss >= 0 ? '+' : ''}₪{Math.round(selectedAsset.profitLoss).toLocaleString()}
+                  </div>
+                  <div className={`text-sm ${selectedAsset.profitLossPercent >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                    {selectedAsset.profitLossPercent >= 0 ? '+' : ''}{selectedAsset.profitLossPercent?.toFixed(2)}%
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="bg-slate-50 dark:bg-slate-700 p-4 rounded-xl">
+                  <div className="text-sm text-slate-500 dark:text-slate-400">שווי מקור</div>
+                  <div className="text-2xl font-bold text-slate-800 dark:text-white" dir="ltr">
+                    {formatMoney(selectedAsset.originalValue || 0, selectedAsset.currency)}
+                  </div>
+                </div>
+              )}
             </div>
+
+            {/* Quantity Info (if available) */}
+            {selectedAsset.assetMode === 'QUANTITY' && selectedAsset.quantity && (
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg text-center">
+                  <div className="text-xs text-blue-600 dark:text-blue-400">כמות</div>
+                  <div className="font-bold text-blue-700 dark:text-blue-300 font-mono">
+                    {selectedAsset.quantity.toLocaleString('en-US', { maximumFractionDigits: 6 })}
+                  </div>
+                </div>
+                <div className="bg-purple-50 dark:bg-purple-900/20 p-3 rounded-lg text-center">
+                  <div className="text-xs text-purple-600 dark:text-purple-400">מחיר רכישה</div>
+                  <div className="font-bold text-purple-700 dark:text-purple-300 font-mono" dir="ltr">
+                    {selectedAsset.currency === 'USD' ? '$' : '₪'}{(selectedAsset.purchasePrice || 0).toLocaleString()}
+                  </div>
+                </div>
+                {selectedAsset.currentPrice && (
+                  <div className="bg-emerald-50 dark:bg-emerald-900/20 p-3 rounded-lg text-center">
+                    <div className="text-xs text-emerald-600 dark:text-emerald-400">מחיר נוכחי</div>
+                    <div className="font-bold text-emerald-700 dark:text-emerald-300 font-mono" dir="ltr">
+                      ${selectedAsset.currentPrice.toLocaleString()}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="space-y-4">
               <div className="flex border-b border-slate-100 dark:border-slate-700 pb-2">
@@ -795,6 +840,25 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                   {selectedAsset.symbol || <span className="text-slate-400 dark:text-slate-500 italic">ללא סמל</span>}
                 </span>
               </div>
+              {selectedAsset.purchaseDate && (
+                <div className="flex border-b border-slate-100 dark:border-slate-700 pb-2">
+                  <span className="w-1/3 text-slate-500 dark:text-slate-400">תאריך רכישה</span>
+                  <span className="font-medium text-slate-800 dark:text-white">
+                    {new Date(selectedAsset.purchaseDate).toLocaleDateString('he-IL')}
+                  </span>
+                </div>
+              )}
+              {selectedAsset.assetType && (
+                <div className="flex border-b border-slate-100 dark:border-slate-700 pb-2">
+                  <span className="w-1/3 text-slate-500 dark:text-slate-400">סוג נכס</span>
+                  <span className="font-medium text-slate-800 dark:text-white">
+                    {selectedAsset.assetType === 'CRYPTO' ? '🪙 קריפטו' : 
+                     selectedAsset.assetType === 'STOCK' ? '📈 מניה' : 
+                     selectedAsset.assetType === 'INDEX' ? '📊 מדד' : 
+                     selectedAsset.assetType === 'ETF' ? '📦 תעודת סל' : '📝 ידני'}
+                  </span>
+                </div>
+              )}
             </div>
 
             <div>
