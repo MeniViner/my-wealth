@@ -1,13 +1,49 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Calendar, Database, Wallet, ArrowRight, Edit2, Mail, TrendingUp, Building2, LayoutGrid } from 'lucide-react';
+import { User, Calendar, Database, Wallet, ArrowRight, Edit2, Mail, TrendingUp, Building2, LayoutGrid, Eye, EyeOff, LogOut } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db, appId } from '../services/firebase';
+import { useAuth } from '../hooks/useAuth';
+import { confirmAlert } from '../utils/alerts';
 
 const Profile = ({ user, assets, totalWealth, systemData }) => {
   const navigate = useNavigate();
+  const { signOut } = useAuth();
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
+  
+  // Load wealth visibility from localStorage
+  const [isWealthVisible, setIsWealthVisible] = useState(() => {
+    const saved = localStorage.getItem('wealthVisibility');
+    return saved !== null ? saved === 'true' : true;
+  });
+  
+  // Save wealth visibility to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem('wealthVisibility', isWealthVisible.toString());
+    // Dispatch custom event to sync with other components
+    window.dispatchEvent(new Event('wealthVisibilityChange'));
+  }, [isWealthVisible]);
+  
+  // Listen for changes from other components
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const saved = localStorage.getItem('wealthVisibility');
+      if (saved !== null) {
+        setIsWealthVisible(saved === 'true');
+      }
+    };
+    
+    // Listen to custom event
+    window.addEventListener('wealthVisibilityChange', handleStorageChange);
+    // Listen to storage event (for cross-tab sync)
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('wealthVisibilityChange', handleStorageChange);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
 
   useEffect(() => {
     const loadUserData = async () => {
@@ -104,6 +140,21 @@ const Profile = ({ user, assets, totalWealth, systemData }) => {
     }
   };
 
+  const handleSignOut = async () => {
+    const confirmed = await confirmAlert(
+      'התנתקות',
+      'האם אתה בטוח שברצונך להתנתק?',
+      'question'
+    );
+    if (confirmed) {
+      try {
+        await signOut();
+      } catch (error) {
+        console.error('Sign out error:', error);
+      }
+    }
+  };
+
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto pb-12">
@@ -120,14 +171,23 @@ const Profile = ({ user, assets, totalWealth, systemData }) => {
   return (
     <div className="max-w-6xl mx-auto pb-12 space-y-6">
       {/* Header */}
-      <header className="flex items-center gap-4 mb-6">
-        <button 
-          onClick={() => navigate(-1)} 
-          className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+      <header className="flex items-center justify-between gap-4 mb-6">
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={() => navigate(-1)} 
+            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+          >
+            <ArrowRight size={20} className="text-slate-600 dark:text-slate-400" />
+          </button>
+          <h2 className="text-2xl font-semibold text-slate-900 dark:text-white tracking-tight">פרופיל אישי</h2>
+        </div>
+        <button
+          onClick={handleSignOut}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-red-600 dark:text-red-400 hover:text-white hover:bg-red-600 dark:hover:bg-red-700 rounded-lg transition-all shadow-sm hover:shadow-md"
         >
-          <ArrowRight size={20} className="text-slate-600 dark:text-slate-400" />
+          <LogOut size={18} className="flex-shrink-0" />
+          <span>התנתק</span>
         </button>
-        <h2 className="text-2xl font-semibold text-slate-900 dark:text-white tracking-tight">פרופיל אישי</h2>
       </header>
 
       {/* Profile Info Card - Clean and Organized */}
@@ -202,10 +262,19 @@ const Profile = ({ user, assets, totalWealth, systemData }) => {
                 <div className="p-2 bg-emerald-600 dark:bg-emerald-500 rounded-lg">
                   <Wallet size={18} className="text-white" />
                 </div>
-                <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">סה"כ הון עצמי</div>
+                <div className="flex items-center gap-2 flex-1">
+                  <div className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">סה"כ הון עצמי</div>
+                  <button
+                    onClick={() => setIsWealthVisible(!isWealthVisible)}
+                    className="text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors p-1 rounded hover:bg-emerald-100 dark:hover:bg-emerald-900/30 w-5 h-5 flex items-center justify-center flex-shrink-0"
+                    title={isWealthVisible ? 'הסתר' : 'הצג'}
+                  >
+                    {isWealthVisible ? <Eye size={14} /> : <EyeOff size={14} />}
+                  </button>
+                </div>
               </div>
               <div className="text-2xl font-bold text-slate-900 dark:text-white">
-                ₪{totalWealth.toLocaleString()}
+                {isWealthVisible ? `₪${totalWealth.toLocaleString()}` : '••••••'}
               </div>
             </div>
             

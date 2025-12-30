@@ -24,7 +24,29 @@ const Layout = ({ children, totalWealth, currencyRate, user }) => {
   // Save wealth visibility to localStorage when it changes
   useEffect(() => {
     localStorage.setItem('wealthVisibility', isWealthVisible.toString());
+    // Dispatch custom event to sync with other components
+    window.dispatchEvent(new Event('wealthVisibilityChange'));
   }, [isWealthVisible]);
+  
+  // Listen for changes from other components
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const saved = localStorage.getItem('wealthVisibility');
+      if (saved !== null) {
+        setIsWealthVisible(saved === 'true');
+      }
+    };
+    
+    // Listen to custom event
+    window.addEventListener('wealthVisibilityChange', handleStorageChange);
+    // Listen to storage event (for cross-tab sync)
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('wealthVisibilityChange', handleStorageChange);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
   
   // Check if current route is AI Advisor (needs full height)
   const isAdvisorPage = location.pathname === '/advisor';
@@ -44,7 +66,7 @@ const Layout = ({ children, totalWealth, currencyRate, user }) => {
     }
   };
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-slate-50 dark:bg-slate-900 font-sans text-right overflow-x-hidden" dir="rtl">
+    <div className="min-h-[100svh] md:min-h-screen flex flex-col md:flex-row bg-slate-50 dark:bg-slate-900 font-sans text-right overflow-x-hidden" dir="rtl">
       {/* Mobile Menu Button */}
       <button
         onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -54,7 +76,7 @@ const Layout = ({ children, totalWealth, currencyRate, user }) => {
         {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
       </button>
 
-      <aside className={`${mobileMenuOpen ? 'translate-x-0' : 'translate-x-full'} md:translate-x-0 fixed md:fixed md:top-0 md:right-0 w-72 md:w-64 bg-gradient-to-b from-slate-900 to-slate-950 dark:from-slate-950 dark:to-black text-white p-5 md:p-6 flex flex-col shadow-2xl z-[60] md:z-20 transition-transform duration-300 md:transition-none h-screen`}>
+      <aside className={`${mobileMenuOpen ? 'translate-x-0' : 'translate-x-full'} md:translate-x-0 fixed md:fixed md:top-0 md:right-0 w-72 md:w-64 bg-gradient-to-b from-slate-900 to-slate-950 dark:from-slate-950 dark:to-black text-white p-5 md:p-6 flex flex-col shadow-2xl z-[60] md:z-20 transition-transform duration-300 md:transition-none h-[100svh] md:h-screen`}>
         {/* Mobile Header - Only on Desktop */}
         <div className="hidden md:flex items-center justify-between mb-6 md:mb-10 ">
           <h1 className="text-xl md:text-2xl font-bold flex items-center gap-2 tracking-tight">
@@ -256,13 +278,7 @@ const Layout = ({ children, totalWealth, currencyRate, user }) => {
             <div className="text-xs text-slate-500 font-sans">1$ = ₪{currencyRate.rate}</div>
           </div>
 
-          {/* Sign Out Button */}
-          <button
-            onClick={handleSignOut}
-            className="w-full flex items-center justify-center gap-3 px-4 py-4 md:py-3 rounded-xl transition-all font-semibold bg-slate-800 dark:bg-slate-700 hover:bg-red-600 dark:hover:bg-red-700 text-slate-300 dark:text-slate-200 hover:text-white text-base md:text-base shadow-lg hover:shadow-xl font-hebrew"
-          >
-            <LogOut size={20} className="flex-shrink-0" /> <span>התנתק</span>
-          </button>
+         
         </div>
       </aside>
 
@@ -274,7 +290,7 @@ const Layout = ({ children, totalWealth, currencyRate, user }) => {
         />
       )}
 
-      <main className={`flex-1 ${isAdvisorPage ? 'p-0' : 'p-4 md:p-8'} bg-slate-50 dark:bg-slate-900 ${isAdvisorPage ? 'h-screen md:h-screen' : 'min-h-screen'} md:mr-64 overflow-hidden`}>
+      <main className={`flex-1 ${isAdvisorPage ? 'p-0' : 'p-4 md:p-8'} bg-slate-50 dark:bg-slate-900 ${isAdvisorPage ? 'h-[100svh] md:h-screen' : 'min-h-[100svh] md:min-h-screen'} md:mr-64 overflow-hidden`}>
         {children}
       </main>
     </div>

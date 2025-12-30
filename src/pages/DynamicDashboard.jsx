@@ -6,7 +6,7 @@ import { useSystemData } from '../hooks/useSystemData';
 import { subscribeToChartConfigs, deleteChartConfig } from '../services/chartService';
 import { aggregateData, getColorForItem } from '../utils/chartUtils';
 import ChartRenderer from '../components/ChartRenderer';
-import { Cloud, Trash2, Edit2, Filter, X, Settings, Eye, EyeOff } from 'lucide-react';
+import { Cloud, Trash2, Edit2, Filter, X, Settings, Eye, EyeOff, PieChart, BarChart, BarChart2, Radar, Gauge, LayoutGrid } from 'lucide-react';
 import { confirmAlert, successAlert, errorAlert } from '../utils/alerts';
 import { Link } from 'react-router-dom';
 import CustomSelect from '../components/CustomSelect';
@@ -19,7 +19,39 @@ const DynamicDashboard = () => {
 
   const [widgets, setWidgets] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [isWealthVisible, setIsWealthVisible] = useState(true);
+  
+  // Load wealth visibility from localStorage
+  const [isWealthVisible, setIsWealthVisible] = useState(() => {
+    const saved = localStorage.getItem('wealthVisibility');
+    return saved !== null ? saved === 'true' : true;
+  });
+  
+  // Save wealth visibility to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem('wealthVisibility', isWealthVisible.toString());
+    // Dispatch custom event to sync with other components
+    window.dispatchEvent(new Event('wealthVisibilityChange'));
+  }, [isWealthVisible]);
+  
+  // Listen for changes from other components
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const saved = localStorage.getItem('wealthVisibility');
+      if (saved !== null) {
+        setIsWealthVisible(saved === 'true');
+      }
+    };
+    
+    // Listen to custom event (for same-tab sync)
+    window.addEventListener('wealthVisibilityChange', handleStorageChange);
+    // Listen to storage event (for cross-tab sync)
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('wealthVisibilityChange', handleStorageChange);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
 
   // Main interactive chart state
   const [mainChartConfig, setMainChartConfig] = useState({
@@ -145,7 +177,7 @@ const DynamicDashboard = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-[100svh] md:min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
           <p className="text-slate-600">טוען דשבורד...</p>
@@ -156,7 +188,7 @@ const DynamicDashboard = () => {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-10">
-      <header className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+      <header className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mr-12 md:mr-0">
         <div className="flex-1">
           <div className="flex flex-col md:flex-row items-start md:items-center gap-3 mb-2">
             <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">דשבורד מותאם אישית</h2>
@@ -168,16 +200,13 @@ const DynamicDashboard = () => {
               <Settings size={16} /> ערוך דשבורדים
             </Link>
           </div>
-          <p className="text-slate-500 dark:text-slate-400 flex items-center gap-2">
-            <Cloud size={14} /> מסונכרן לענן בזמן אמת
-          </p>
         </div>
-        <div className="text-left w-full md:w-auto">
+        <div className="text-left w-full md:w-auto md:relative">
           <div className="flex items-center gap-2 mb-1">
-            <div className="text-sm text-slate-400 dark:text-slate-500">סה"כ הון עצמי</div>
+            <div className="text-sm text-slate-400 dark:text-slate-500 whitespace-nowrap">סה"כ הון עצמי</div>
             <button
               onClick={() => setIsWealthVisible(!isWealthVisible)}
-              className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 w-6 h-6 flex items-center justify-center flex-shrink-0"
+              className="md:absolute md:right-0 md:top-0 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 w-6 h-6 flex items-center justify-center flex-shrink-0"
               title={isWealthVisible ? 'הסתר' : 'הצג'}
             >
               {isWealthVisible ? <Eye size={14} /> : <EyeOff size={14} />}
@@ -195,29 +224,33 @@ const DynamicDashboard = () => {
         <div className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 md:px-6 py-4">
           <div className="flex flex-wrap items-center gap-3">
             {/* Chart Type Selector */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">סוג גרף:</span>
-              <div className="flex gap-1 bg-white dark:bg-slate-800 rounded-lg p-1 border border-slate-200 dark:border-slate-700">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm text-slate-600 dark:text-slate-300 font-medium">סוג גרף:</span>
+              <div className="flex flex-wrap gap-2">
                 {[
-                  { value: 'PieChart', label: 'עוגה' },
-                  { value: 'BarChart', label: 'עמודות' },
-                  { value: 'HorizontalBarChart', label: 'אופקי' },
-                  { value: 'RadarChart', label: 'רדאר' },
-                  { value: 'RadialBar', label: 'רדיאלי' },
-                  { value: 'Treemap', label: 'מפה' }
-                ].map(type => (
-                  <button
-                    key={type.value}
-                    onClick={() => setMainChartConfig(prev => ({ ...prev, chartType: type.value }))}
-                    className={`px-3 py-1.5 text-xs font-medium rounded transition ${
-                      mainChartConfig.chartType === type.value
-                        ? 'bg-slate-800 dark:bg-slate-700 text-white'
-                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-                    }`}
-                  >
-                    {type.label}
-                  </button>
-                ))}
+                  { value: 'PieChart', label: 'עוגה', icon: PieChart },
+                  { value: 'BarChart', label: 'עמודות', icon: BarChart },
+                  { value: 'HorizontalBarChart', label: 'אופקי', icon: BarChart2 },
+                  { value: 'RadarChart', label: 'רדאר', icon: Radar },
+                  { value: 'RadialBar', label: 'רדיאלי', icon: Gauge },
+                  { value: 'Treemap', label: 'מפה', icon: LayoutGrid }
+                ].map(type => {
+                  const IconComponent = type.icon;
+                  return (
+                    <button
+                      key={type.value}
+                      onClick={() => setMainChartConfig(prev => ({ ...prev, chartType: type.value }))}
+                      className={`flex items-center gap-2 px-3.5 py-2 text-sm font-medium rounded-xl transition-all duration-200 ${
+                        mainChartConfig.chartType === type.value
+                          ? 'bg-emerald-600 dark:bg-emerald-500 text-white shadow-md shadow-emerald-500/30 scale-105'
+                          : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600'
+                      }`}
+                    >
+                      <IconComponent size={16} className="flex-shrink-0" />
+                      <span>{type.label}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 

@@ -1,9 +1,9 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, 
   AreaChart, Area, CartesianGrid, LineChart, Line
 } from 'recharts';
-import { Cloud } from 'lucide-react';
+import { Cloud, TestTube, Eye, EyeOff } from 'lucide-react';
 import CustomTooltip from '../components/CustomTooltip';
 import TreemapChart from '../components/TreemapChart';
 import { useDemoData } from '../contexts/DemoDataContext';
@@ -152,13 +152,49 @@ const NoDataMessage = () => (
 );
 
 const Dashboard = ({ assets, systemData, currencyRate }) => {
-  const { demoAssets, isActive: isDemoActive } = useDemoData();
+  const { demoAssets, isActive: isDemoActive, demoSystemData } = useDemoData();
   
   // Use demo assets if tour is active, otherwise use real assets
   const displayAssets = isDemoActive && demoAssets.length > 0 ? demoAssets : assets;
   
+  // Use demo systemData if available, otherwise use real systemData
+  const displaySystemData = isDemoActive && demoSystemData ? demoSystemData : systemData;
+  
   // Check if dark mode is active
   const isDarkMode = typeof window !== 'undefined' && document.documentElement.classList.contains('dark');
+  
+  // Load wealth visibility from localStorage
+  const [isWealthVisible, setIsWealthVisible] = useState(() => {
+    const saved = localStorage.getItem('wealthVisibility');
+    return saved !== null ? saved === 'true' : true;
+  });
+  
+  // Save wealth visibility to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem('wealthVisibility', isWealthVisible.toString());
+    // Dispatch custom event to sync with other components
+    window.dispatchEvent(new Event('wealthVisibilityChange'));
+  }, [isWealthVisible]);
+  
+  // Listen for changes from other components
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const saved = localStorage.getItem('wealthVisibility');
+      if (saved !== null) {
+        setIsWealthVisible(saved === 'true');
+      }
+    };
+    
+    // Listen to custom event (for same-tab sync)
+    window.addEventListener('wealthVisibilityChange', handleStorageChange);
+    // Listen to storage event (for cross-tab sync)
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('wealthVisibilityChange', handleStorageChange);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
   
   // Calculate total wealth
   const totalWealth = useMemo(() => {
@@ -229,21 +265,21 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
     return dataByPlatform.map(p => ({
       name: p.name,
       size: p.value,
-      fill: systemData.platforms.find(sysP => sysP.name === p.name)?.color || '#94a3b8'
+      fill: displaySystemData.platforms.find(sysP => sysP.name === p.name)?.color || '#94a3b8'
     }));
-  }, [dataByPlatform, systemData]);
+  }, [dataByPlatform, displaySystemData]);
 
   // Prepare treemap data for assets (by asset name)
   const treemapDataByAssets = useMemo(() => {
     return displayAssets.map(asset => ({
       name: asset.name,
       size: asset.value,
-      fill: systemData.categories.find(c => c.name === asset.category)?.color || '#3b82f6',
+      fill: displaySystemData.categories.find(c => c.name === asset.category)?.color || '#3b82f6',
       category: asset.category,
       platform: asset.platform,
       instrument: asset.instrument
     }));
-  }, [displayAssets, systemData]);
+  }, [displayAssets, displaySystemData]);
 
   // Prepare pie chart data with percentages
   const pieDataByCategory = useMemo(() => {
@@ -263,22 +299,43 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
     }));
   }, [dataByCategory, totalWealth]);
 
-  // Check if we have data
-  const hasData = assets && assets.length > 0;
+  // Check if we have data (use displayAssets which includes demo data)
+  const hasData = displayAssets && displayAssets.length > 0;
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-10" dir="rtl">
-      <header className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+      {/* Demo Mode Banner */}
+      {isDemoActive && (
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3 rounded-xl shadow-lg border-2 border-blue-400/50">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
+              <TestTube className="w-5 h-5" />
+            </div>
+            <div className="flex-1">
+              <div className="font-bold text-sm">מצב דמו פעיל</div>
+              <div className="text-xs text-blue-100">נתוני דמו מוצגים - הנתונים מקומיים בלבד</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <header className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mr-12 md:mr-0">
         <div>
           <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">דשבורד ראשי</h2>
-          <p className="text-slate-500 dark:text-slate-400 flex items-center gap-2 mt-1">
-            <Cloud size={14} /> מסונכרן לענן בזמן אמת
-          </p>
         </div>
-        <div className="text-left w-full md:w-auto" data-coachmark="wealth-card">
-          <div className="text-sm text-slate-400 dark:text-slate-500">שווי נקי</div>
+        <div className="text-left w-full md:w-auto md:relative" data-coachmark="wealth-card">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="text-sm text-slate-400 dark:text-slate-500 whitespace-nowrap">שווי נקי</div>
+            <button
+              onClick={() => setIsWealthVisible(!isWealthVisible)}
+              className="md:absolute md:right-0 md:top-0 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 w-6 h-6 flex items-center justify-center flex-shrink-0"
+              title={isWealthVisible ? 'הסתר' : 'הצג'}
+            >
+              {isWealthVisible ? <Eye size={14} /> : <EyeOff size={14} />}
+            </button>
+          </div>
           <div className="text-2xl md:text-3xl font-black text-slate-800 dark:text-white font-mono">
-            {formatCurrency(totalWealth)}
+            {isWealthVisible ? formatCurrency(totalWealth) : '••••••'}
           </div>
         </div>
       </header>
@@ -332,7 +389,7 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                       {pieDataByCategory.map((entry, index) => (
                         <Cell 
                           key={`cell-${index}`} 
-                          fill={systemData.categories.find(c => c.name === entry.name)?.color || '#3b82f6'} 
+                          fill={displaySystemData.categories.find(c => c.name === entry.name)?.color || '#3b82f6'} 
                         />
                       ))}
                     </Pie>
@@ -357,7 +414,7 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
               <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">איזון תיק לפי קטגוריות</h3>
               <div className="h-72 md:h-80 min-h-[280px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={areaDataByCategory} margin={{ top: 10, right: 10, left: 5, bottom: 5 }}>
+                  <AreaChart data={areaDataByCategory} margin={{ top: 10, right: 50, left: -50, bottom: -30 }}>
                     <defs>
                       <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
@@ -422,7 +479,7 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                     />
                     <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={50}>
                       {dataBySymbol.map((entry, index) => {
-                        const symbol = systemData.symbols?.find(s => {
+                        const symbol = displaySystemData.symbols?.find(s => {
                           const symbolName = typeof s === 'string' ? s : s.name;
                           return symbolName === entry.name;
                         });
@@ -481,7 +538,7 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                       {dataByInstrument.map((entry, index) => (
                         <Cell 
                           key={`cell-${index}`} 
-                          fill={systemData.instruments.find(i => i.name === entry.name)?.color || '#3b82f6'} 
+                          fill={displaySystemData.instruments.find(i => i.name === entry.name)?.color || '#3b82f6'} 
                         />
                       ))}
                     </Bar>
@@ -573,7 +630,7 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
             <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">פיזור לפי פלטפורמות</h3>
             <div className="h-64 md:h-80 min-h-[280px]">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dataByPlatform} layout="vertical" margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                <BarChart data={dataByPlatform} layout="vertical" margin={{ top: 5, right: -85, left: 5, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis 
                     type="number" 
@@ -602,7 +659,7 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                     {dataByPlatform.map((entry, index) => (
                       <Cell 
                         key={`cell-${index}`} 
-                        fill={systemData.platforms.find(p => p.name === entry.name)?.color || '#3b82f6'} 
+                        fill={displaySystemData.platforms.find(p => p.name === entry.name)?.color || '#3b82f6'} 
                       />
                     ))}
                   </Bar>
@@ -631,7 +688,7 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                     />
                     <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={40}>
                       {topAssets.map((entry, index) => {
-                        const categoryColor = systemData.categories.find(c => c.name === entry.category)?.color || '#3b82f6';
+                        const categoryColor = displaySystemData.categories.find(c => c.name === entry.category)?.color || '#3b82f6';
                         return (
                           <Cell key={`cell-${index}`} fill={categoryColor} />
                         );

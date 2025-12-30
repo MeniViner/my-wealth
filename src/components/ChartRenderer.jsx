@@ -1,7 +1,8 @@
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar,
-  RadialBarChart, RadialBar, Treemap
+  RadialBarChart, RadialBar, Treemap, AreaChart, Area, LineChart, Line,
+  ComposedChart, CartesianGrid
 } from 'recharts';
 import CustomTooltip from './CustomTooltip';
 import CustomTreemapContent from './CustomTreemapContent';
@@ -245,7 +246,8 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
   const getMinHeight = (chartType) => {
     switch (chartType) {
       case 'BarChart':
-        return '320px'; // Reduced - margins are now smaller
+      case 'StackedBarChart':
+        return '320px';
       case 'HorizontalBarChart':
         return '280px';
       case 'PieChart':
@@ -253,10 +255,17 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
         return '280px';
       case 'Treemap':
         return '280px';
+      case 'AreaChart':
+      case 'LineChart':
+      case 'ComposedChart':
+        return '300px';
       default:
         return '250px';
     }
   };
+
+  // Check if grid should be shown (default true if not specified)
+  const showGrid = config.showGrid !== false;
 
   // Common responsive container wrapper with dynamic min-height
   const ResponsiveWrapper = ({ children, chartType }) => (
@@ -315,6 +324,7 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
             data={chartData} 
             margin={{ top: 10, right: 10, left: 5, bottom: 5 }}
           >
+            {showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
             <YAxis 
               {...rtlAxisProps}
               tickFormatter={formatAxisTick}
@@ -351,6 +361,50 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
         </ResponsiveWrapper>
       );
 
+    case 'StackedBarChart':
+      return (
+        <ResponsiveWrapper chartType="StackedBarChart">
+          <BarChart 
+            data={chartData} 
+            margin={{ top: 10, right: 10, left: 5, bottom: 5 }}
+          >
+            {showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+            <YAxis 
+              {...rtlAxisProps}
+              tickFormatter={formatAxisTick}
+              width={45}
+            />
+            <Tooltip 
+              content={<CustomTooltip totalValue={totalValue} showPercentage />} 
+              cursor={{ fill: 'rgba(0, 0, 0, 0.05)' }}
+              wrapperStyle={{ zIndex: 1000 }}
+            />
+            <Bar dataKey="value" stackId="a" radius={[4, 4, 0, 0]} maxBarSize={60}>
+              {chartData.map((entry, index) => (
+                <Cell 
+                  key={`cell-${index}`} 
+                  fill={getColorForItem(entry.name, config.dataKey, systemData)} 
+                />
+              ))}
+            </Bar>
+            <XAxis 
+              dataKey="name" 
+              {...rtlAxisProps}
+              tick={{
+                ...rtlAxisProps.tick,
+                style: { zIndex: 1000, pointerEvents: 'none' }
+              }}
+              tickFormatter={formatAxisTickTruncated}
+              interval={0}
+              angle={-35}
+              textAnchor="end"
+              height={60}
+              dy={5}
+            />
+          </BarChart>
+        </ResponsiveWrapper>
+      );
+
     case 'HorizontalBarChart':
       return (
         <ResponsiveWrapper chartType="HorizontalBarChart">
@@ -359,6 +413,7 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
             layout="vertical" 
             margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
           >
+            {showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
             <XAxis 
               type="number" 
               {...rtlAxisProps}
@@ -479,6 +534,131 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
               wrapperStyle={{ zIndex: 1000 }}
             />
           </RadialBarChart>
+        </ResponsiveWrapper>
+      );
+
+    case 'AreaChart':
+      return (
+        <ResponsiveWrapper chartType="AreaChart">
+          <AreaChart 
+            data={chartData} 
+            margin={{ top: 10, right: 50, left: -50, bottom: -30 }}
+          >
+            <defs>
+              <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1}/>
+              </linearGradient>
+            </defs>
+            {showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+            <XAxis 
+              dataKey="name" 
+              {...rtlAxisProps}
+              tickFormatter={formatAxisTickTruncated}
+              angle={-35}
+              textAnchor="end"
+              height={55}
+              dy={5}
+            />
+            <YAxis 
+              {...rtlAxisProps}
+              tickFormatter={formatAxisTick}
+            />
+            <Tooltip 
+              content={<CustomTooltip totalValue={totalValue} showPercentage />}
+              wrapperStyle={{ zIndex: 1000 }}
+            />
+            <Area 
+              type="monotone" 
+              dataKey="value" 
+              stroke="#3b82f6" 
+              strokeWidth={2}
+              fillOpacity={1}
+              fill="url(#areaGradient)"
+            />
+          </AreaChart>
+        </ResponsiveWrapper>
+      );
+
+    case 'LineChart':
+      return (
+        <ResponsiveWrapper chartType="LineChart">
+          <LineChart 
+            data={chartData} 
+            margin={{ top: 10, right: 15, left: 5, bottom: 5 }}
+          >
+            {showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+            <XAxis 
+              dataKey="name" 
+              {...rtlAxisProps}
+              tickFormatter={formatAxisTickTruncated}
+              angle={-35}
+              textAnchor="end"
+              height={55}
+              dy={5}
+            />
+            <YAxis 
+              {...rtlAxisProps}
+              tickFormatter={formatAxisTick}
+            />
+            <Tooltip 
+              content={<CustomTooltip totalValue={totalValue} showPercentage />}
+              wrapperStyle={{ zIndex: 1000 }}
+            />
+            <Line 
+              type="monotone" 
+              dataKey="value" 
+              stroke="#3b82f6" 
+              strokeWidth={3}
+              dot={{ fill: '#3b82f6', r: 5, strokeWidth: 2, stroke: '#fff' }}
+              activeDot={{ r: 7, fill: '#3b82f6', stroke: '#fff', strokeWidth: 2 }}
+            />
+          </LineChart>
+        </ResponsiveWrapper>
+      );
+
+    case 'ComposedChart':
+      return (
+        <ResponsiveWrapper chartType="ComposedChart">
+          <ComposedChart 
+            data={chartData} 
+            margin={{ top: 10, right: 10, left: 5, bottom: 5 }}
+          >
+            {showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
+            <XAxis 
+              dataKey="name" 
+              {...rtlAxisProps}
+              tickFormatter={formatAxisTickTruncated}
+              angle={-35}
+              textAnchor="end"
+              height={60}
+              dy={5}
+            />
+            <YAxis 
+              {...rtlAxisProps}
+              tickFormatter={formatAxisTick}
+              width={45}
+            />
+            <Tooltip 
+              content={<CustomTooltip totalValue={totalValue} showPercentage />}
+              wrapperStyle={{ zIndex: 1000 }}
+            />
+            <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={60}>
+              {chartData.map((entry, index) => (
+                <Cell 
+                  key={`cell-${index}`} 
+                  fill={getColorForItem(entry.name, config.dataKey, systemData)} 
+                />
+              ))}
+            </Bar>
+            <Line 
+              type="monotone" 
+              dataKey="value" 
+              stroke="#ef4444" 
+              strokeWidth={2}
+              dot={false}
+            />
+          </ComposedChart>
         </ResponsiveWrapper>
       );
 

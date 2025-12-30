@@ -362,8 +362,17 @@ const ChatWindow = ({
                             יועץ השקעות
                         </h2>
                         <div className="flex items-center gap-1.5 mt-0.5">
-                            <Circle size={6} className="text-emerald-500 fill-emerald-500" />
-                            <span className="text-xs text-slate-500 dark:text-slate-400">תיק אישי מצורף</span>
+                            <Circle 
+                                size={6} 
+                                className={
+                                    aiConfig?.contextEnabled !== false
+                                        ? "text-emerald-500 fill-emerald-500"
+                                        : "text-slate-400 fill-slate-400"
+                                } 
+                            />
+                            <span className="text-xs text-slate-500 dark:text-slate-400">
+                                {aiConfig?.contextEnabled !== false ? 'תיק אישי מצורף' : 'תיק אינו מצורף'}
+                            </span>
                         </div>
                     </div>
                 </div>
@@ -504,7 +513,7 @@ const ChatWindow = ({
                     </div>
                 ) : (
                     /* Empty State - Modern with Twinkling Stars */
-                    <div className="flex-1 flex flex-col items-center justify-center mt-[40dvh]  px-4 relative">
+                    <div className="flex-1 flex flex-col items-center justify-center mt-[40svh] md:mt-[40dvh] px-4 relative">
          
 
                         <div className="text-center max-w-lg relative z-10">

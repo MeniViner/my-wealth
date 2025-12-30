@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, DollarSign, Moon, Sun, Palette, Rocket, GraduationCap } from 'lucide-react';
+import { Settings as SettingsIcon, DollarSign, Moon, Sun, Palette, Rocket, GraduationCap, RefreshCw } from 'lucide-react';
 import { confirmAlert, successToast } from '../utils/alerts';
 import { useDarkMode } from '../hooks/useDarkMode';
 
@@ -70,7 +70,7 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-12">
       {/* Header Section */}
-      <header className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-700">
+      <header className="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-700 mr-12 md:mr-0">
         <div className="flex items-center gap-3">
           <SettingsIcon className="text-emerald-600 dark:text-emerald-400" size={24} />
           <div>

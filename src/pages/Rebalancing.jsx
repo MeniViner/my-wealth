@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { doc, getDoc, setDoc, onSnapshot, collection, addDoc } from 'firebase/firestore';
-import { Scale, Target, Loader2, Save, Sparkles, AlertCircle, TrendingUp, TrendingDown, Plus, Trash2, X, Tag, Database, Palette, DollarSign, Layers, Copy, Check, Eye, Percent } from 'lucide-react';
+import { doc, getDoc, setDoc, onSnapshot, collection, addDoc, query, orderBy } from 'firebase/firestore';
+import { Scale, Target, Loader2, Save, Sparkles, AlertCircle, TrendingUp, TrendingDown, Plus, Trash2, X, Tag, Database, Palette, DollarSign, Layers, Copy, Check, Eye, Percent, FileText } from 'lucide-react';
 import { db, appId } from '../services/firebase';
 import { callGeminiAI } from '../services/gemini';
 import MarkdownRenderer from '../components/MarkdownRenderer';
@@ -31,18 +31,23 @@ const Rebalancing = ({ assets, systemData, user, currencyRate, portfolioContext 
   const [copied, setCopied] = useState(false);
   const [showAmounts, setShowAmounts] = useState(true); // החלף בין הצגת סכומים (₪) או אחוזים (%)
   const [firebaseLoaded, setFirebaseLoaded] = useState(false); // Track if Firebase data was loaded
+  const [reports, setReports] = useState([]); // List of saved reports
+  const [selectedReport, setSelectedReport] = useState(null); // Currently selected report
+  const [activeTab, setActiveTab] = useState(() => {
+    // Check if URL has #reports or #analysis hash
+    if (location.hash === '#reports') return 'reports';
+    if (location.hash === '#analysis') return 'analysis';
+    return 'rebalancing';
+  });
   
   // Check URL hash for tab navigation
   useEffect(() => {
     if (location.hash === '#reports') {
       setActiveTab('reports');
+    } else if (location.hash === '#analysis') {
+      setActiveTab('analysis');
     }
   }, [location.hash]);
-  
-  const [activeTab, setActiveTab] = useState(() => {
-    // Check if URL has #reports hash
-    return location.hash === '#reports' ? 'reports' : 'rebalancing';
-  });
 
   // Load rebalancing settings from Firebase
   useEffect(() => {
@@ -90,6 +95,34 @@ const Rebalancing = ({ assets, systemData, user, currencyRate, portfolioContext 
     });
 
     return () => unsubscribe();
+  }, [user]);
+
+  // Load reports from Firebase
+  useEffect(() => {
+    if (!user || !db) return;
+
+    const reportsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'reports');
+    const q = query(reportsRef, orderBy('date', 'desc'));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const reportsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setReports(reportsData);
+      
+      // Filter reports that are from rebalancing source
+      const rebalancingReports = reportsData.filter(r => r.source === 'rebalancing');
+      // Only set default selected report if none is selected and we have reports
+      if (rebalancingReports.length > 0 && !selectedReport) {
+        setSelectedReport(rebalancingReports[0]);
+      }
+    }, (error) => {
+      console.error('Error loading reports:', error);
+    });
+
+    return () => unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   // Initialize default groups (category and symbol)
@@ -454,10 +487,13 @@ ${data.assetsSummary}
         };
         
         try {
-          await addDoc(
+          const reportRef = await addDoc(
             collection(db, 'artifacts', appId, 'users', user.uid, 'reports'),
             newReport
           );
+          // Set the new report as selected and switch to reports tab
+          setSelectedReport({ id: reportRef.id, ...newReport });
+          setActiveTab('reports');
         } catch (reportError) {
           console.error('Error saving to reports:', reportError);
         }
@@ -686,7 +722,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
   const hasInvalidGroups = allGroupTotals.some(g => !g.isValid);
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6 pb-24 md:pb-12" dir="rtl">
+    <div className="max-w-7xl mx-auto space-y-6 pb-8 md:pb-12" dir="rtl">
       {/* Header */}
       <header className="flex flex-col mr-12 md:mr-0 md:flex-row md:items-center md:justify-between gap-4 pb-6 border-b border-slate-200 dark:border-slate-700">
         <div className="flex items-center gap-3">
@@ -720,6 +756,16 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
           איזון תיק
         </button>
         <button
+          onClick={() => setActiveTab('analysis')}
+          className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 ${
+            activeTab === 'analysis'
+              ? 'border-emerald-600 dark:border-emerald-400 text-emerald-600 dark:text-emerald-400'
+              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+          }`}
+        >
+          ניתוחים
+        </button>
+        <button
           onClick={() => setActiveTab('reports')}
           className={`px-6 py-3 text-sm font-medium transition-colors border-b-2 ${
             activeTab === 'reports'
@@ -727,7 +773,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
               : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
           }`}
         >
-          דוחות וניתוחים
+          דוחות
         </button>
       </div>
 
@@ -1065,9 +1111,9 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
         </>
       )}
 
-      {activeTab === 'reports' && (
+      {activeTab === 'analysis' && (
         <>
-          {/* Create New AI Report Button - Top */}
+          {/* Create New AI Analysis Button - Top */}
           <div className="flex justify-end">
             <button
               onClick={handleAnalyze}
@@ -1082,7 +1128,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
               ) : (
                 <>
                   <Sparkles size={18} />
-                  צור דוח AI חדש
+                  צור ניתוח AI חדש
                 </>
               )}
             </button>
@@ -1419,13 +1465,140 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
               {!lastAnalysis && (
                 <div className="text-center py-12 text-slate-400 dark:text-slate-500 border-t border-slate-200 dark:border-slate-700 mt-6">
                   <Sparkles className="mx-auto mb-3 text-slate-300 dark:text-slate-600" size={48} />
-                  <p className="text-sm font-medium">לחץ על "צור דוח AI חדש" כדי לקבל המלצות מותאמות אישית</p>
+                  <p className="text-sm font-medium">לחץ על "צור ניתוח AI חדש" כדי לקבל המלצות מותאמות אישית</p>
                 </div>
               )}
             </div>
           )}
         </div>
       </section>
+        </>
+      )}
+
+      {activeTab === 'reports' && (
+        <>
+          {/* Create New AI Report Button - Top */}
+          <div className="flex justify-end mb-6">
+            <button
+              onClick={handleAnalyze}
+              disabled={analyzing || groups.length === 0 || !assets || assets.length === 0 || hasInvalidGroups}
+              className="bg-slate-700 dark:bg-slate-600 text-white px-6 py-3 rounded-lg hover:bg-slate-800 dark:hover:bg-slate-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center gap-2 text-sm font-medium"
+            >
+              {analyzing ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  מנתח...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={18} />
+                  צור דוח AI חדש
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Reports List */}
+          <section className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 bg-gradient-to-r from-slate-50 to-white dark:from-slate-800 dark:to-slate-800">
+              <div className="flex items-center gap-3">
+                <FileText className="text-emerald-600 dark:text-emerald-400" size={20} />
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white">דוחות שמורים</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">דוחות ניתוח איזון תיק</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6">
+              {reports.filter(r => r.source === 'rebalancing').length === 0 ? (
+                <div className="text-center py-12 text-slate-400 dark:text-slate-500">
+                  <FileText className="mx-auto mb-3 text-slate-300 dark:text-slate-600" size={48} />
+                  <p className="text-sm font-medium">אין דוחות שמורים</p>
+                  <p className="text-xs mt-2">לחץ על "צור דוח AI חדש" כדי ליצור דוח ראשון</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {reports
+                    .filter(r => r.source === 'rebalancing')
+                    .map((report) => (
+                      <div
+                        key={report.id}
+                        onClick={() => setSelectedReport(report)}
+                        className={`p-5 rounded-xl border-2 cursor-pointer transition-all ${
+                          selectedReport?.id === report.id
+                            ? 'border-emerald-500 dark:border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 shadow-md'
+                            : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:shadow-sm'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center shadow-sm">
+                              <FileText className="text-white" size={18} />
+                            </div>
+                            <div>
+                              <div className="text-sm font-bold text-slate-900 dark:text-white">
+                                {report.displayDate || new Date(report.date).toLocaleDateString('he-IL')}
+                              </div>
+                              {report.tag && (
+                                <div className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 font-medium">
+                                  {report.tag}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          {selectedReport?.id === report.id && (
+                            <div className="w-6 h-6 rounded-full bg-emerald-600 dark:bg-emerald-500 flex items-center justify-center">
+                              <Check className="text-white" size={14} />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+
+              {/* Selected Report Content */}
+              {selectedReport && (
+                <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
+                  <div className="bg-gradient-to-br from-purple-50 via-pink-50 to-purple-50 dark:from-slate-800 dark:via-slate-800 dark:to-slate-800 rounded-2xl p-6 border-2 border-purple-200 dark:border-slate-700 shadow-lg relative">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center shadow-md">
+                          <Sparkles className="text-white" size={20} />
+                        </div>
+                        <div>
+                          <h4 className="text-base font-bold text-slate-900 dark:text-white">
+                            {selectedReport.displayDate || new Date(selectedReport.date).toLocaleDateString('he-IL')}
+                          </h4>
+                          <p className="text-xs text-slate-600 dark:text-slate-400">
+                            {selectedReport.tag || 'דוח ניתוח'}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const textToCopy = selectedReport.content || '';
+                          navigator.clipboard.writeText(textToCopy).then(() => {
+                            setCopied(true);
+                            successToast('הועתק ללוח', 1500);
+                            setTimeout(() => setCopied(false), 2000);
+                          });
+                        }}
+                        className="p-2 rounded-xl hover:bg-white/50 dark:hover:bg-slate-700/50 transition-all text-slate-600 dark:text-slate-300 hover:text-purple-600 dark:hover:text-purple-400"
+                        title="העתק ללוח"
+                      >
+                        {copied ? <Check size={18} /> : <Copy size={18} />}
+                      </button>
+                    </div>
+                    <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700 shadow-sm">
+                      <MarkdownRenderer content={selectedReport.content || ''} />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
         </>
       )}
 

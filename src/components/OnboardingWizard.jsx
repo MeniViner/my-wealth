@@ -38,7 +38,7 @@ const Confetti = () => {
           }}
           initial={{ y: -20, opacity: 1, rotate: 0 }}
           animate={{ 
-            y: '100vh', 
+            y: '100svh', 
             opacity: 0, 
             rotate: 360 * (Math.random() > 0.5 ? 1 : -1)
           }}
@@ -75,10 +75,10 @@ const ProgressDots = ({ currentStep, totalSteps }) => {
   );
 };
 
-// Slide animation variants
+// Slide animation variants (RTL - Hebrew)
 const slideVariants = {
   enter: (direction) => ({
-    x: direction > 0 ? '100%' : '-100%',
+    x: direction > 0 ? '-100%' : '100%',
     opacity: 0,
   }),
   center: {
@@ -86,7 +86,7 @@ const slideVariants = {
     opacity: 1,
   },
   exit: (direction) => ({
-    x: direction < 0 ? '100%' : '-100%',
+    x: direction < 0 ? '-100%' : '100%',
     opacity: 0,
   }),
 };
@@ -190,7 +190,7 @@ const OnboardingWizard = ({
     // Wait for animation
     setTimeout(() => {
       onComplete();
-    }, 2500);
+    }, 1000);
   };
 
   // Auto-set asset name based on type
@@ -209,7 +209,7 @@ const OnboardingWizard = ({
     const Icon = screen.icon;
 
     return (
-      <div className={`min-h-screen flex flex-col bg-gradient-to-b ${screen.gradient}`}>
+      <div className={`min-h-[100svh] md:min-h-screen flex flex-col bg-gradient-to-b ${screen.gradient}`}>
         <div className="flex-1 flex flex-col items-center justify-center px-8 py-12">
           {/* Icon */}
           <motion.div
@@ -284,7 +284,7 @@ const OnboardingWizard = ({
   // Render Currency Selection step
   const renderCurrencyStep = () => {
     return (
-      <div className="min-h-screen flex flex-col bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950">
+      <div className="min-h-[100svh] md:min-h-screen flex flex-col bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950">
         <div className="flex-1 flex flex-col items-center justify-center px-8 py-12">
           <motion.div
             initial={{ scale: 0 }}
@@ -394,7 +394,7 @@ const OnboardingWizard = ({
   // Render First Asset step
   const renderFirstAssetStep = () => {
     return (
-      <div className="min-h-screen flex flex-col bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950">
+      <div className="min-h-[100svh] md:min-h-screen flex flex-col bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950">
         <div className="flex-1 flex flex-col px-6 py-8 overflow-y-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -417,7 +417,7 @@ const OnboardingWizard = ({
             className="mb-6"
           >
             <label className="text-sm font-medium text-slate-300 mb-3 block">סוג הנכס</label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-4 gap-3">
               {AssetTypeCards.map((type, index) => {
                 const Icon = type.icon;
                 const isSelected = selectedAssetType === type.id;
@@ -540,7 +540,7 @@ const OnboardingWizard = ({
   // Render Completion step
   const renderCompletionStep = () => {
     return (
-      <div className="min-h-screen flex flex-col bg-gradient-to-b from-emerald-900/30 via-slate-900 to-slate-950">
+      <div className="min-h-[100svh] md:min-h-screen flex flex-col bg-gradient-to-b from-emerald-900/30 via-slate-900 to-slate-950">
         {showConfetti && <Confetti />}
         
         <div className="flex-1 flex flex-col items-center justify-center px-8 py-12">
@@ -608,7 +608,7 @@ const OnboardingWizard = ({
               <>
                 <motion.div
                   animate={{ rotate: 360 }}
-                  transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}
+                  transition={{ repeat: Infinity, duration: 0.8, ease: 'linear' }}
                   className="w-5 h-5 border-2 border-white border-t-transparent rounded-full"
                 />
                 מכין את הדשבורד...

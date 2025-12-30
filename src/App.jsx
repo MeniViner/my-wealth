@@ -7,6 +7,7 @@ import { useSystemData } from './hooks/useSystemData';
 import { useCurrency } from './hooks/useCurrency';
 import { useAIConfig } from './hooks/useAIConfig';
 import { useOnboarding } from './hooks/useOnboarding';
+import { useDemoData } from './contexts/DemoDataContext';
 import { db, appId } from './services/firebase';
 import { generatePortfolioContext } from './utils/aiContext';
 import Layout from './components/Layout';
@@ -31,7 +32,7 @@ function App() {
   const { user, loading: authLoading } = useAuth();
   const { currencyRate, refreshCurrencyRate } = useCurrency(user);
   const { systemData, setSystemData } = useSystemData(user);
-  const { assets, addAsset, updateAsset, deleteAsset, initializeAssets } = useAssets(user, currencyRate.rate);
+  const { assets, addAsset, updateAsset, deleteAsset, initializeAssets, refreshPrices, pricesLoading, lastPriceUpdate } = useAssets(user, currencyRate.rate);
   const { aiConfig } = useAIConfig(user);
   const { 
     hasCompletedOnboarding, 
@@ -42,6 +43,8 @@ function App() {
     resetOnboarding, // For testing - can be called from console
     startCoachmarks
   } = useOnboarding(user);
+  
+  // Get demo data context (must be inside DemoDataProvider, so we'll move this)
 
   // Expose reset function for testing (can call window.__resetOnboarding() in console)
   useEffect(() => {
@@ -71,6 +74,7 @@ function App() {
   }, [assets]);
 
   // Generate portfolio context string for AI interactions
+  // This will be updated inside DemoDataProvider to use demo context if active
   const portfolioContextString = useMemo(() => {
     return generatePortfolioContext(assets);
   }, [assets]);
@@ -181,7 +185,7 @@ function App() {
   // Loading state
   if (authLoading || (user && onboardingLoading)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-900">
+      <div className="min-h-[100svh] md:min-h-screen flex items-center justify-center bg-slate-900">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mx-auto mb-4"></div>
           <p className="text-slate-400">טוען...</p>
@@ -235,6 +239,10 @@ function App() {
               systemData={systemData}
               setSystemData={setSystemData}
               onResetData={handleInitializeDB}
+              user={user}
+              onRefreshPrices={refreshPrices}
+              pricesLoading={pricesLoading}
+              lastPriceUpdate={lastPriceUpdate}
             />
           } 
         />

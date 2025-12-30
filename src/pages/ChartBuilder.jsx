@@ -4,11 +4,11 @@ import { useAssets } from '../hooks/useAssets';
 import { useCurrency } from '../hooks/useCurrency';
 import { useSystemData } from '../hooks/useSystemData';
 import { saveChartConfig, subscribeToChartConfigs, deleteChartConfig, updateChartOrders } from '../services/chartService';
-import { aggregateData, getColorForItem } from '../utils/chartUtils';
+import { aggregateData, getColorForItem, translateTag } from '../utils/chartUtils';
 import ChartRenderer from '../components/ChartRenderer';
 import { successAlert, errorAlert, confirmAlert, successToast } from '../utils/alerts';
 import CustomSelect from '../components/CustomSelect';
-import { Save, BarChart3, Filter, X, Eye, PieChart, BarChart, BarChart2, Radar, Gauge, LayoutGrid, Plus, Trash2, ArrowUp, ArrowDown, Monitor, Smartphone, Edit2, Check } from 'lucide-react';
+import { Save, BarChart3, Filter, X, Eye, PieChart, BarChart, BarChart2, Radar, Gauge, LayoutGrid, Plus, Trash2, ArrowUp, ArrowDown, Monitor, Smartphone, Edit2, Check, AreaChart, LineChart, TrendingUp, Grid, Settings } from 'lucide-react';
 
 const ChartBuilder = () => {
   const { user } = useAuth();
@@ -24,6 +24,7 @@ const ChartBuilder = () => {
     isVisible: true,
     order: 1,
     size: 'medium',
+    showGrid: true,
     filters: {
       category: '',
       platform: '',
@@ -39,6 +40,37 @@ const ChartBuilder = () => {
   const [editChartName, setEditChartName] = useState('');
   const [editingChartId, setEditingChartId] = useState(null); // For editing chart in create tab
   const [activeTab, setActiveTab] = useState('create'); // 'create' or 'manage'
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false); // Mobile drawer state
+  const [isEditingTitle, setIsEditingTitle] = useState(false); // For inline title editing
+
+  // Translation functions for chart types and data keys
+  const translateChartType = (chartType) => {
+    const translations = {
+      'PieChart': 'גרף עוגה',
+      'BarChart': 'גרף עמודות',
+      'StackedBarChart': 'עמודות מוערמות',
+      'HorizontalBarChart': 'גרף אופקי',
+      'AreaChart': 'גרף אזור',
+      'LineChart': 'גרף קו',
+      'ComposedChart': 'גרף משולב',
+      'RadarChart': 'גרף רדאר',
+      'RadialBar': 'גרף רדיאלי',
+      'Treemap': 'מפת עץ'
+    };
+    return translations[chartType] || chartType;
+  };
+
+  const translateDataKey = (dataKey) => {
+    const translations = {
+      'category': 'אפיקי השקעה',
+      'platform': 'חשבונות וארנקים',
+      'instrument': 'מטבעות בסיס',
+      'symbol': 'סמל נכס',
+      'tags': 'תגיות נכסים',
+      'currency': 'מטבע נכס'
+    };
+    return translations[dataKey] || dataKey;
+  };
 
   // Get unique values for filter dropdowns
   const uniqueCategories = useMemo(() => {
@@ -61,7 +93,10 @@ const ChartBuilder = () => {
     const tagSet = new Set();
     assets.forEach(a => {
       if (a.tags && Array.isArray(a.tags)) {
-        a.tags.forEach(tag => tagSet.add(tag));
+        a.tags.forEach(tag => {
+          const translatedTag = translateTag(tag);
+          tagSet.add(translatedTag);
+        });
       }
     });
     return Array.from(tagSet);
@@ -159,6 +194,7 @@ const ChartBuilder = () => {
         isVisible: true,
         order: 1,
         size: 'medium',
+        showGrid: true,
         filters: {
           category: '',
           platform: '',
@@ -185,6 +221,7 @@ const ChartBuilder = () => {
       isVisible: chart.isVisible !== false,
       order: chart.order || 1,
       size: chart.size || 'medium',
+      showGrid: chart.showGrid !== false,
       filters: {
         category: chart.filters?.category || '',
         platform: chart.filters?.platform || '',
@@ -316,11 +353,6 @@ const ChartBuilder = () => {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-10">
-      <header className="mb-6">
-        <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">בונה גרפים</h2>
-        <p className="text-slate-500 dark:text-slate-400 mt-2">צור והתאם אישית גרפים לדשבורד שלך</p>
-      </header>
-
       {/* Tabs */}
       <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700">
         <button
@@ -335,6 +367,7 @@ const ChartBuilder = () => {
                 isVisible: true,
                 order: 1,
                 size: 'medium',
+                showGrid: true,
                 filters: {
                   category: '',
                   platform: '',
@@ -403,35 +436,25 @@ const ChartBuilder = () => {
           )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Configuration Panel */}
-        <div className="lg:col-span-1 space-y-4">
-          {/* Title Input */}
-          <div className="bg-white dark:bg-slate-800 p-4 md:p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-            <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-2 uppercase tracking-wide">
-              כותרת הגרף
-            </label>
-            <input
-              type="text"
-              value={config.title}
-              onChange={(e) => setConfig({ ...config, title: e.target.value })}
-              className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400 bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-slate-100"
-              placeholder="לדוגמה: פיזור לפי קטגוריות"
-            />
-          </div>
-
+        {/* Configuration Panel - Hidden on mobile, shown in drawer */}
+        <div className="hidden lg:block lg:col-span-1 space-y-4">
           {/* Chart Type Selector */}
           <div className="bg-white dark:bg-slate-800 p-4 md:p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
             <label className="block text-xs font-semibold text-slate-600 mb-3 uppercase tracking-wide">
               סוג גרף
             </label>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {[
-                { value: 'PieChart', label: 'עוגה', icon: PieChart },
                 { value: 'BarChart', label: 'עמודות', icon: BarChart },
+                // { value: 'StackedBarChart', label: 'מוערם', icon: BarChart2 },
                 { value: 'HorizontalBarChart', label: 'אופקי', icon: BarChart2 },
-                { value: 'RadarChart', label: 'רדאר', icon: Radar },
                 { value: 'RadialBar', label: 'רדיאלי', icon: Gauge },
-                { value: 'Treemap', label: 'מפה', icon: LayoutGrid }
+                { value: 'PieChart', label: 'עוגה', icon: PieChart },
+                { value: 'Treemap', label: 'מפה', icon: LayoutGrid },
+                { value: 'RadarChart', label: 'רדאר', icon: Radar },
+                { value: 'AreaChart', label: 'אזור', icon: AreaChart },
+                { value: 'LineChart', label: 'קו', icon: LineChart },
+                { value: 'ComposedChart', label: 'משולב', icon: TrendingUp },
               ].map(type => {
                 const IconComponent = type.icon;
                 return (
@@ -451,6 +474,33 @@ const ChartBuilder = () => {
               })}
             </div>
           </div>
+
+          {/* Grid Lines Toggle - Only for charts that support it */}
+          {/* {['BarChart', 'StackedBarChart', 'HorizontalBarChart', 'AreaChart', 'LineChart', 'ComposedChart'].includes(config.chartType) && (
+            <div className="bg-white dark:bg-slate-800 p-4 md:p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
+              <label className="block text-xs font-semibold text-slate-600 mb-3 uppercase tracking-wide">
+                קווי רשת
+              </label>
+              <button
+                onClick={() => setConfig({ ...config, showGrid: !config.showGrid })}
+                className={`w-full px-4 py-3 rounded-lg transition flex items-center justify-between ${
+                  config.showGrid
+                    ? 'bg-emerald-50 dark:bg-emerald-900/20 border-2 border-emerald-500 dark:border-emerald-600'
+                    : 'bg-slate-100 dark:bg-slate-700 border-2 border-slate-200 dark:border-slate-600'
+                }`}
+              >
+                <div className="flex items-center gap-2" >
+                  <Grid size={18} className={config.showGrid ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'} />
+                  <span className={`text-sm font-medium ${config.showGrid ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-600 dark:text-slate-300'}`}>
+                    {config.showGrid ? 'מוצגים' : 'מוסתרים'}
+                  </span>
+                </div>
+                <div dir='ltr' className={`w-12 h-6 rounded-full transition-colors ${config.showGrid ? 'bg-emerald-500' : 'bg-slate-400'}`}>
+                  <div className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-transform ${config.showGrid ? 'translate-x-6' : 'translate-x-0.5'} mt-0.5`} />
+                </div>
+              </button>
+            </div>
+          )} */}
 
           {/* Group By Selector */}
           <div className="bg-white dark:bg-slate-800 p-4 md:p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
@@ -571,23 +621,84 @@ const ChartBuilder = () => {
         <div className="lg:col-span-2 space-y-4">
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
             {/* Preview Header */}
-            <div className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 md:px-6 py-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
-                <Eye size={18} className="text-slate-500 dark:text-slate-400" />
-                <h3 className="text-base md:text-lg font-semibold text-slate-800 dark:text-white">
-                  {config.title || 'תצוגה מקדימה'}
-                </h3>
-              </div>
-              <div className="flex items-center gap-3 w-full md:w-auto">
-                {!config.title && (
-                  <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-200 dark:bg-slate-700 px-2 py-1 rounded">
-                    הזן כותרת כדי לשמור
-                  </span>
+            <div className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 md:px-6 py-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                {/* Chart Title - Editable */}
+                {isEditingTitle ? (
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <input
+                      type="text"
+                      value={config.title}
+                      onChange={(e) => setConfig({ ...config, title: e.target.value })}
+                      onBlur={() => setIsEditingTitle(false)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          setIsEditingTitle(false);
+                        } else if (e.key === 'Escape') {
+                          setIsEditingTitle(false);
+                        }
+                      }}
+                      className="flex-1 px-3 py-1.5 text-base md:text-lg font-semibold text-slate-800 dark:text-white bg-white dark:bg-slate-700 border-2 border-emerald-500 dark:border-emerald-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      placeholder="הזן שם לגרף"
+                      autoFocus
+                    />
+                    <button
+                      onClick={() => setIsEditingTitle(false)}
+                      className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300"
+                      aria-label="סיים עריכה"
+                    >
+                      <Check size={18} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <button
+                      onClick={() => setIsEditingTitle(true)}
+                      className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-500 dark:text-slate-400 transition"
+                      aria-label="ערוך שם"
+                      title="ערוך שם"
+                    >
+                      <Edit2 size={16} />
+                    </button>
+                    <h3 
+                      onClick={() => setIsEditingTitle(true)}
+                      className="text-base md:text-lg font-semibold text-slate-800 dark:text-white flex-1 min-w-0 cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400 transition truncate"
+                      title="לחץ לעריכה"
+                    >
+                      {config.title || 'לחץ להוספת שם לגרף'}
+                    </h3>
+                  </div>
                 )}
+                {/* Grid Lines Toggle - Only for charts that support it */}
+                {['BarChart', 'StackedBarChart', 'HorizontalBarChart', 'AreaChart', 'LineChart', 'ComposedChart'].includes(config.chartType) && (
+                  <button
+                    onClick={() => setConfig({ ...config, showGrid: !config.showGrid })}
+                    className={`p-2 rounded-lg transition ${
+                      config.showGrid
+                        ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
+                        : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+                    }`}
+                    title={config.showGrid ? 'הסתר קווי רשת' : 'הצג קווי רשת'}
+                    aria-label={config.showGrid ? 'הסתר קווי רשת' : 'הצג קווי רשת'}
+                  >
+                    <Grid size={18} />
+                  </button>
+                )}
+                {/* Mobile Settings Button */}
+                <button
+                  onClick={() => setIsDrawerOpen(true)}
+                  className="lg:hidden p-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 transition"
+                  aria-label="פתח תפריט עריכה"
+                >
+                  <Settings size={20} />
+                </button>
+              </div>
+              <div className="flex items-center gap-3">
+                {/* Desktop Save Button */}
                 <button
                   onClick={handleSave}
                   disabled={saving || !config.title.trim()}
-                  className="px-4 py-2 bg-slate-800 dark:bg-slate-700 text-white rounded-lg text-sm font-medium hover:bg-slate-900 dark:hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-2 shadow-sm"
+                  className="hidden md:flex px-4 py-2 bg-slate-800 dark:bg-slate-700 text-white rounded-lg text-sm font-medium hover:bg-slate-900 dark:hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition items-center gap-2 shadow-sm"
                 >
                   <Save size={14} />
                   {saving ? 'שומר...' : editingChartId ? 'עדכן גרף' : 'שמור גרף'}
@@ -596,8 +707,8 @@ const ChartBuilder = () => {
             </div>
 
             {/* Chart Display */}
-            <div className="p-6">
-              <div className="h-80">
+            <div className="p-4 md:p-6">
+              <div className="h-[calc(100vh-280px)] md:h-80 min-h-[380px] md:min-h-[320px]">
                 <ChartRenderer
                   config={config}
                   chartData={chartData}
@@ -606,6 +717,20 @@ const ChartBuilder = () => {
                 />
               </div>
             </div>
+
+            {/* Mobile Save Button - Below Chart */}
+            {config.title && (
+              <div className="lg:hidden px-4 pb-4">
+                <button
+                  onClick={handleSave}
+                  disabled={saving || !config.title.trim()}
+                  className="w-full px-4 py-3 bg-emerald-600 dark:bg-emerald-500 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 dark:hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 shadow-md"
+                >
+                  <Save size={18} />
+                  {saving ? 'שומר...' : editingChartId ? 'עדכן גרף' : 'שמור גרף'}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Data Summary - Desktop only */}
@@ -630,25 +755,249 @@ const ChartBuilder = () => {
             </div>
           </div>
 
-          {/* Data Summary - Mobile only */}
-          <div className="lg:hidden">
-            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
+        </div>
+      </div>
+
+      {/* Mobile Bottom Drawer */}
+      <div 
+        className={`lg:hidden fixed inset-0 z-50 transition-transform duration-300 ease-out ${
+          isDrawerOpen ? 'translate-y-0' : 'translate-y-full'
+        }`}
+        onClick={() => setIsDrawerOpen(false)}
+      >
+        {/* Backdrop */}
+        <div className="absolute inset-0 bg-black/50" onClick={() => setIsDrawerOpen(false)} />
+        
+        {/* Drawer Content */}
+        <div 
+          className="absolute bottom-0 left-0 right-0 bg-white dark:bg-slate-800 rounded-t-3xl shadow-2xl max-h-[85vh] overflow-y-auto"
+          onClick={(e) => e.stopPropagation()}
+          dir="rtl"
+        >
+          {/* Drawer Handle */}
+          <div className="sticky top-0 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 py-3 flex items-center justify-between z-10">
+            <h3 className="text-lg font-bold text-slate-800 dark:text-white">עריכת גרף</h3>
+            <button
+              onClick={() => setIsDrawerOpen(false)}
+              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"
+              aria-label="סגור"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* Drawer Body */}
+          <div className="p-4 space-y-4 pb-8">
+            {/* Chart Type Selector */}
+            <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-3 uppercase tracking-wide">
+                סוג גרף
+              </label>
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  { value: 'PieChart', label: 'עוגה', icon: PieChart },
+                  { value: 'BarChart', label: 'עמודות', icon: BarChart },
+                  { value: 'StackedBarChart', label: 'מוערם', icon: BarChart2 },
+                  { value: 'HorizontalBarChart', label: 'אופקי', icon: BarChart2 },
+                  { value: 'AreaChart', label: 'אזור', icon: AreaChart },
+                  { value: 'LineChart', label: 'קו', icon: LineChart },
+                  { value: 'ComposedChart', label: 'משולב', icon: TrendingUp },
+                  { value: 'RadarChart', label: 'רדאר', icon: Radar },
+                  { value: 'RadialBar', label: 'רדיאלי', icon: Gauge },
+                  { value: 'Treemap', label: 'מפה', icon: LayoutGrid }
+                ].map(type => {
+                  const IconComponent = type.icon;
+                  return (
+                    <button
+                      key={type.value}
+                      onClick={() => setConfig({ ...config, chartType: type.value })}
+                      className={`px-3 py-2.5 text-xs font-medium rounded-lg transition border flex flex-col items-center gap-1 ${
+                        config.chartType === type.value
+                          ? 'bg-slate-800 dark:bg-slate-700 text-white border-slate-800 dark:border-slate-600'
+                          : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 hover:border-slate-300 dark:hover:border-slate-500'
+                      }`}
+                    >
+                      <IconComponent size={16} />
+                      {type.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Grid Lines Toggle - Only for charts that support it */}
+            {['BarChart', 'StackedBarChart', 'HorizontalBarChart', 'AreaChart', 'LineChart', 'ComposedChart'].includes(config.chartType) && (
+              <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
+                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-3 uppercase tracking-wide">
+                  קווי רשת
+                </label>
+                <button
+                  onClick={() => setConfig({ ...config, showGrid: !config.showGrid })}
+                  className={`w-full px-4 py-3 rounded-lg transition flex items-center justify-between ${
+                    config.showGrid
+                      ? 'bg-emerald-50 dark:bg-emerald-900/20 border-2 border-emerald-500 dark:border-emerald-600'
+                      : 'bg-white dark:bg-slate-700 border-2 border-slate-200 dark:border-slate-600'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <Grid size={18} className={config.showGrid ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'} />
+                    <span className={`text-sm font-medium ${config.showGrid ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-600 dark:text-slate-300'}`}>
+                      {config.showGrid ? 'מוצגים' : 'מוסתרים'}
+                    </span>
+                  </div>
+                  <div dir='ltr' className={`w-12 h-6 rounded-full transition-colors ${config.showGrid ? 'bg-emerald-500' : 'bg-slate-400'}`}>
+                    <div className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-transform ${config.showGrid ? 'translate-x-6' : 'translate-x-0.5'} mt-0.5`} />
+                  </div>
+                </button>
+              </div>
+            )}
+
+            {/* Group By Selector */}
+            <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-3 uppercase tracking-wide">
+                קיבוץ לפי
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { value: 'category', label: 'אפיקי השקעה' },
+                  { value: 'platform', label: 'חשבונות וארנקים' },
+                  { value: 'instrument', label: 'מטבעות בסיס' },
+                  { value: 'symbol', label: 'סמל' },
+                  { value: 'tags', label: 'תגיות' },
+                  { value: 'currency', label: 'מטבע' }
+                ].map(group => (
+                  <button
+                    key={group.value}
+                    onClick={() => setConfig({ ...config, dataKey: group.value })}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${
+                      config.dataKey === group.value
+                        ? 'bg-slate-800 dark:bg-slate-700 text-white'
+                        : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600'
+                    }`}
+                  >
+                    {group.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Filters */}
+            <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide">
+                  <Filter size={14} />
+                  פילטרים
+                </div>
+                {hasActiveFilters && (
+                  <button
+                    onClick={clearFilters}
+                    className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center gap-1"
+                    title="נקה פילטרים"
+                  >
+                    <X size={12} />
+                    נקה
+                  </button>
+                )}
+              </div>
+              
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">אפיקי השקעה</label>
+                  <CustomSelect
+                    value={config.filters.category || ''}
+                    onChange={(val) => setConfig({
+                      ...config,
+                      filters: { ...config.filters, category: val }
+                    })}
+                    options={[
+                      { value: '', label: 'הכל' },
+                      ...uniqueCategories.map(cat => ({
+                        value: cat,
+                        label: cat,
+                        iconColor: systemData?.categories?.find(c => c.name === cat)?.color
+                      }))
+                    ]}
+                    placeholder="הכל"
+                    className="text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">חשבונות וארנקים</label>
+                  <CustomSelect
+                    value={config.filters.platform || ''}
+                    onChange={(val) => setConfig({
+                      ...config,
+                      filters: { ...config.filters, platform: val }
+                    })}
+                    options={[
+                      { value: '', label: 'הכל' },
+                      ...uniquePlatforms.map(plat => ({
+                        value: plat,
+                        label: plat,
+                        iconColor: systemData?.platforms?.find(p => p.name === plat)?.color
+                      }))
+                    ]}
+                    placeholder="הכל"
+                    className="text-xs"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">מטבע</label>
+                  <CustomSelect
+                    value={config.filters.currency || ''}
+                    onChange={(val) => setConfig({
+                      ...config,
+                      filters: { ...config.filters, currency: val }
+                    })}
+                    options={[
+                      { value: '', label: 'הכל' },
+                      ...uniqueCurrencies.map(curr => ({
+                        value: curr,
+                        label: curr
+                      }))
+                    ]}
+                    placeholder="הכל"
+                    className="text-xs"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Data Summary - Mobile only in drawer */}
+            <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
               <div className="flex items-center gap-2 mb-3">
-                <BarChart3 size={14} className="text-slate-500" />
-                <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wide">סיכום נתונים</h3>
+                <BarChart3 size={14} className="text-slate-500 dark:text-slate-400" />
+                <h3 className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide">סיכום נתונים</h3>
               </div>
               <div className="space-y-2.5 text-sm">
-                <div className="flex justify-between items-center py-1.5 border-b border-slate-200">
-                  <span className="text-slate-600">פריטים בגרף</span>
-                  <span className="font-semibold text-slate-800">{aggregatedData.length}</span>
+                <div className="flex justify-between items-center py-1.5 border-b border-slate-200 dark:border-slate-700">
+                  <span className="text-slate-600 dark:text-slate-300">פריטים בגרף</span>
+                  <span className="font-semibold text-slate-800 dark:text-white">{aggregatedData.length}</span>
                 </div>
                 <div className="flex justify-between items-center py-1.5">
-                  <span className="text-slate-600">סה"כ ערך</span>
-                  <span className="font-semibold text-slate-800">
+                  <span className="text-slate-600 dark:text-slate-300">סה"כ ערך</span>
+                  <span className="font-semibold text-slate-800 dark:text-white">
                     ₪{aggregatedData.reduce((sum, item) => sum + item.value, 0).toLocaleString()}
                   </span>
                 </div>
               </div>
+            </div>
+
+            {/* Save Button - Mobile */}
+            <div className="sticky bottom-0 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 -mx-4 px-4 py-4 -mb-4">
+              <button
+                onClick={() => {
+                  handleSave();
+                  setIsDrawerOpen(false);
+                }}
+                disabled={saving || !config.title.trim()}
+                className="w-full px-4 py-3 bg-emerald-600 dark:bg-emerald-500 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 dark:hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 shadow-lg"
+              >
+                <Save size={18} />
+                {saving ? 'שומר...' : editingChartId ? 'עדכן גרף' : 'שמור גרף'}
+              </button>
             </div>
           </div>
         </div>
@@ -751,10 +1100,10 @@ const ChartBuilder = () => {
                               <h4 className="text-lg font-bold text-slate-800 dark:text-slate-100 truncate">{chart.title}</h4>
                               <div className="flex flex-wrap items-center gap-2.5 mt-2">
                                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                                  {chart.chartType}
+                                  {translateChartType(chart.chartType)}
                                 </span>
                                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                                  {chart.dataKey}
+                                  {translateDataKey(chart.dataKey)}
                                 </span>
                               </div>
                             </div>

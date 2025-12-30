@@ -325,7 +325,7 @@ const UserManagement = ({ user }) => {
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-12">
       {/* Header */}
-      <header className="bg-gradient-to-r from-slate-50 to-white dark:from-slate-800 dark:to-slate-900 rounded-2xl p-4 md:p-6 shadow-lg border border-slate-200 dark:border-slate-700">
+      <header className="bg-gradient-to-r from-slate-50 to-white dark:from-slate-800 dark:to-slate-900 rounded-2xl p-4 md:p-6 shadow-lg border border-slate-200 dark:border-slate-700 mr-12 md:mr-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="bg-purple-100 dark:bg-purple-900/30 p-3 rounded-xl">

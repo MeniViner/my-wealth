@@ -20,6 +20,54 @@ export const CHART_COLORS = [
   '#84cc16', // lime
 ];
 
+// Tag translation mapping (English to Hebrew)
+const TAG_TRANSLATIONS = {
+  'long-term': 'ארוך טווח',
+  'short-term': 'קצר טווח',
+  'high-risk': 'סיכון גבוה',
+  'low-risk': 'סיכון נמוך',
+  'medium-risk': 'סיכון בינוני',
+  'dividend': 'דיבידנד',
+  'growth': 'צמיחה',
+  'value': 'ערך',
+  'income': 'הכנסה',
+  'emergency': 'חירום',
+  'retirement': 'פנסיה',
+  'savings': 'חיסכון',
+  'investment': 'השקעה',
+  'crypto': 'קריפטו',
+  'stocks': 'מניות',
+  'bonds': 'אגרות חוב',
+  'real-estate': 'נדלן',
+  'cash': 'מזומן',
+  'liquid': 'נזיל',
+  'illiquid': 'לא נזיל',
+  'tax-advantaged': 'יתרון מס',
+  'taxable': 'חייב במס',
+  'diversified': 'מגוון',
+  'concentrated': 'מרוכז',
+  'domestic': 'מקומי',
+  'international': 'בינלאומי',
+  'emerging': 'מתפתח',
+  'developed': 'מפותח',
+};
+
+/**
+ * Translate tag from English to Hebrew
+ * @param {string} tag - Tag name in English
+ * @returns {string} Tag name in Hebrew
+ */
+export const translateTag = (tag) => {
+  if (!tag) return tag;
+  // Check if tag is already in Hebrew (contains Hebrew characters)
+  const hasHebrew = /[\u0590-\u05FF]/.test(tag);
+  if (hasHebrew) return tag;
+  
+  // Try to find translation
+  const lowerTag = tag.toLowerCase().trim();
+  return TAG_TRANSLATIONS[lowerTag] || tag;
+};
+
 /**
  * Format currency for Hebrew locale with proper spacing
  * @param {number} value - The value to format
@@ -115,7 +163,8 @@ export const aggregateData = (assets, groupBy, filters = {}) => {
     filteredAssets.forEach(asset => {
       if (asset.tags && Array.isArray(asset.tags)) {
         asset.tags.forEach(tag => {
-          map[tag] = (map[tag] || 0) + asset.value;
+          const translatedTag = translateTag(tag);
+          map[translatedTag] = (map[translatedTag] || 0) + asset.value;
         });
       } else {
         // If no tags, put in "ללא תגיות"

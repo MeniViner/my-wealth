@@ -490,10 +490,154 @@ export const searchUSStocks = async (query) => {
   return [];
 };
 
+
+// ==================== POPULAR INDICES LIST ====================
+
+/**
+ * List of popular market indices for quick search
+ * These are commonly tracked indices that users might want to add
+ */
+export const POPULAR_INDICES = [
+  // US Indices
+  { id: '^GSPC', symbol: '^GSPC', name: 'S&P 500', nameHe: 'אס אנד פי 500', market: 'US', marketDataSource: 'yahoo' },
+  { id: '^NDX', symbol: '^NDX', name: 'NASDAQ 100', nameHe: 'נאסדק 100', market: 'US', marketDataSource: 'yahoo' },
+  { id: '^DJI', symbol: '^DJI', name: 'Dow Jones Industrial', nameHe: 'דאו ג׳ונס', market: 'US', marketDataSource: 'yahoo' },
+  { id: '^IXIC', symbol: '^IXIC', name: 'NASDAQ Composite', nameHe: 'נאסדק מורכב', market: 'US', marketDataSource: 'yahoo' },
+  { id: '^RUT', symbol: '^RUT', name: 'Russell 2000', nameHe: 'ראסל 2000', market: 'US', marketDataSource: 'yahoo' },
+  { id: '^VIX', symbol: '^VIX', name: 'CBOE Volatility Index', nameHe: 'מדד הפחד VIX', market: 'US', marketDataSource: 'yahoo' },
+  
+  // Israeli Indices
+  { id: '^TA35.TA', symbol: '^TA35.TA', name: 'Tel Aviv 35', nameHe: 'ת"א 35', market: 'IL', marketDataSource: 'yahoo' },
+  { id: '^TA125.TA', symbol: '^TA125.TA', name: 'Tel Aviv 125', nameHe: 'ת"א 125', market: 'IL', marketDataSource: 'yahoo' },
+  { id: '^TA90.TA', symbol: '^TA90.TA', name: 'Tel Aviv 90', nameHe: 'ת"א 90', market: 'IL', marketDataSource: 'yahoo' },
+  { id: '^TABANK.TA', symbol: '^TABANK.TA', name: 'Tel Aviv Banks', nameHe: 'ת"א בנקים', market: 'IL', marketDataSource: 'yahoo' },
+  { id: '^TAREALESTATE.TA', symbol: '^TAREALESTATE.TA', name: 'Tel Aviv Real Estate', nameHe: 'ת"א נדל"ן', market: 'IL', marketDataSource: 'yahoo' },
+  
+  // European Indices
+  { id: '^FTSE', symbol: '^FTSE', name: 'FTSE 100', nameHe: 'פוטסי 100 (בריטניה)', market: 'EU', marketDataSource: 'yahoo' },
+  { id: '^GDAXI', symbol: '^GDAXI', name: 'DAX', nameHe: 'דאקס (גרמניה)', market: 'EU', marketDataSource: 'yahoo' },
+  { id: '^FCHI', symbol: '^FCHI', name: 'CAC 40', nameHe: 'קאק 40 (צרפת)', market: 'EU', marketDataSource: 'yahoo' },
+  
+  // Asian Indices
+  { id: '^N225', symbol: '^N225', name: 'Nikkei 225', nameHe: 'ניקיי 225 (יפן)', market: 'ASIA', marketDataSource: 'yahoo' },
+  { id: '^HSI', symbol: '^HSI', name: 'Hang Seng', nameHe: 'האנג סנג (הונג קונג)', market: 'ASIA', marketDataSource: 'yahoo' },
+  { id: '000001.SS', symbol: '000001.SS', name: 'Shanghai Composite', nameHe: 'שנחאי (סין)', market: 'ASIA', marketDataSource: 'yahoo' },
+];
+
+/**
+ * Search market indices
+ * Combines local popular indices with Yahoo Finance search
+ * @param {string} query - Search query
+ * @returns {Promise<Array>} Array of index objects
+ */
+export const searchIndices = async (query) => {
+  if (!query || query.trim().length < 1) {
+    // Return popular indices when no query
+    return POPULAR_INDICES.slice(0, 10).map(idx => ({
+      ...idx,
+      image: null,
+      assetType: 'INDEX'
+    }));
+  }
+
+  const cacheKey = `index:${query.toLowerCase().trim()}`;
+  const cached = getCachedResult(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const normalizedQuery = query.toLowerCase().trim();
+  
+  // Search local popular indices first
+  const localResults = POPULAR_INDICES.filter(idx => {
+    return idx.symbol.toLowerCase().includes(normalizedQuery) ||
+           idx.name.toLowerCase().includes(normalizedQuery) ||
+           idx.nameHe.includes(query);
+  }).map(idx => ({
+    ...idx,
+    image: null,
+    assetType: 'INDEX'
+  }));
+
+  // If we have local results, return them
+  if (localResults.length > 0) {
+    setCachedResult(cacheKey, localResults);
+    return localResults;
+  }
+
+  // Fallback: Search Yahoo Finance for indices
+  try {
+    const targetUrl = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query.trim())}&quotesCount=20&newsCount=0`;
+    
+    let proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+    let response = await fetch(proxyUrl, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' }
+    });
+
+    let usingAllOrigins = false;
+    if (!response.ok) {
+      proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+      response = await fetch(proxyUrl, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' }
+      });
+      usingAllOrigins = true;
+    }
+
+    if (response.ok) {
+      let data;
+      const responseText = await response.text();
+      
+      try {
+        const parsed = JSON.parse(responseText);
+        if (usingAllOrigins && parsed.contents) {
+          data = JSON.parse(parsed.contents);
+        } else {
+          data = parsed;
+        }
+      } catch (parseError) {
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          data = parsed.contents ? JSON.parse(parsed.contents) : parsed;
+        } else {
+          throw new Error('Could not parse response');
+        }
+      }
+      
+      if (data && data.quotes && Array.isArray(data.quotes)) {
+        // Filter for INDEX type only
+        const indices = data.quotes.filter(quote => 
+          quote.quoteType === 'INDEX' || 
+          (quote.symbol && quote.symbol.startsWith('^'))
+        );
+        
+        const results = indices.slice(0, 10).map(quote => ({
+          id: quote.symbol,
+          symbol: quote.symbol,
+          name: quote.shortname || quote.longname || quote.symbol,
+          nameHe: quote.shortname || quote.symbol,
+          image: null,
+          marketDataSource: 'yahoo',
+          assetType: 'INDEX'
+        }));
+
+        setCachedResult(cacheKey, results);
+        return results;
+      }
+    }
+  } catch (error) {
+    console.warn('Error searching indices via Yahoo Finance:', error);
+  }
+
+  return [];
+};
+
 /**
  * Main search function that routes to appropriate API based on asset type
  * @param {string} query - Search query
- * @param {string} assetType - "crypto" | "us-stock" | "il-stock" | "stock" (legacy)
+ * @param {string} assetType - "crypto" | "us-stock" | "il-stock" | "index" | "stock" (legacy)
  * @returns {Promise<Array>} Array of asset objects
  */
 export const searchAssets = async (query, assetType) => {
@@ -503,6 +647,8 @@ export const searchAssets = async (query, assetType) => {
     return await searchUSStocks(query);
   } else if (assetType === 'il-stock') {
     return await searchIsraeliStocks(query);
+  } else if (assetType === 'index') {
+    return await searchIndices(query);
   } else if (assetType === 'stock') {
     // Legacy: default to US stocks
     return await searchUSStocks(query);

@@ -24,7 +24,13 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 #root {
-  min-height: 100vh;
+  min-height: 100svh;
+}
+
+@media (min-width: 768px) {
+  #root {
+    min-height: 100vh;
+  }
 }
 
 /* SweetAlert2 RTL styling */

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Loader2, AlertCircle, X } from 'lucide-react';
-import { searchAssets } from '../services/marketDataService';
+import { Search, Loader2, AlertCircle, X, TrendingUp } from 'lucide-react';
+import { searchAssets, POPULAR_INDICES } from '../services/marketDataService';
 
 /**
  * TickerSearch Component
@@ -46,11 +46,27 @@ const TickerSearch = ({
         return 'חפש קריפטו (BTC, ETH, SOL...)';
       case 'il-stock':
         return 'חפש מניה ישראלית (POLI.TA, TEVA...)';
+      case 'index':
+        return 'חפש מדד (S&P 500, ת"א 35, NASDAQ...)';
       case 'us-stock':
       default:
         return 'חפש מניה אמריקאית (AAPL, TSLA, SPY...)';
     }
   };
+
+  // Load popular indices when INDEX category is selected
+  useEffect(() => {
+    if (selectedCategory === 'index' && !query) {
+      // Show popular indices when no search query
+      const popularIndices = POPULAR_INDICES.slice(0, 8).map(idx => ({
+        ...idx,
+        image: null,
+        assetType: 'INDEX'
+      }));
+      setResults(popularIndices);
+      setShowDropdown(true);
+    }
+  }, [selectedCategory, query]);
 
   // Debounced search function
   const performSearch = useCallback(async (searchQuery) => {
@@ -214,39 +230,50 @@ const TickerSearch = ({
     <div className="relative w-full">
       {/* Category Selector - Segmented Control */}
       {showCategorySelector && (
-        <div className="mb-3 flex gap-2 p-1 bg-slate-100 dark:bg-slate-700 rounded-lg">
+        <div className="mb-3 flex gap-1 p-1 bg-slate-100 dark:bg-slate-700 rounded-lg flex-wrap">
           <button
             type="button"
             onClick={() => handleCategoryChange('us-stock')}
-            className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+            className={`flex-1 min-w-[70px] px-2 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
               selectedCategory === 'us-stock'
                 ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
                 : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            🇺🇸 US Stocks
+            🇺🇸 מניות US
           </button>
           <button
             type="button"
             onClick={() => handleCategoryChange('il-stock')}
-            className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+            className={`flex-1 min-w-[70px] px-2 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
               selectedCategory === 'il-stock'
                 ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
                 : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            🇮🇱 Israel Stocks
+            🇮🇱 מניות IL
+          </button>
+          <button
+            type="button"
+            onClick={() => handleCategoryChange('index')}
+            className={`flex-1 min-w-[70px] px-2 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
+              selectedCategory === 'index'
+                ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+            }`}
+          >
+            📊 מדדים
           </button>
           <button
             type="button"
             onClick={() => handleCategoryChange('crypto')}
-            className={`flex-1 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+            className={`flex-1 min-w-[70px] px-2 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
               selectedCategory === 'crypto'
                 ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
                 : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            🪙 Crypto
+            🪙 קריפטו
           </button>
         </div>
       )}
@@ -334,7 +361,7 @@ const TickerSearch = ({
                       {asset.symbol}
                     </span>
                     {actualSearchType === 'crypto' && (
-                      <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded">
+                      <span className="text-xs text-slate-500 dark:text-slate-400 bg-amber-100 dark:bg-amber-900/30 px-2 py-0.5 rounded">
                         קריפטו
                       </span>
                     )}
@@ -348,14 +375,19 @@ const TickerSearch = ({
                         ארה"ב
                       </span>
                     )}
+                    {actualSearchType === 'index' && (
+                      <span className="text-xs text-slate-500 dark:text-slate-400 bg-purple-100 dark:bg-purple-900/30 px-2 py-0.5 rounded">
+                        מדד
+                      </span>
+                    )}
                   </div>
                   <div className="text-sm text-slate-600 dark:text-slate-300 mt-0.5 text-right" dir="rtl">
-                    {/* For Israeli stocks, show Hebrew name prominently with symbol */}
-                    {actualSearchType === 'il-stock' && asset.nameHe ? (
+                    {/* For Israeli stocks and indices, show Hebrew name prominently */}
+                    {(actualSearchType === 'il-stock' || actualSearchType === 'index') && asset.nameHe ? (
                       <div className="flex flex-col items-start">
                         <span className="font-semibold text-slate-900 dark:text-slate-100">{asset.nameHe}</span>
-                        {asset.nameEn && (
-                          <span className="text-xs text-slate-500 dark:text-slate-400">{asset.nameEn}</span>
+                        {asset.name && asset.name !== asset.nameHe && (
+                          <span className="text-xs text-slate-500 dark:text-slate-400">{asset.name}</span>
                         )}
                       </div>
                     ) : (

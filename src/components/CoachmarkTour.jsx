@@ -100,7 +100,8 @@ const COACHMARKS = [
     description: 'קבץ את הנכסים שלך לפי חשבונות וארנקים, אפיקי השקעה, או מטבעות בסיס כדי לראות תמונה ברורה יותר.',
     icon: Filter,
     route: '/assets',
-    targetSelector: 'button:has-text("חלוקה לפי")',
+    targetSelector: '.flex.flex-wrap.gap-2 button:first-of-type',
+    fallbackSelector: '[class*="border-t"] .flex.gap-2',
     spotlightSize: 'medium',
     openMobileMenu: false,
   },
@@ -133,7 +134,7 @@ const COACHMARKS = [
     icon: Target,
     route: '/rebalancing',
     targetSelector: 'h2, h3',
-    spotlightSize: 'large',
+    spotlightSize: 'center',
     openMobileMenu: false,
   },
   {
@@ -475,21 +476,21 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
         className="fixed inset-0 z-[100]"
         dir="rtl"
       >
-        {/* Demo Banner */}
+        {/* Demo Banner - positioned to not overlap with close button on mobile */}
         {showDemoBanner && (
           <motion.div
             initial={{ opacity: 0, y: -50 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -50 }}
-            className="fixed top-6 right-6 z-[101] bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3 rounded-xl shadow-2xl border-2 border-blue-400/50 backdrop-blur-sm"
+            className="fixed top-20 md:top-6 right-4 md:right-6 left-4 md:left-auto z-[101] bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 md:px-6 py-3 rounded-xl shadow-2xl border-2 border-blue-400/50 backdrop-blur-sm"
           >
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
                 <Rocket className="w-5 h-5" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <div className="font-bold text-sm">נתוני דמו מוצגים</div>
-                <div className="text-xs text-blue-100">הנתונים מקומיים בלבד ויוסרו בסוף המדריך</div>
+                <div className="text-xs text-blue-100 truncate">הנתונים מקומיים בלבד ויוסרו בסוף המדריך</div>
               </div>
             </div>
           </motion.div>

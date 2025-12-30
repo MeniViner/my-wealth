@@ -108,7 +108,7 @@ const AIAdvisor = ({ assets, totalWealth, user, portfolioContext = "", aiConfig:
       {showSettings && (
         <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setShowSettings(false)}>
           <div 
-            className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto"
+            className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl max-w-md w-full max-h-[90svh] md:max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
@@ -217,7 +217,7 @@ const AIAdvisor = ({ assets, totalWealth, user, portfolioContext = "", aiConfig:
               onClick={() => setHistoryDrawerOpen(false)}
             />
             {/* Drawer - Below Main Nav (z-50) but above Overlay */}
-            <div className="lg:hidden fixed right-0 top-0 h-full w-[80%] max-w-sm z-[40]">
+            <div className="lg:hidden fixed right-0 top-0 h-[100svh] w-[80%] max-w-sm z-[40]">
               <ChatSidebar
                 user={user}
                 activeChatId={activeChatId}

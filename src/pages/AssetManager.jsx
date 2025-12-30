@@ -1,15 +1,17 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Edit2, Trash2, Eye, ArrowUpDown, LayoutGrid, Layers, Building2, ChevronDown, ChevronUp, X, Tag, Database, Palette, Check, ChevronRight, RefreshCw } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Eye, ArrowUpDown, LayoutGrid, Layers, Building2, ChevronDown, ChevronUp, X, Tag, Database, Palette, Check, ChevronRight, RefreshCw, TestTube } from 'lucide-react';
 import Modal from '../components/Modal';
 import { confirmAlert, successToast } from '../utils/alerts';
 import CustomSelect from '../components/CustomSelect';
 import { generateRandomColor } from '../constants/defaults';
 import TickerSearch from '../components/TickerSearch';
 import { useDemoData } from '../contexts/DemoDataContext';
+import { useAdmin } from '../hooks/useAdmin';
 
-const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData }) => {
-  const { demoAssets, isActive: isDemoActive } = useDemoData();
+const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData, user, onRefreshPrices, pricesLoading, lastPriceUpdate }) => {
+  const { demoAssets, isActive: isDemoActive, toggleDemoMode } = useDemoData();
+  const { isAdmin } = useAdmin(user);
   
   // Use demo assets if tour is active, otherwise use real assets
   const displayAssets = isDemoActive && demoAssets.length > 0 ? demoAssets : assets;
@@ -25,7 +27,10 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
     platform: true, 
     category: true, 
     tags: true, 
-    value: true 
+    value: true,
+    quantity: false,
+    purchasePrice: false,
+    profitLoss: true
   });
   const [colMenuOpen, setColMenuOpen] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState(null);
@@ -240,14 +245,28 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
       <header className="flex justify-between items-center gap-4 mr-12 md:mr-0">
         <h2 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white">ניהול נכסים</h2>
         {activeTab === 'assets' && (
-          <button 
-            onClick={() => navigate('/assets/add')} 
-            className="bg-emerald-600 dark:bg-emerald-700 text-white px-5 py-1.5 md:py-2.5 rounded-lg flex items-center gap-2 font-medium hover:bg-emerald-700 dark:hover:bg-emerald-600 transition-colors shadow-sm"
-          >
-            <Plus size={18} /> 
-            <span className="hidden sm:inline">הוסף נכס</span>
-            <span className="sm:hidden">הוסף</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Refresh Prices Button */}
+            {onRefreshPrices && (
+              <button 
+                onClick={onRefreshPrices}
+                disabled={pricesLoading}
+                className="bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-4 py-1.5 md:py-2.5 rounded-lg flex items-center gap-2 font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors disabled:opacity-50"
+                title={lastPriceUpdate ? `עדכון אחרון: ${lastPriceUpdate.toLocaleTimeString('he-IL')}` : 'רענן מחירים'}
+              >
+                <RefreshCw size={16} className={pricesLoading ? 'animate-spin' : ''} /> 
+                <span className="hidden sm:inline">{pricesLoading ? 'מעדכן...' : 'רענן מחירים'}</span>
+              </button>
+            )}
+            <button 
+              onClick={() => navigate('/assets/add')} 
+              className="bg-emerald-600 dark:bg-emerald-700 text-white px-5 py-1.5 md:py-2.5 rounded-lg flex items-center gap-2 font-medium hover:bg-emerald-700 dark:hover:bg-emerald-600 transition-colors shadow-sm"
+            >
+              <Plus size={18} /> 
+              <span className="hidden sm:inline">הוסף נכס</span>
+              <span className="sm:hidden">הוסף</span>
+            </button>
+          </div>
         )}
       </header>
 
@@ -278,9 +297,9 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
       {/* Sources Management Tab */}
       {activeTab === 'sources' && (
         <>
-          {/* Reset Database Button */}
-          {onResetData && (
-            <div className="mb-6 flex justify-end">
+          {/* Reset Database Button (Admin only) or Demo Mode Button (Regular users) */}
+          <div className="mb-6 flex justify-end">
+            {isAdmin && onResetData ? (
               <button 
                 onClick={onResetData} 
                 className="text-sm text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 px-4 py-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all flex items-center gap-2 border border-slate-200 dark:border-slate-700 hover:border-red-200 dark:hover:border-red-800 font-medium"
@@ -289,8 +308,29 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                 <RefreshCw size={16} />
                 <span>אתחול מסד נתונים</span>
               </button>
-            </div>
-          )}
+            ) : (
+              <button 
+                onClick={async () => {
+                  toggleDemoMode();
+                  await successToast(
+                    isDemoActive 
+                      ? 'מצב דמו כובה' 
+                      : 'מצב דמו הופעל - נתוני דמו מוצגים',
+                    2000
+                  );
+                }}
+                className={`text-sm px-4 py-2 rounded-lg transition-all flex items-center gap-2 border font-medium ${
+                  isDemoActive
+                    ? 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/30'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 border-slate-200 dark:border-slate-700 hover:border-blue-200 dark:hover:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-900/20'
+                }`}
+                title={isDemoActive ? 'כבה מצב דמו' : 'הפעל מצב דמו - הצג נתוני דמו'}
+              >
+                <TestTube size={16} />
+                <span>{isDemoActive ? 'כבה מצב דמו' : 'הפעל מצב דמו'}</span>
+              </button>
+            )}
+          </div>
           <SourcesConfiguration
             systemData={systemData}
             onAdd={handleAddSource}
@@ -366,7 +406,7 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                     onClick={() => setColMenuOpen(false)}
                   />
                   {/* Menu - Better positioned for mobile */}
-                  <div className="absolute top-12 left-0 md:left-auto md:right-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xl rounded-xl p-4 z-30 w-[280px] md:w-56 max-h-[80vh] overflow-y-auto">
+                  <div className="absolute top-12 left-0 md:left-auto md:right-0 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xl rounded-xl p-4 z-30 w-[280px] md:w-56 max-h-[80svh] md:max-h-[80vh] overflow-y-auto">
                     <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200 dark:border-slate-700">
                       <h3 className="text-sm font-bold text-slate-900 dark:text-white">עמודות להצגה</h3>
                       <button
@@ -588,6 +628,9 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                           </th>
                         )}
                         {visibleColumns.tags && <th className="p-4">תגיות</th>}
+                        {visibleColumns.quantity && (
+                          <th className="p-4">כמות</th>
+                        )}
                         {visibleColumns.value && (
                           <th className="p-4 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('value')}>
                             <div className="flex items-center gap-1">
@@ -595,6 +638,9 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                               <ArrowUpDown size={12} />
                             </div>
                           </th>
+                        )}
+                        {visibleColumns.profitLoss && (
+                          <th className="p-4">רווח/הפסד</th>
                         )}
                         <th className="p-4 text-center">פעולות</th>
                       </tr>
@@ -645,12 +691,42 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                               </div>
                             </td>
                           )}
+                          {visibleColumns.quantity && (
+                            <td className="p-3 md:p-4">
+                              {asset.assetMode === 'QUANTITY' && asset.quantity ? (
+                                <div className="font-mono text-sm text-slate-700 dark:text-slate-300">
+                                  {asset.quantity.toLocaleString('en-US', { maximumFractionDigits: 4 })}
+                                  {asset.hasLivePrice && (
+                                    <div className="text-xs text-emerald-500">● Live</div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 dark:text-slate-500 text-xs">—</span>
+                              )}
+                            </td>
+                          )}
                           {visibleColumns.value && (
                             <td className="p-3 md:p-4">
                               <div className="font-bold text-slate-900 dark:text-white">₪{asset.value.toLocaleString()}</div>
                               <div className="text-xs text-slate-400 dark:text-slate-500" dir="ltr">
-                                {asset.currency === 'USD' ? '$' : '₪'}{asset.originalValue.toLocaleString()}
+                                {asset.currency === 'USD' ? '$' : '₪'}{(asset.originalValue || 0).toLocaleString()}
                               </div>
+                            </td>
+                          )}
+                          {visibleColumns.profitLoss && (
+                            <td className="p-3 md:p-4">
+                              {asset.profitLoss !== null && asset.profitLoss !== undefined ? (
+                                <div>
+                                  <div className={`font-bold ${asset.profitLoss >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                                    {asset.profitLoss >= 0 ? '+' : ''}₪{Math.round(asset.profitLoss).toLocaleString()}
+                                  </div>
+                                  <div className={`text-xs ${asset.profitLossPercent >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                    {asset.profitLossPercent >= 0 ? '+' : ''}{asset.profitLossPercent?.toFixed(1)}%
+                                  </div>
+                                </div>
+                              ) : (
+                                <span className="text-slate-400 dark:text-slate-500 text-xs">—</span>
+                              )}
                             </td>
                           )}
                           <td className="p-3 md:p-4" onClick={e => e.stopPropagation()}>
