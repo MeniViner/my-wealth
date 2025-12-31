@@ -3,10 +3,12 @@ import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, 
   AreaChart, Area, CartesianGrid, LineChart, Line
 } from 'recharts';
-import { Cloud, Eye, EyeOff } from 'lucide-react';
+import { Cloud, Eye, EyeOff, Wallet, Calendar, TrendingUp, ChevronDown, ChevronUp } from 'lucide-react';
 import CustomTooltip from '../components/CustomTooltip';
 import TreemapChart from '../components/TreemapChart';
+import SummaryCard from '../components/SummaryCard';
 import { useDemoData } from '../contexts/DemoDataContext';
+import { fetchPriceHistory } from '../services/priceService';
 
 // Hebrew font stack
 const HEBREW_FONT = "'Assistant', 'Heebo', 'Rubik', sans-serif";
@@ -201,6 +203,74 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
     return displayAssets.reduce((sum, item) => sum + item.value, 0);
   }, [displayAssets]);
 
+  // Calculate total profit/loss
+  const totalProfitLoss = useMemo(() => {
+    const totalPL = displayAssets.reduce((sum, item) => {
+      if (item.profitLoss !== null && item.profitLoss !== undefined) {
+        return sum + (item.profitLoss || 0);
+      }
+      return sum;
+    }, 0);
+    
+    // Calculate total cost basis for percentage
+    const totalCostBasis = displayAssets.reduce((sum, item) => {
+      if (item.assetMode === 'QUANTITY' && item.quantity && item.purchasePrice) {
+        const costBasis = item.quantity * item.purchasePrice;
+        return sum + (item.currency === 'USD' ? costBasis * (currencyRate || 3.65) : costBasis);
+      } else if (item.originalValue) {
+        return sum + (item.currency === 'USD' ? item.originalValue * (currencyRate || 3.65) : item.originalValue);
+      }
+      return sum;
+    }, 0);
+    
+    const totalPLPercent = totalCostBasis > 0 ? (totalPL / totalCostBasis) * 100 : 0;
+    
+    return {
+      amount: totalPL,
+      percent: totalPLPercent
+    };
+  }, [displayAssets, currencyRate]);
+
+  // Calculate daily profit/loss (using 24h change if available, otherwise estimate)
+  const dailyProfitLoss = useMemo(() => {
+    // Try to use priceChange24h from assets
+    let dailyPL = 0;
+    let hasDailyData = false;
+    
+    displayAssets.forEach(item => {
+      if (item.priceChange24h !== null && item.priceChange24h !== undefined && item.value) {
+        // Calculate 24h change based on percentage
+        const changePercent = item.priceChange24h;
+        const changeAmount = (item.value * changePercent) / 100;
+        dailyPL += changeAmount;
+        hasDailyData = true;
+      }
+    });
+    
+    // If no daily data available, estimate as 0 or use a small portion of total P/L
+    if (!hasDailyData) {
+      // Estimate daily P/L as 1/30 of total P/L (rough monthly estimate)
+      dailyPL = totalProfitLoss.amount / 30;
+    }
+    
+    const dailyPLPercent = totalWealth > 0 ? (dailyPL / totalWealth) * 100 : 0;
+    
+    return {
+      amount: dailyPL,
+      percent: dailyPLPercent
+    };
+  }, [displayAssets, totalWealth, totalProfitLoss]);
+
+  // Get main currency (most common currency in portfolio)
+  const mainCurrency = useMemo(() => {
+    const currencyMap = {};
+    displayAssets.forEach(a => {
+      currencyMap[a.currency] = (currencyMap[a.currency] || 0) + a.value;
+    });
+    const sorted = Object.entries(currencyMap).sort((a, b) => b[1] - a[1]);
+    return sorted.length > 0 ? sorted[0][0] : 'ILS';
+  }, [displayAssets]);
+
   // Data aggregations
   const dataByCategory = useMemo(() => {
     const map = {};
@@ -302,6 +372,196 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
   // Check if we have data (use displayAssets which includes demo data)
   const hasData = displayAssets && displayAssets.length > 0;
 
+  // State for collapsible chart
+  const [isChartOpen, setIsChartOpen] = useState(false);
+  
+  // State for timeframe selection
+  const [timeRange, setTimeRange] = useState('1M');
+  
+  // State for portfolio history data
+  const [portfolioHistory, setPortfolioHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  // Calculate days based on timeRange
+  const getDaysForTimeRange = (range) => {
+    switch (range) {
+      case '1D': return 1;
+      case '1W': return 7;
+      case '1M': return 30;
+      case '3M': return 90;
+      case '1Y': return 365;
+      case 'ALL': return 730; // ~2 years
+      default: return 30;
+    }
+  };
+
+  // Format date for X-axis based on timeRange
+  const formatDateForAxis = (date, range) => {
+    const d = new Date(date);
+    switch (range) {
+      case '1D':
+        return d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+      case '1W':
+        return d.toLocaleDateString('he-IL', { weekday: 'short', day: 'numeric' });
+      case '1M':
+      case '3M':
+        return d.toLocaleDateString('he-IL', { day: 'numeric', month: 'short' });
+      case '1Y':
+      case 'ALL':
+        return d.toLocaleDateString('he-IL', { month: 'short', year: '2-digit' });
+      default:
+        return d.toLocaleDateString('he-IL', { day: 'numeric', month: 'short' });
+    }
+  };
+
+  // Fetch portfolio history
+  useEffect(() => {
+    if (!hasData || !displayAssets || displayAssets.length === 0) {
+      setPortfolioHistory([]);
+      return;
+    }
+
+    const calculatePortfolioHistory = async () => {
+      setHistoryLoading(true);
+      
+      try {
+        const days = getDaysForTimeRange(timeRange);
+        const rate = currencyRate || 3.65;
+        
+        // Get trackable assets (those with quantity and symbol/apiId)
+        const trackableAssets = displayAssets.filter(asset => 
+          asset.assetMode === 'QUANTITY' && 
+          asset.quantity && 
+          asset.quantity > 0 &&
+          asset.marketDataSource && 
+          asset.marketDataSource !== 'manual' &&
+          (asset.apiId || asset.symbol)
+        );
+
+        if (trackableAssets.length === 0) {
+          // If no trackable assets, create a simple flat line with current value
+          const currentValue = totalWealth;
+          const dataPoints = [];
+          const now = new Date();
+          
+          for (let i = days; i >= 0; i--) {
+            const date = new Date(now);
+            date.setDate(date.getDate() - i);
+            dataPoints.push({
+              date: date.toISOString().split('T')[0],
+              value: currentValue,
+              timestamp: date.getTime()
+            });
+          }
+          
+          setPortfolioHistory(dataPoints);
+          setHistoryLoading(false);
+          return;
+        }
+
+        // Fetch price history for each asset
+        const assetHistories = await Promise.all(
+          trackableAssets.map(async (asset) => {
+            try {
+              const symbol = asset.apiId || asset.symbol;
+              const source = asset.marketDataSource === 'coingecko' ? 'coingecko' : 'yahoo';
+              
+              const priceHistory = await fetchPriceHistory(symbol, source, days);
+              
+              if (!priceHistory || priceHistory.length === 0) {
+                return null;
+              }
+
+              // Convert prices to ILS if needed and multiply by quantity
+              return priceHistory.map(({ date, price }) => {
+                const priceInILS = asset.currency === 'USD' ? price * rate : price;
+                const assetValue = asset.quantity * priceInILS;
+                return {
+                  date: date.toISOString().split('T')[0],
+                  timestamp: new Date(date).getTime(),
+                  value: assetValue
+                };
+              });
+            } catch (error) {
+              console.error(`Error fetching history for ${asset.name}:`, error);
+              return null;
+            }
+          })
+        );
+
+        // Filter out null results
+        const validHistories = assetHistories.filter(h => h !== null && h.length > 0);
+        
+        if (validHistories.length === 0) {
+          // Fallback: create flat line
+          const currentValue = totalWealth;
+          const dataPoints = [];
+          const now = new Date();
+          
+          for (let i = days; i >= 0; i--) {
+            const date = new Date(now);
+            date.setDate(date.getDate() - i);
+            dataPoints.push({
+              date: date.toISOString().split('T')[0],
+              value: currentValue,
+              timestamp: date.getTime()
+            });
+          }
+          
+          setPortfolioHistory(dataPoints);
+          setHistoryLoading(false);
+          return;
+        }
+
+        // Aggregate by date: sum all asset values for each date
+        const dateMap = new Map();
+        
+        validHistories.forEach(history => {
+          history.forEach(({ date, timestamp, value }) => {
+            if (!dateMap.has(date)) {
+              dateMap.set(date, { date, timestamp, value: 0 });
+            }
+            dateMap.get(date).value += value;
+          });
+        });
+
+        // Convert to array and sort by date
+        const aggregated = Array.from(dateMap.values())
+          .sort((a, b) => a.timestamp - b.timestamp);
+
+        // Add non-trackable assets (fixed value) to each point
+        const fixedAssetsValue = displayAssets
+          .filter(asset => {
+            // Assets that don't have live prices
+            return !(asset.assetMode === 'QUANTITY' && 
+                   asset.quantity && 
+                   asset.quantity > 0 &&
+                   asset.marketDataSource && 
+                   asset.marketDataSource !== 'manual' &&
+                   (asset.apiId || asset.symbol));
+          })
+          .reduce((sum, asset) => {
+            return sum + (asset.value || 0);
+          }, 0);
+
+        // Add fixed value to each data point
+        const finalData = aggregated.map(point => ({
+          ...point,
+          value: point.value + fixedAssetsValue
+        }));
+
+        setPortfolioHistory(finalData);
+      } catch (error) {
+        console.error('Error calculating portfolio history:', error);
+        setPortfolioHistory([]);
+      } finally {
+        setHistoryLoading(false);
+      }
+    };
+
+    calculatePortfolioHistory();
+  }, [displayAssets, timeRange, currencyRate, totalWealth, hasData]);
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-10" dir="rtl">
 
@@ -309,22 +569,196 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
         <div>
           <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">דשבורד ראשי</h2>
         </div>
-        <div className="text-left w-full md:w-auto md:relative" data-coachmark="wealth-card">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="text-sm text-slate-400 dark:text-slate-500 whitespace-nowrap">שווי נקי</div>
-            <button
-              onClick={() => setIsWealthVisible(!isWealthVisible)}
-              className="md:absolute md:right-0 md:top-0 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 w-6 h-6 flex items-center justify-center flex-shrink-0"
-              title={isWealthVisible ? 'הסתר' : 'הצג'}
-            >
-              {isWealthVisible ? <Eye size={14} /> : <EyeOff size={14} />}
-            </button>
+      </header>
+
+      {/* Top Summary Cards */}
+      {hasData && (
+        <div className="grid grid-cols-3 md:grid-cols-3 gap-1.5 md:gap-4 mb-6">
+          <SummaryCard
+            title={`תיק לפי מטבע ראשי (${mainCurrency})`}
+            value={isWealthVisible ? formatCurrency(totalWealth) : '••••••'}
+            icon={Wallet}
+            iconBgColor="bg-blue-500/10"
+          />
+          <SummaryCard
+            title="רווח/הפסד יומי"
+            value={isWealthVisible ? formatCurrency(dailyProfitLoss.amount) : '••••••'}
+            icon={Calendar}
+            iconBgColor="bg-purple-500/10"
+            plData={isWealthVisible ? dailyProfitLoss : null}
+          />
+          <SummaryCard
+            title="רווח/הפסד כולל"
+            value={isWealthVisible ? formatCurrency(totalProfitLoss.amount) : '••••••'}
+            icon={TrendingUp}
+            iconBgColor="bg-emerald-500/10"
+            plData={isWealthVisible ? totalProfitLoss : null}
+          />
+        </div>
+      )}
+
+      {/* Collapsible Balance Chart Section */}
+      {hasData && (
+        <div className="bg-white dark:bg-[#1E1E2D] rounded-xl p-4 md:p-6 shadow-sm border border-slate-200 dark:border-slate-700">
+          {/* Clickable Header */}
+          <div 
+            onClick={() => setIsChartOpen(!isChartOpen)}
+            className="flex justify-between items-center cursor-pointer mb-4"
+            data-coachmark="wealth-card"
+          >
+            <div className="flex-1">
+              <div className="text-sm text-slate-500 dark:text-slate-400 mb-1">שווי לפי היסטוריה</div>
+              <div className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white font-mono">
+                {isWealthVisible ? formatCurrency(totalWealth) : '••••••'}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsWealthVisible(!isWealthVisible);
+                }}
+                className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 w-6 h-6 flex items-center justify-center flex-shrink-0"
+                title={isWealthVisible ? 'הסתר' : 'הצג'}
+              >
+                {isWealthVisible ? <Eye size={14} /> : <EyeOff size={14} />}
+              </button>
+              {isChartOpen ? (
+                <ChevronUp className="w-5 h-5 text-slate-400 dark:text-slate-500" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-slate-400 dark:text-slate-500" />
+              )}
+            </div>
           </div>
-          <div className="text-2xl md:text-3xl font-black text-slate-800 dark:text-white font-mono">
-            {isWealthVisible ? formatCurrency(totalWealth) : '••••••'}
+
+          {/* Collapsible Content */}
+          <div 
+            className={`transition-all duration-300 ease-in-out overflow-hidden ${
+              isChartOpen 
+                ? 'max-h-[1000px] opacity-100 mt-4' 
+                : 'max-h-0 opacity-0 mt-0'
+            }`}
+          >
+            {/* Timeframe Selectors and XLS Button */}
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-4 border-b border-slate-200 dark:border-slate-700">
+              <div className="flex flex-wrap gap-2">
+                {['1D', '1W', '1M', '3M', '1Y', 'ALL'].map((period) => (
+                  <button
+                    key={period}
+                    onClick={() => setTimeRange(period)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                      timeRange === period
+                        ? 'bg-emerald-600 dark:bg-emerald-500 text-white'
+                        : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                    }`}
+                  >
+                    {period}
+                  </button>
+                ))}
+              </div>
+              {/* <button
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 dark:bg-emerald-500 text-white hover:bg-emerald-700 dark:hover:bg-emerald-600 transition-colors flex items-center gap-1.5"
+                title="ייצא ל-Excel"
+              >
+                <Cloud size={14} />
+                XLS
+              </button> */}
+            </div>
+
+            {/* Balance Chart - Time Series */}
+            <div className="h-64 md:h-80">
+              {historyLoading ? (
+                <div className="h-full flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600 mx-auto mb-2"></div>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">טוען נתונים...</p>
+                  </div>
+                </div>
+              ) : portfolioHistory.length === 0 ? (
+                <div className="h-full flex items-center justify-center">
+                  <p className="text-sm text-slate-500 dark:text-slate-400">אין נתונים להצגה</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart 
+                    data={portfolioHistory} 
+                    margin={{ top: 10, right: 10, left: 10, bottom: 20 }}
+                  >
+                    <defs>
+                      <linearGradient id="balanceGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis 
+                      dataKey="date" 
+                      tick={{ 
+                        fontSize: 11, 
+                        fontFamily: HEBREW_FONT,
+                        fill: '#64748b',
+                      }}
+                      axisLine={{ stroke: '#e2e8f0' }}
+                      tickLine={{ stroke: '#e2e8f0' }}
+                      tickFormatter={(value) => {
+                        const point = portfolioHistory.find(p => p.date === value);
+                        if (!point) return value;
+                        return formatDateForAxis(new Date(point.timestamp), timeRange);
+                      }}
+                      angle={timeRange === '1D' ? 0 : -35}
+                      textAnchor={timeRange === '1D' ? 'middle' : 'end'}
+                      height={timeRange === '1D' ? 30 : 55}
+                      dy={timeRange === '1D' ? 5 : 5}
+                    />
+                    <YAxis 
+                      tick={{ 
+                        fontSize: 11, 
+                        fontFamily: HEBREW_FONT,
+                        fill: '#64748b',
+                      }}
+                      axisLine={{ stroke: '#e2e8f0' }}
+                      tickLine={{ stroke: '#e2e8f0' }}
+                      tickFormatter={formatAxisTick}
+                    />
+                    <Tooltip 
+                      content={({ active, payload }) => {
+                        if (!active || !payload || !payload[0]) return null;
+                        const data = payload[0].payload;
+                        const date = new Date(data.timestamp);
+                        const dateStr = date.toLocaleDateString('he-IL', { 
+                          year: 'numeric', 
+                          month: 'long', 
+                          day: 'numeric',
+                          ...(timeRange === '1D' && { hour: '2-digit', minute: '2-digit' })
+                        });
+                        return (
+                          <div className="bg-white dark:bg-slate-800 p-3 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700">
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">{dateStr}</p>
+                            <p className="text-sm font-bold text-slate-800 dark:text-white">
+                              {formatCurrency(data.value)}
+                            </p>
+                          </div>
+                        );
+                      }}
+                      wrapperStyle={{ zIndex: 1000 }}
+                    />
+                    <Area 
+                      type="monotone" 
+                      dataKey="value" 
+                      stroke="#3b82f6" 
+                      strokeWidth={2}
+                      fillOpacity={1}
+                      fill="url(#balanceGradient)"
+                      dot={false}
+                      activeDot={{ r: 4, fill: '#3b82f6', stroke: '#fff', strokeWidth: 2 }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </div>
           </div>
         </div>
-      </header>
+      )}
 
       {!hasData ? (
         <div className="bg-white dark:bg-slate-800 p-12 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">

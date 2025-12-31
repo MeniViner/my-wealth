@@ -753,6 +753,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
               ? 'border-emerald-600 dark:border-emerald-400 text-emerald-600 dark:text-emerald-400'
               : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
           }`}
+          data-coachmark="rebalancing-targets"
         >
           הגדרת יעדים
         </button>
@@ -763,6 +764,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
               ? 'border-emerald-600 dark:border-emerald-400 text-emerald-600 dark:text-emerald-400'
               : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
           }`}
+          data-coachmark="rebalancing-status"
         >
           סטטוס יעדים
         </button>
@@ -773,6 +775,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
               ? 'border-emerald-600 dark:border-emerald-400 text-emerald-600 dark:text-emerald-400'
               : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
           }`}
+          data-coachmark="reports"
         >
            דוחות וניתוחי AI
         </button>

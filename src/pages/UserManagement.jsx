@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { collection, getDocs, query, orderBy, doc, getDoc, deleteDoc, writeBatch } from 'firebase/firestore';
+import { sendPasswordResetEmail } from 'firebase/auth';
 import { Shield, Users, UserCheck, UserX, Search, Loader2, AlertCircle, Mail, Calendar, RefreshCw, Trash2, Send } from 'lucide-react';
-import { db, appId } from '../services/firebase';
+import { db, appId, auth } from '../services/firebase';
 import { useAdmin, setUserAsAdmin, removeAdminStatus } from '../hooks/useAdmin';
 import { confirmAlert, successAlert, errorAlert } from '../utils/alerts';
 
@@ -44,6 +45,7 @@ const UserManagement = ({ user }) => {
                 id: userId,
                 email: userData.email || userId,
                 displayName: userData.displayName || null,
+                photoURL: userData.photoURL || null,
                 assetsCount: 0,
                 isAdmin: false,
                 createdAt: userData.createdAt ? (userData.createdAt.toDate ? userData.createdAt : userData.createdAt) : null
@@ -53,6 +55,7 @@ const UserManagement = ({ user }) => {
               const existingUser = usersMap.get(userId);
               existingUser.email = userData.email || existingUser.email || userId;
               existingUser.displayName = userData.displayName || existingUser.displayName;
+              existingUser.photoURL = userData.photoURL || existingUser.photoURL || null;
               if (userData.createdAt) {
                 existingUser.createdAt = userData.createdAt;
               }
@@ -251,12 +254,40 @@ const UserManagement = ({ user }) => {
     }
   };
 
-  // Send email to user
-  const handleSendEmail = (userEmail) => {
-    if (userEmail && userEmail !== user.uid) {
-      window.location.href = `mailto:${userEmail}`;
-    } else {
-      errorAlert('שגיאה', 'לא ניתן לשלוח מייל - אין כתובת מייל זמינה');
+  // Send password reset email to user
+  const handleSendEmail = async (userEmail, userId) => {
+    if (!userEmail || userEmail === userId || !auth) {
+      await errorAlert('שגיאה', 'לא ניתן לשלוח מייל - אין כתובת מייל זמינה או Firebase לא זמין');
+      return;
+    }
+
+    const confirmed = await confirmAlert(
+      'שליחת מייל לאיפוס סיסמה',
+      `האם לשלוח מייל לאיפוס סיסמה ל-${userEmail}?`,
+      'question'
+    );
+
+    if (!confirmed) return;
+
+    setProcessing(userId);
+    try {
+      await sendPasswordResetEmail(auth, userEmail);
+      await successAlert('הצלחה', `מייל לאיפוס סיסמה נשלח בהצלחה ל-${userEmail}`);
+    } catch (error) {
+      console.error('Error sending password reset email:', error);
+      let errorMessage = 'אירעה שגיאה בשליחת המייל';
+      
+      if (error.code === 'auth/user-not-found') {
+        errorMessage = 'המשתמש לא נמצא במערכת';
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage = 'כתובת המייל אינה תקינה';
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMessage = 'יותר מדי בקשות. נסה שוב מאוחר יותר';
+      }
+      
+      await errorAlert('שגיאה', errorMessage);
+    } finally {
+      setProcessing(null);
     }
   };
 
@@ -302,10 +333,10 @@ const UserManagement = ({ user }) => {
   if (!adminLoading && !isAdmin) {
     return (
       <div className="max-w-4xl mx-auto py-12">
-        <div className="bg-red-50 dark:bg-red-900/20 border-2 border-red-200 dark:border-red-800 rounded-2xl p-8 text-center">
-          <AlertCircle className="w-16 h-16 text-red-500 dark:text-red-400 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-red-800 dark:text-red-300 mb-2">גישה נדחתה</h2>
-          <p className="text-red-600 dark:text-red-400">אין לך הרשאות גישה לדף זה. רק מנהלים יכולים לגשת לניהול משתמשים.</p>
+        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-8 text-center">
+          <AlertCircle className="w-16 h-16 text-slate-400 dark:text-slate-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-200 mb-2">גישה נדחתה</h2>
+          <p className="text-slate-600 dark:text-slate-400">אין לך הרשאות גישה לדף זה. רק מנהלים יכולים לגשת לניהול משתמשים.</p>
         </div>
       </div>
     );
@@ -315,8 +346,8 @@ const UserManagement = ({ user }) => {
     return (
       <div className="max-w-7xl mx-auto py-12">
         <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-emerald-600 mx-auto mb-4" />
-          <p className="text-slate-600">טוען...</p>
+          <Loader2 className="w-12 h-12 animate-spin text-slate-400 dark:text-slate-500 mx-auto mb-4" />
+          <p className="text-slate-600 dark:text-slate-400">טוען...</p>
         </div>
       </div>
     );
@@ -325,21 +356,21 @@ const UserManagement = ({ user }) => {
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-12">
       {/* Header */}
-      <header className="bg-gradient-to-r from-slate-50 to-white dark:from-slate-800 dark:to-slate-900 rounded-2xl p-4 md:p-6 shadow-lg border border-slate-200 dark:border-slate-700 mr-12 md:mr-0">
+      <header className="bg-white dark:bg-slate-800 rounded-lg p-4 md:p-6 border border-slate-200 dark:border-slate-700 mr-12 md:mr-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="bg-purple-100 dark:bg-purple-900/30 p-3 rounded-xl">
-              <Shield className="text-purple-600 dark:text-purple-400" size={32} />
+            <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/20">
+              <Shield className="text-emerald-600 dark:text-emerald-400" size={32} />
             </div>
             <div>
-              <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">ניהול משתמשים</h2>
+              <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-slate-200">ניהול משתמשים</h2>
               <p className="text-slate-500 dark:text-slate-400 mt-1 text-sm">נהל הרשאות משתמשים ומנהלים</p>
             </div>
           </div>
           <button
             onClick={handleRefresh}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 rounded-lg hover:bg-emerald-200 dark:hover:bg-emerald-900/50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/30 transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
             רענון
@@ -349,41 +380,41 @@ const UserManagement = ({ user }) => {
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-slate-800 rounded-xl p-4 md:p-6 shadow-sm border border-slate-200 dark:border-slate-700">
+        <div className="bg-white dark:bg-slate-800 rounded-lg p-4 md:p-6 border border-slate-200 dark:border-slate-700">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-slate-500 dark:text-slate-400">סה"כ משתמשים</p>
-              <p className="text-2xl font-bold text-slate-800 dark:text-white mt-1">{users.length}</p>
+              <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">{users.length}</p>
             </div>
-            <Users className="w-10 h-10 text-blue-500 dark:text-blue-400" />
+            <Users className="w-10 h-10 text-slate-400 dark:text-slate-500" />
           </div>
         </div>
-        <div className="bg-white dark:bg-slate-800 rounded-xl p-4 md:p-6 shadow-sm border border-slate-200 dark:border-slate-700">
+        <div className="bg-white dark:bg-slate-800 rounded-lg p-4 md:p-6 border border-slate-200 dark:border-slate-700">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-slate-500 dark:text-slate-400">מנהלים</p>
-              <p className="text-2xl font-bold text-slate-800 dark:text-white mt-1">
+              <p className="text-2xl font-bold text-slate-800 dark:text-slate-200 mt-1">
                 {users.filter(u => u.isAdmin).length}
               </p>
             </div>
-            <Shield className="w-10 h-10 text-purple-500 dark:text-purple-400" />
+            <Shield className="w-10 h-10 text-slate-400 dark:text-slate-500" />
           </div>
         </div>
-        <div className="bg-white dark:bg-slate-800 rounded-xl p-4 md:p-6 shadow-sm border border-slate-200 dark:border-slate-700">
+        <div className="bg-white dark:bg-slate-800 rounded-lg p-4 md:p-6 border border-slate-200 dark:border-slate-700">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-slate-500 dark:text-slate-400">משתמשים רגילים</p>
-              <p className="text-2xl font-bold text-slate-800 dark:text-white mt-1">
+              <p className="text-2xl font-bold text-slate-800 dark:text-slate-200 mt-1">
                 {users.filter(u => !u.isAdmin).length}
               </p>
             </div>
-            <Users className="w-10 h-10 text-emerald-500 dark:text-emerald-400" />
+            <Users className="w-10 h-10 text-slate-400 dark:text-slate-500" />
           </div>
         </div>
       </div>
 
       {/* Search */}
-      <div className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-200 dark:border-slate-700">
+      <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-slate-200 dark:border-slate-700">
         <div className="relative">
           <Search className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 dark:text-slate-500" size={20} />
           <input
@@ -397,7 +428,7 @@ const UserManagement = ({ user }) => {
       </div>
 
       {/* Users Table */}
-      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+      <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
@@ -421,14 +452,14 @@ const UserManagement = ({ user }) => {
                           <>
                             <p className="font-medium mb-2">אין משתמשים במערכת</p>
                             <p className="text-sm mb-3">משתמשים יופיעו כאן לאחר שיתחברו לראשונה לאפליקציה</p>
-                            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 text-sm text-blue-800 dark:text-blue-300 max-w-lg mx-auto text-right">
+                            <div className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg p-4 text-sm text-slate-700 dark:text-slate-300 max-w-lg mx-auto text-right">
                               <p className="font-medium mb-2">💡 טיפים לפתרון:</p>
                               <ol className="list-decimal list-inside space-y-2 text-right">
                                 <li>
                                   <strong>העלה את הכללים ל-Firebase Console:</strong>
                                   <ul className="list-disc list-inside mr-4 mt-1 text-xs">
                                     <li>פתח Firebase Console → Firestore Database → Rules</li>
-                                    <li>העתק את התוכן מ-<code className="bg-blue-100 dark:bg-blue-900 px-1 rounded">firestore.rules</code></li>
+                                    <li>העתק את התוכן מ-<code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">firestore.rules</code></li>
                                     <li>הדבק ולחץ Publish</li>
                                     <li>ראה QUICK_DEPLOY_RULES.md להוראות מפורטות</li>
                                   </ul>
@@ -449,9 +480,17 @@ const UserManagement = ({ user }) => {
                   <tr key={userItem.id} className="hover:bg-slate-50 dark:hover:bg-slate-700 transition">
                     <td className="px-4 md:px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-emerald-400 to-blue-500 flex items-center justify-center text-white font-bold">
-                          {(userItem.displayName || userItem.email || userItem.id).charAt(0).toUpperCase()}
-                        </div>
+                        {userItem.photoURL ? (
+                          <img
+                            src={userItem.photoURL}
+                            alt={userItem.displayName || userItem.email || 'משתמש'}
+                            className="w-10 h-10 rounded-full ring-2 ring-slate-200 dark:ring-slate-700 flex-shrink-0 object-cover"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 font-bold">
+                            {(userItem.displayName || userItem.email || userItem.id).charAt(0).toUpperCase()}
+                          </div>
+                        )}
                         <div className="flex-1 min-w-0">
                           {userItem.displayName && (
                             <div className="font-medium text-slate-800 dark:text-slate-100 truncate">
@@ -488,7 +527,7 @@ const UserManagement = ({ user }) => {
                     </td>
                     <td className="px-4 md:px-6 py-4">
                       {userItem.isAdmin ? (
-                        <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-sm font-medium">
+                        <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-medium">
                           <Shield size={14} />
                           מנהל
                         </span>
@@ -506,59 +545,69 @@ const UserManagement = ({ user }) => {
                             <button
                               onClick={() => handleToggleAdmin(userItem.id, userItem.isAdmin)}
                               disabled={processing === userItem.id}
-                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                                 userItem.isAdmin
-                                  ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50'
-                                  : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/50'
-                              } disabled:opacity-50 disabled:cursor-not-allowed`}
+                                  ? 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600 border border-slate-200 dark:border-slate-600'
+                                  : 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800'
+                              } disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow`}
                             >
                               {processing === userItem.id ? (
                                 <>
-                                  <Loader2 size={14} className="animate-spin" />
-                                  <span className="hidden sm:inline">מעבד...</span>
+                                  <Loader2 size={16} className="animate-spin" />
+                                  <span className="hidden md:inline">מעבד...</span>
                                 </>
                               ) : userItem.isAdmin ? (
                                 <>
-                                  <UserX size={14} />
-                                  <span className="hidden sm:inline">הסר הרשאות</span>
+                                  <UserX size={16} />
+                                  <span className="hidden md:inline">הסר הרשאות</span>
                                 </>
                               ) : (
                                 <>
-                                  <UserCheck size={14} />
-                                  <span className="hidden sm:inline">הוסף מנהל</span>
+                                  <UserCheck size={16} />
+                                  <span className="hidden md:inline">הוסף מנהל</span>
                                 </>
                               )}
                             </button>
                             
                             {userItem.email && userItem.email !== userItem.id && (
                               <button
-                                onClick={() => handleSendEmail(userItem.email)}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition"
-                                title={`שלח מייל ל-${userItem.email}`}
+                                onClick={() => handleSendEmail(userItem.email, userItem.id)}
+                                disabled={processing === userItem.id}
+                                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed border border-slate-200 dark:border-slate-600 shadow-sm hover:shadow"
+                                title={`שלח מייל לאיפוס סיסמה ל-${userItem.email}`}
                               >
-                                <Send size={14} />
-                                <span className="hidden sm:inline">שלח מייל</span>
+                                {processing === userItem.id ? (
+                                  <>
+                                    <Loader2 size={16} className="animate-spin" />
+                                    <span className="hidden md:inline">שולח...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Send size={16} />
+                                    <span className="hidden md:inline">איפוס סיסמה</span>
+                                  </>
+                                )}
                               </button>
                             )}
                             
                             <button
                               onClick={() => handleDeleteUser(userItem.id, userItem.email || userItem.displayName || userItem.id)}
                               disabled={processing === userItem.id}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed border border-slate-200 dark:border-slate-600 shadow-sm hover:shadow"
                               title="מחק משתמש"
                             >
                               {processing === userItem.id ? (
-                                <Loader2 size={14} className="animate-spin" />
+                                <Loader2 size={16} className="animate-spin" />
                               ) : (
                                 <>
-                                  <Trash2 size={14} />
-                                  <span className="hidden sm:inline">מחק</span>
+                                  <Trash2 size={16} />
+                                  <span className="hidden md:inline">מחק</span>
                                 </>
                               )}
                             </button>
                           </>
                         ) : (
-                          <span className="text-sm text-slate-400 dark:text-slate-500 italic">אתה</span>
+                          <span className="text-sm text-slate-400 dark:text-slate-500 italic px-4 py-2">אתה</span>
                         )}
                       </div>
                     </td>

@@ -81,9 +81,7 @@ const COACHMARKS = [
     description: 'לחץ כאן כדי להוסיף מניות, קריפטו, חשבונות בנק, ועוד.',
     icon: Plus,
     route: '/assets',
-    targetSelector: 'button',
-    targetText: 'הוסף נכס',
-    fallbackSelector: 'button[class*="bg-emerald"]',
+    targetSelector: '[data-coachmark="add-asset"]',
     spotlightSize: 'medium',
     openMobileMenu: false,
   },
@@ -93,9 +91,7 @@ const COACHMARKS = [
     description: 'כאן תראה את הנכסים שלך מקובצים לפי חשבונות וארנקים - איפה הכסף שלך נמצא.',
     icon: Building2,
     route: '/assets',
-    targetSelector: 'button',
-    targetText: 'ניהול המקורות שלי',
-    fallbackSelector: 'button[class*="border-b"]:nth-of-type(2)',
+    targetSelector: '[data-coachmark="sources-tab"]',
     spotlightSize: 'medium',
     openMobileMenu: false,
     waitForTab: 'sources',
@@ -106,9 +102,7 @@ const COACHMARKS = [
     description: 'אפיקי השקעה - החלוקה הראשית של התיק שלך.',
     icon: Layers,
     route: '/assets',
-    targetSelector: 'h3',
-    targetText: 'אפיקי השקעה',
-    fallbackSelector: 'div:has(h3)',
+    targetSelector: '[data-coachmark="asset-distribution-categories"]',
     spotlightSize: 'medium',
     openMobileMenu: false,
     waitForTab: 'sources',
@@ -119,9 +113,7 @@ const COACHMARKS = [
     description: 'טיקרים וסמלים ספציפיים למעקב אחר נכסים.',
     icon: Coins,
     route: '/assets',
-    targetSelector: 'h3',
-    targetText: 'נכסים למעקב',
-    fallbackSelector: 'div:has(h3)',
+    targetSelector: '[data-coachmark="asset-distribution-symbols"]',
     spotlightSize: 'medium',
     openMobileMenu: false,
     waitForTab: 'sources',
@@ -132,7 +124,7 @@ const COACHMARKS = [
     description: 'השתמש בחיפוש ובסינונים כדי למצוא נכסים ספציפיים במהירות.',
     icon: Search,
     route: '/assets',
-    targetSelector: 'input[placeholder*="חיפוש"]',
+    targetSelector: '[data-coachmark="asset-search"]',
     spotlightSize: 'medium',
     openMobileMenu: false,
   },
@@ -142,8 +134,7 @@ const COACHMARKS = [
     description: 'קבץ את הנכסים שלך לפי חשבונות וארנקים, אפיקי השקעה, או מטבעות בסיס כדי לראות תמונה ברורה יותר.',
     icon: Filter,
     route: '/assets',
-    targetSelector: '.flex.flex-wrap.gap-2 button:first-of-type',
-    fallbackSelector: '[class*="border-t"] .flex.gap-2',
+    targetSelector: '[data-coachmark="asset-grouping"]',
     spotlightSize: 'medium',
     openMobileMenu: false,
   },
@@ -175,12 +166,21 @@ const COACHMARKS = [
     description: 'הגדר יעדי הקצאה לכל אפיק השקעה וצפה בהמלצות לאיזון התיק.',
     icon: Target,
     route: '/rebalancing',
-    targetSelector: 'button',
-    targetText: 'הגדרת יעדים',
-    fallbackSelector: 'button[class*="border-b"]:first-of-type',
+    targetSelector: '[data-coachmark="rebalancing-targets"]',
     spotlightSize: 'medium',
     openMobileMenu: false,
     waitForHash: '#rebalancing',
+  },
+  {
+    id: 'rebalancing-status',
+    title: 'סטטוס יעדים',
+    description: 'צפה בסטטוס הנוכחי של היעדים שלך - כמה רחוק אתה מהיעד שהגדרת.',
+    icon: TrendingUp,
+    route: '/rebalancing',
+    targetSelector: '[data-coachmark="rebalancing-status"]',
+    spotlightSize: 'medium',
+    openMobileMenu: false,
+    waitForHash: '#analysis',
   },
   {
     id: 'reports',
@@ -188,9 +188,7 @@ const COACHMARKS = [
     description: 'צפה בדוחות שמורים וניתוחי AI על התיק שלך.',
     icon: BarChart3,
     route: '/rebalancing',
-    targetSelector: 'button',
-    targetText: 'דוחות',
-    fallbackSelector: 'button[class*="border-b"]:last-of-type',
+    targetSelector: '[data-coachmark="reports"]',
     spotlightSize: 'medium',
     openMobileMenu: false,
     waitForHash: '#reports',
@@ -240,7 +238,19 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
   const location = useLocation();
   const { initializeDemoAssets, clearDemoAssets } = useDemoData();
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [spotlightPosition, setSpotlightPosition] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  const [spotlightPosition, setSpotlightPosition] = useState(() => {
+    // Initialize with safe defaults
+    if (typeof window !== 'undefined') {
+      return {
+        x: window.innerWidth / 2 - 150,
+        y: window.innerHeight / 2 - 100,
+        width: 300,
+        height: 200,
+        hidden: false
+      };
+    }
+    return { x: 0, y: 0, width: 300, height: 200, hidden: false };
+  });
   const [isMobile, setIsMobile] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
   const [showDemoBanner, setShowDemoBanner] = useState(false);
@@ -309,7 +319,19 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
     // Check if we need to navigate
     const needsNavigation = targetRoute && currentPath !== targetRoute.split('#')[0];
     const needsHash = targetHash && currentHash !== targetHash;
-    const needsTab = targetTab && !document.querySelector(`button[class*="border-b"]:has-text("${targetTab === 'sources' ? 'ניהול המקורות שלי' : ''}")`)?.classList.contains('border-emerald');
+    
+    // Check if tab needs to be switched (using manual search, not CSS selector)
+    let needsTab = false;
+    if (targetTab) {
+      const tabButtons = Array.from(document.querySelectorAll('button[class*="border-b"]'));
+      const activeTab = tabButtons.find(btn => {
+        const text = btn.textContent || '';
+        if (targetTab === 'sources') return text.includes('ניהול המקורות');
+        if (targetTab === 'assets') return text.includes('נכסים');
+        return false;
+      });
+      needsTab = activeTab && !activeTab.classList.contains('border-emerald');
+    }
 
     if (needsNavigation || needsHash) {
       setIsNavigating(true);
@@ -396,6 +418,10 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
       clearTimeout(updateTimeoutRef.current);
     }
 
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CoachmarkTour.jsx:404',message:'updateSpotlight entry',data:{stepId:coachmark?.id,selector:coachmark?.targetSelector,fallback:coachmark?.fallbackSelector},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+
     if (!coachmark.targetSelector || coachmark.isFinal) {
       setSpotlightPosition({
         x: window.innerWidth / 2 - 150,
@@ -431,9 +457,16 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
     let targetElement = findElementByText(coachmark.targetSelector, coachmark.targetText) || 
                        document.querySelector(coachmark.targetSelector);
     
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CoachmarkTour.jsx:444',message:'element search result',data:{found:!!targetElement,selector:coachmark.targetSelector,usingFallback:false},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    
     if (!targetElement && coachmark.fallbackSelector) {
       targetElement = findElementByText(coachmark.fallbackSelector, coachmark.fallbackText) ||
                      document.querySelector(coachmark.fallbackSelector);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CoachmarkTour.jsx:448',message:'fallback element search',data:{found:!!targetElement,fallbackSelector:coachmark.fallbackSelector},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       if (targetElement) {
         targetElement = targetElement.closest('div[class*="rounded-xl"]') || 
                        targetElement.closest('div[class*="rounded-2xl"]') || 
@@ -443,6 +476,24 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
 
     if (targetElement) {
       const rect = targetElement.getBoundingClientRect();
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CoachmarkTour.jsx:457',message:'element rect before padding',data:{left:rect.left,top:rect.top,width:rect.width,height:rect.height,viewportWidth:window.innerWidth,viewportHeight:window.innerHeight,isVisible:rect.width>0&&rect.height>0,isOnScreen:rect.left>=0&&rect.top>=0&&rect.right<=window.innerWidth&&rect.bottom<=window.innerHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+      
+      // Scroll element into view only if completely off-screen (not if partially visible)
+      // Allow user to scroll freely - only scroll if element is completely invisible
+      const isCompletelyOffScreen = rect.width === 0 || rect.height === 0 || 
+        (rect.right < 0 || rect.left > window.innerWidth) || 
+        (rect.bottom < 0 || rect.top > window.innerHeight);
+      
+      if (isCompletelyOffScreen) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CoachmarkTour.jsx:475',message:'scrolling element into view',data:{reason:'element completely off-screen'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+        // #endregion
+        // Only scroll once when step changes, don't force scroll repeatedly
+        targetElement.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+      }
+      
       let padding = 12;
       
       switch (coachmark.spotlightSize) {
@@ -462,14 +513,23 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
           padding = 12;
       }
       
-      setSpotlightPosition({
+      const spotlightPos = {
         x: rect.left - padding,
         y: rect.top - padding,
         width: rect.width + padding * 2,
         height: rect.height + padding * 2,
         hidden: false,
-      });
+      };
+      
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CoachmarkTour.jsx:478',message:'spotlight position set',data:spotlightPos,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
+      // #endregion
+      
+      setSpotlightPosition(spotlightPos);
     } else {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CoachmarkTour.jsx:485',message:'element not found, using default position',data:{selector:coachmark.targetSelector},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       setSpotlightPosition({
         x: window.innerWidth / 2 - 150,
         y: window.innerHeight / 2 - 100,
@@ -481,9 +541,10 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
   }, [currentIndex]);
 
   // Update spotlight when step changes or navigation completes
+  // Use longer delay to allow page to fully render and tabs to switch
   useEffect(() => {
     if (isActive && !isNavigating) {
-      updateTimeoutRef.current = setTimeout(updateSpotlight, 250);
+      updateTimeoutRef.current = setTimeout(updateSpotlight, 500);
       return () => {
         if (updateTimeoutRef.current) {
           clearTimeout(updateTimeoutRef.current);
@@ -555,38 +616,90 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
     const tooltipWidth = isMobile ? window.innerWidth - 32 : 360;
     const tooltipHeight = 280;
     
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CoachmarkTour.jsx:566',message:'getTooltipPosition entry',data:{spotlightX:x,spotlightY:y,spotlightW:width,spotlightH:height,hidden,isMobile,tooltipW:tooltipWidth,tooltipH:tooltipHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
+    
     if (hidden || currentCoachmark.position === 'center') {
-      return {
+      const pos = {
         left: isMobile ? 16 : '50%',
         right: isMobile ? 16 : 'auto',
         top: '50%',
         transform: isMobile ? 'translateY(-50%)' : 'translate(-50%, -50%)',
       };
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CoachmarkTour.jsx:571',message:'tooltip position center',data:pos,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      return pos;
     }
     
     if (isMobile) {
-      return {
+      const tooltipTop = Math.min(y + height + 20, window.innerHeight - tooltipHeight - 80);
+      const pos = {
         left: 16,
         right: 16,
-        top: Math.min(y + height + 20, window.innerHeight - tooltipHeight - 80),
+        top: tooltipTop,
         transform: 'none',
       };
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CoachmarkTour.jsx:580',message:'tooltip position mobile',data:{...pos,targetY:y,targetH:height,overlaps:tooltipTop<y+height},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+      // #endregion
+      return pos;
     }
     
-    let tooltipX = x - tooltipWidth - 30;
-    let tooltipY = y + height / 2 - tooltipHeight / 2;
+    // Desktop positioning - try to avoid covering target
+    // Check if target is in top half of screen -> place tooltip below
+    // Check if target is in bottom half -> place tooltip above
+    const targetCenterY = y + height / 2;
+    const viewportCenterY = window.innerHeight / 2;
+    const targetInTopHalf = targetCenterY < viewportCenterY;
     
+    let tooltipX = x - tooltipWidth - 30;
+    let tooltipY;
+    
+    if (targetInTopHalf) {
+      // Target in top half - place tooltip below
+      tooltipY = y + height + 20;
+    } else {
+      // Target in bottom half - place tooltip above
+      tooltipY = y - tooltipHeight - 20;
+    }
+    
+    // Try left side first
     if (tooltipX < 20) {
+      // Left side doesn't fit, try right side
       tooltipX = x + width + 30;
     }
     
+    // If right side also doesn't fit, center above/below
     if (tooltipX + tooltipWidth > window.innerWidth - 20) {
       tooltipX = Math.max(20, x + width / 2 - tooltipWidth / 2);
-      tooltipY = y + height + 20;
+      // If still doesn't fit, use the side that fits better
+      if (tooltipX < 20) tooltipX = 20;
+      if (tooltipX + tooltipWidth > window.innerWidth - 20) {
+        tooltipX = window.innerWidth - tooltipWidth - 20;
+      }
     }
     
+    // Clamp to viewport
     tooltipY = Math.max(20, Math.min(tooltipY, window.innerHeight - tooltipHeight - 20));
     tooltipX = Math.max(20, Math.min(tooltipX, window.innerWidth - tooltipWidth - 20));
+    
+    // Check for overlap with target
+    const tooltipLeft = tooltipX;
+    const tooltipRight = tooltipX + tooltipWidth;
+    const tooltipTop = tooltipY;
+    const tooltipBottom = tooltipY + tooltipHeight;
+    const targetLeft = x;
+    const targetRight = x + width;
+    const targetTop = y;
+    const targetBottom = y + height;
+    
+    const overlaps = !(tooltipRight < targetLeft || tooltipLeft > targetRight || tooltipBottom < targetTop || tooltipTop > targetBottom);
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CoachmarkTour.jsx:625',message:'tooltip position desktop final',data:{tooltipX,tooltipY,targetX:x,targetY:y,targetW:width,targetH:height,overlaps,targetInTopHalf,strategy:targetInTopHalf?'below':'above'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
     
     return {
       left: tooltipX,
@@ -645,10 +758,10 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
                 <motion.rect
                   initial={{ opacity: 0 }}
                   animate={{ 
-                    x: spotlightPosition.x,
-                    y: spotlightPosition.y,
-                    width: spotlightPosition.width,
-                    height: spotlightPosition.height,
+                    x: spotlightPosition.x || 0,
+                    y: spotlightPosition.y || 0,
+                    width: spotlightPosition.width || 300,
+                    height: spotlightPosition.height || 200,
                     opacity: 1 
                   }}
                   transition={{ duration: 0.3, ease: "easeOut" }}
@@ -682,10 +795,10 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
             animate={{ 
               opacity: 1, 
               scale: 1,
-              left: spotlightPosition.x - 4,
-              top: spotlightPosition.y - 4,
-              width: spotlightPosition.width + 8,
-              height: spotlightPosition.height + 8,
+              left: (spotlightPosition.x || 0) - 4,
+              top: (spotlightPosition.y || 0) - 4,
+              width: (spotlightPosition.width || 300) + 8,
+              height: (spotlightPosition.height || 200) + 8,
             }}
             transition={{ duration: 0.3, ease: "easeOut" }}
             style={{
@@ -714,9 +827,9 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
             transition={{ duration: 0.3, delay: 0.1 }}
-            className={`absolute bg-gradient-to-b from-slate-800 to-slate-900 rounded-xl md:rounded-2xl shadow-2xl border border-slate-700/50 ${
+            className={`absolute bg-gradient-to-b from-slate-800 to-slate-900 rounded-lg md:rounded-2xl shadow-2xl border border-slate-700/50 ${
               isMobile 
-                ? 'left-2 right-2 p-3' 
+                ? 'left-1.5 right-1.5 p-2' 
                 : 'w-[360px] p-6'
             }`}
             style={{
@@ -727,22 +840,22 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
             {/* Close button inside tooltip */}
             <button
               onClick={handleSkip}
-              className={`absolute top-2 left-2 md:top-4 md:left-4 p-1.5 md:p-2 rounded-lg md:rounded-xl hover:bg-slate-700/50 transition-colors`}
+              className={`absolute top-1 left-1 md:top-4 md:left-4 p-1 md:p-2 rounded-md md:rounded-xl hover:bg-slate-700/50 transition-colors`}
               aria-label="סגור"
             >
-              <X className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'} text-slate-400`} />
+              <X className={`${isMobile ? 'w-3 h-3' : 'w-5 h-5'} text-slate-400`} />
             </button>
 
             {/* Icon and progress */}
-            <div className={`flex items-center gap-2 md:gap-4 ${isMobile ? 'mb-3' : 'mb-5'}`}>
-              <div className={`${isMobile ? 'w-8 h-8 rounded-lg' : 'w-14 h-14 rounded-2xl'} bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 flex-shrink-0`}>
-                <Icon className={`${isMobile ? 'w-4 h-4' : 'w-7 h-7'} text-white`} />
+            <div className={`flex items-center gap-1.5 md:gap-4 ${isMobile ? 'mb-2' : 'mb-5'}`}>
+              <div className={`${isMobile ? 'w-6 h-6 rounded-md' : 'w-14 h-14 rounded-2xl'} bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-500/20 flex-shrink-0`}>
+                <Icon className={`${isMobile ? 'w-3 h-3' : 'w-7 h-7'} text-white`} />
               </div>
               <div className="flex-1 min-w-0">
-                <div className={`${isMobile ? 'text-xs' : 'text-sm'} text-slate-400 mb-1 md:mb-2`}>
+                <div className={`${isMobile ? 'text-[10px]' : 'text-sm'} text-slate-400 mb-0.5 md:mb-2`}>
                   שלב {currentIndex + 1} מתוך {COACHMARKS.length}
                 </div>
-                <div className={`${isMobile ? 'h-1.5' : 'h-2'} bg-slate-700 rounded-full overflow-hidden`}>
+                <div className={`${isMobile ? 'h-1' : 'h-2'} bg-slate-700 rounded-full overflow-hidden`}>
                   <motion.div
                     className="h-full bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full"
                     initial={{ width: 0 }}
@@ -754,35 +867,35 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
             </div>
 
             {/* Content */}
-            <h3 className={`${isMobile ? 'text-sm font-semibold mb-1.5' : 'text-xl font-bold mb-3'} text-white`}>{currentCoachmark.title}</h3>
-            <p className={`${isMobile ? 'text-xs leading-relaxed mb-3' : 'text-base leading-relaxed mb-6'} text-slate-300`}>{currentCoachmark.description}</p>
+            <h3 className={`${isMobile ? 'text-xs font-semibold mb-1' : 'text-xl font-bold mb-3'} text-white`}>{currentCoachmark.title}</h3>
+            <p className={`${isMobile ? 'text-[10px] leading-tight mb-2' : 'text-base leading-relaxed mb-6'} text-slate-300`}>{currentCoachmark.description}</p>
 
             {/* Navigation buttons */}
-            <div className="flex items-center gap-2 md:gap-3">
+            <div className="flex items-center gap-1.5 md:gap-3">
               {currentIndex > 0 && (
                 <button
                   onClick={handlePrev}
-                  className={`flex-1 ${isMobile ? 'py-2 px-3 text-xs' : 'py-3 px-5'} bg-slate-700 hover:bg-slate-600 text-white rounded-lg md:rounded-xl transition-all flex items-center justify-center gap-1.5 md:gap-2 font-medium shadow-lg`}
+                  className={`flex-1 ${isMobile ? 'py-1.5 px-2 text-[10px]' : 'py-3 px-5'} bg-slate-700 hover:bg-slate-600 text-white rounded-md md:rounded-xl transition-all flex items-center justify-center gap-1 md:gap-2 font-medium shadow-lg`}
                 >
-                  <ChevronRight className={`${isMobile ? 'w-3.5 h-3.5' : 'w-5 h-5'}`} />
-                  <span className={isMobile ? 'text-xs' : ''}>הקודם</span>
+                  <ChevronRight className={`${isMobile ? 'w-3 h-3' : 'w-5 h-5'}`} />
+                  <span className={isMobile ? 'text-[10px]' : ''}>הקודם</span>
                 </button>
               )}
               <button
                 onClick={handleNext}
-                className={`flex-1 ${isMobile ? 'py-2 px-3 text-xs' : 'py-3 px-5'} bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white rounded-lg md:rounded-xl transition-all flex items-center justify-center gap-1.5 md:gap-2 font-medium shadow-lg shadow-emerald-500/30 ${
+                className={`flex-1 ${isMobile ? 'py-1.5 px-2 text-[10px]' : 'py-3 px-5'} bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white rounded-md md:rounded-xl transition-all flex items-center justify-center gap-1 md:gap-2 font-medium shadow-lg shadow-emerald-500/30 ${
                   currentIndex === 0 ? 'w-full' : ''
                 }`}
               >
-                <span className={isMobile ? 'text-xs' : ''}>{currentIndex === COACHMARKS.length - 1 ? 'סיום והתחלה!' : 'הבא'}</span>
-                <ChevronLeft className={`${isMobile ? 'w-3.5 h-3.5' : 'w-5 h-5'}`} />
+                <span className={isMobile ? 'text-[10px]' : ''}>{currentIndex === COACHMARKS.length - 1 ? 'סיום והתחלה!' : 'הבא'}</span>
+                <ChevronLeft className={`${isMobile ? 'w-3 h-3' : 'w-5 h-5'}`} />
               </button>
             </div>
 
             {/* Skip option */}
             <button
               onClick={handleSkip}
-              className={`w-full ${isMobile ? 'mt-2 py-1.5 text-xs' : 'mt-4 py-2.5 text-sm'} text-slate-400 hover:text-slate-200 transition-colors`}
+              className={`w-full ${isMobile ? 'mt-1.5 py-1 text-[10px]' : 'mt-4 py-2.5 text-sm'} text-slate-400 hover:text-slate-200 transition-colors`}
             >
               דלג על ההדרכה
             </button>
