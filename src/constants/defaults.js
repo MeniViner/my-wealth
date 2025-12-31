@@ -14,14 +14,17 @@ export const generateRandomColor = () => {
 
 // Fixed data that cannot be deleted (always present)
 export const FIXED_INSTRUMENTS = [
-  { name: "ILS", color: "#10B981", isFixed: true },
-  { name: "USD", color: "#22C55E", isFixed: true }
+  { name: "מזומן", color: "#10B981" },
+  { name: "מטבע קריפטו", color: "#F59E0B" },
+  { name: "קרן סל (ETF)", color: "#6366F1" },
+  { name: "מניה בודדת", color: "#3B82F6" },
+  { name: "קרן השתלמות", color: "#F43F5E" },
 ];
 
 export const FIXED_CATEGORIES = [
-  { name: "מניות", color: "#3B82F6", isFixed: true }, // Blue
-  { name: "קריפטו", color: "#F59E0B", isFixed: true }, // Yellow
-  { name: "מזומן", color: "#10B981", isFixed: true } // Green
+  { name: "מניות", color: "#3B82F6", isFixed: true }, 
+  { name: "קריפטו", color: "#F59E0B", isFixed: true }, 
+  { name: "מזומן", color: "#10B981", isFixed: true } 
 ];
 
 export const DEFAULT_SYSTEM_DATA = {
@@ -37,23 +40,11 @@ export const DEFAULT_SYSTEM_DATA = {
   ],
   instruments: [
     ...FIXED_INSTRUMENTS,
-    { name: "מזומן (ILS)", color: "#10B981" },
-    { name: "מזומן (USD)", color: "#22C55E" },
-    { name: "מניה בודדת", color: "#3B82F6" },
-    { name: "קרן סל (ETF)", color: "#6366F1" },
-    { name: "קרן נאמנות", color: "#8B5CF6" },
     { name: "קרן כספית", color: "#A855F7" },
-    { name: "Bitcoin", color: "#F59E0B" },
-    { name: "Ethereum", color: "#6366F1" },
-    { name: "קרן השתלמות", color: "#F43F5E" },
     { name: "פנסיה", color: "#8B5CF6" },
-    { name: "נדלן", color: "#A8A29E" },
-    { name: "אחר", color: "#64748B" }
   ],
   categories: [
     ...FIXED_CATEGORIES,
-    { name: "נדלן", color: "#8B5CF6" },
-    { name: "אחר", color: "#64748B" }
   ],
   symbols: [
     { name: "ILS", color: "#10B981" },

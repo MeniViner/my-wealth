@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Calendar, Database, Wallet, ArrowRight, Edit2, Mail, TrendingUp, Building2, LayoutGrid, Eye, EyeOff, LogOut } from 'lucide-react';
+import { User, Calendar, Database, Wallet, ArrowRight, Edit2, Mail, TrendingUp, Building2, LayoutGrid, Eye, EyeOff, LogOut, Award, Tag } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db, appId } from '../services/firebase';
 import { useAuth } from '../hooks/useAuth';
@@ -82,14 +82,61 @@ const Profile = ({ user, assets, totalWealth, systemData }) => {
     // Find top category
     const topCategory = Object.entries(categoryDistribution).sort((a, b) => b[1] - a[1])[0];
 
+    // Calculate total profit/loss percentage
+    let totalProfitLossPercent = 0;
+    if (assets.length > 0) {
+      const totalCostBasis = assets.reduce((sum, asset) => {
+        if (asset.assetMode === 'QUANTITY' && asset.quantity && asset.purchasePrice) {
+          const costBasis = asset.quantity * (asset.purchasePrice || 0);
+          return sum + (asset.currency === 'USD' ? costBasis * 3.65 : costBasis);
+        } else if (asset.originalValue) {
+          const originalValueInILS = asset.currency === 'USD' 
+            ? asset.originalValue * 3.65 
+            : asset.originalValue;
+          return sum + originalValueInILS;
+        }
+        return sum;
+      }, 0);
+      
+      if (totalCostBasis > 0) {
+        totalProfitLossPercent = ((totalWealth - totalCostBasis) / totalCostBasis) * 100;
+      }
+    }
+
+    // Calculate average value per asset
+    const avgValuePerAsset = totalAssets > 0 ? totalWealth / totalAssets : 0;
+
+    // Find largest asset
+    const largestAsset = assets.length > 0 
+      ? assets.reduce((max, asset) => asset.value > max.value ? asset : max, assets[0])
+      : null;
+
+    // Count assets with profit
+    const assetsWithProfit = assets.filter(asset => {
+      if (asset.profitLoss !== null && asset.profitLoss > 0) return true;
+      if (asset.profitLossPercent !== null && asset.profitLossPercent > 0) return true;
+      return false;
+    }).length;
+
+    // Count unique tags
+    const allTags = assets
+      .filter(asset => asset.tags && Array.isArray(asset.tags))
+      .flatMap(asset => asset.tags);
+    const uniqueTagsCount = new Set(allTags).size;
+
     return {
       totalAssets,
       categoriesCount,
       platformsCount,
       instrumentsCount,
-      topCategory: topCategory ? { name: topCategory[0], value: topCategory[1] } : null
+      topCategory: topCategory ? { name: topCategory[0], value: topCategory[1] } : null,
+      totalProfitLossPercent: Number(totalProfitLossPercent.toFixed(2)),
+      avgValuePerAsset: Number(avgValuePerAsset.toFixed(0)),
+      largestAsset: largestAsset ? { name: largestAsset.name, value: largestAsset.value } : null,
+      assetsWithProfit,
+      uniqueTagsCount
     };
-  }, [assets]);
+  }, [assets, totalWealth]);
 
   const formatDate = (date) => {
     if (!date) return 'לא זמין';
@@ -116,26 +163,70 @@ const Profile = ({ user, assets, totalWealth, systemData }) => {
     // Try userData first, then user metadata
     if (userData?.createdAt) {
       try {
-        return userData.createdAt.toDate ? userData.createdAt.toDate() : new Date(userData.createdAt);
+        const date = userData.createdAt.toDate ? userData.createdAt.toDate() : new Date(userData.createdAt);
+        if (!isNaN(date.getTime())) {
+          return date;
+        }
       } catch (error) {
-        return null;
+        console.error('Error parsing userData.createdAt:', error);
       }
     }
     if (user?.metadata?.creationTime) {
-      return new Date(user.metadata.creationTime);
+      try {
+        const date = new Date(user.metadata.creationTime);
+        if (!isNaN(date.getTime())) {
+          return date;
+        }
+      } catch (error) {
+        console.error('Error parsing user.metadata.creationTime:', error);
+      }
     }
+    // Fallback: use current date if no join date found (shouldn't happen, but prevents null)
     return null;
   };
 
   const getDaysSinceJoin = () => {
     const joinDate = getJoinDate();
-    if (!joinDate) return null;
+    if (!joinDate) {
+      // If no join date, try to calculate from first asset creation date
+      if (assets.length > 0) {
+        const assetDates = assets
+          .map(asset => {
+            if (asset.createdAt) {
+              try {
+                return asset.createdAt.toDate ? asset.createdAt.toDate() : new Date(asset.createdAt);
+              } catch (e) {
+                return null;
+              }
+            }
+            return null;
+          })
+          .filter(Boolean)
+          .filter(date => !isNaN(date.getTime()));
+        
+        if (assetDates.length > 0) {
+          const earliestDate = new Date(Math.min(...assetDates.map(d => d.getTime())));
+          const now = new Date();
+          // Reset time to midnight for accurate day calculation
+          const joinMidnight = new Date(earliestDate.getFullYear(), earliestDate.getMonth(), earliestDate.getDate());
+          const nowMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const diffTime = nowMidnight - joinMidnight;
+          const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+          return diffDays >= 0 ? diffDays : 0; // Ensure non-negative
+        }
+      }
+      return null;
+    }
     try {
       const now = new Date();
-      const diffTime = Math.abs(now - joinDate);
+      // Reset time to midnight for accurate day calculation
+      const joinMidnight = new Date(joinDate.getFullYear(), joinDate.getMonth(), joinDate.getDate());
+      const nowMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const diffTime = nowMidnight - joinMidnight;
       const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-      return diffDays;
+      return diffDays >= 0 ? diffDays : 0; // Ensure non-negative (shouldn't happen, but safety check)
     } catch (error) {
+      console.error('Error calculating days since join:', error);
       return null;
     }
   };
@@ -155,6 +246,15 @@ const Profile = ({ user, assets, totalWealth, systemData }) => {
     }
   };
 
+  // Calculate days since join - use useMemo to recalculate when dependencies change
+  const daysSinceJoin = useMemo(() => {
+    return getDaysSinceJoin();
+  }, [userData, user, assets]);
+
+  const joinDate = useMemo(() => {
+    return getJoinDate();
+  }, [userData, user]);
+
   if (loading) {
     return (
       <div className="max-w-4xl mx-auto pb-12">
@@ -165,14 +265,11 @@ const Profile = ({ user, assets, totalWealth, systemData }) => {
     );
   }
 
-  const daysSinceJoin = getDaysSinceJoin();
-  const joinDate = getJoinDate();
-
   return (
     <div className="max-w-6xl mx-auto pb-12 space-y-6">
       {/* Header */}
-      <header className="flex items-center justify-between gap-4 mb-6">
-        <div className="flex items-center gap-4">
+      <header className="flex items-center justify-between gap-4 mb-4">
+        <div className="flex items-center gap-3">
           <button 
             onClick={() => navigate(-1)} 
             className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
@@ -190,62 +287,82 @@ const Profile = ({ user, assets, totalWealth, systemData }) => {
         </button>
       </header>
 
-      {/* Profile Info Card - Clean and Organized */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-        <div className="px-6 md:px-8 py-6 md:py-8">
-          <div className="flex items-start gap-6">
-            {/* Avatar - Left Side */}
+      {/* Profile Info Card - Enhanced UI with Dark Mode Support */}
+      <div className="bg-gradient-to-br from-slate-50 to-white dark:from-slate-900 dark:to-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl overflow-hidden">
+        <div className="px-5 md:px-8 py-6 md:py-8">
+          <div className="flex flex-col md:flex-row items-center md:items-start gap-6 md:gap-8">
+            {/* Avatar */}
             <div className="flex-shrink-0">
               {user?.photoURL ? (
                 <img 
                   src={user.photoURL} 
                   alt={user.displayName || 'משתמש'} 
-                  className="w-24 h-24 md:w-28 md:h-28 rounded-full ring-2 ring-slate-200 dark:ring-slate-700 shadow-sm"
+                  className="w-24 h-24 md:w-28 md:h-28 rounded-2xl ring-2 ring-emerald-400/60 dark:ring-emerald-500/50 shadow-lg shadow-emerald-500/15 dark:shadow-emerald-500/20 object-cover"
                 />
               ) : (
-                <div className="w-24 h-24 md:w-28 md:h-28 rounded-full bg-gradient-to-br from-emerald-100 to-emerald-200 dark:from-emerald-900/30 dark:to-emerald-800/30 flex items-center justify-center ring-2 ring-slate-200 dark:ring-slate-700 shadow-sm">
-                  <User size={48} className="text-emerald-700 dark:text-emerald-400" />
+                <div className="w-24 h-24 md:w-28 md:h-28 rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 dark:from-emerald-500 dark:to-teal-600 flex items-center justify-center ring-2 ring-emerald-300/70 dark:ring-emerald-400/60 shadow-lg shadow-emerald-500/15 dark:shadow-emerald-500/20">
+                  <User size={48} className="text-white" />
                 </div>
               )}
             </div>
 
-            {/* User Info - Right Side */}
-            <div className="flex-1 text-right space-y-3">
-              <div>
-                <h3 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white mb-2 mr-12 md:mr-0 md:text-center">
-                  {user?.displayName || user?.email || 'משתמש'}
-                </h3>
-                {user?.email && (
-                  <div className="flex items-center justify-end gap-2 text-slate-600 dark:text-slate-400">
-                    <Mail size={16} />
-                    <span className="text-sm">{user.email}</span>
+            {/* Info */}
+            <div className="flex-1 text-center md:text-right space-y-3 w-full">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div className="space-y-1">
+                  <h3 className="text-2xl md:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
+                    {user?.displayName || user?.email || 'משתמש'}
+                  </h3>
+                  {user?.email && (
+                    <div className="inline-flex items-center gap-2 text-slate-600 dark:text-slate-200/80 bg-slate-100/80 dark:bg-white/5 px-3 py-1.5 rounded-full border border-slate-200 dark:border-white/10">
+                      <Mail size={14} className="text-emerald-600 dark:text-emerald-300" />
+                      <span className="text-sm">{user.email}</span>
+                    </div>
+                  )}
+                </div>
+
+                {daysSinceJoin !== null && (
+                  <div className="flex items-center gap-2 justify-center md:justify-end flex-wrap">
+                    <span className="px-3 py-1.5 rounded-full bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-200 text-xs font-semibold border border-emerald-300 dark:border-emerald-400/30">
+                      {daysSinceJoin} ימים פעילים
+                    </span>
+                    {joinDate && (
+                      <span className="px-3 py-1.5 rounded-full bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-200 text-xs font-semibold border border-slate-200 dark:border-white/10">
+                        הצטרפת ב־{formatDate(joinDate)}
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
 
-              {/* Join Date Info - Desktop: Right side */}
-              {joinDate && (
-                <div className="hidden md:flex items-center justify-end gap-2 text-sm text-slate-600 dark:text-slate-400 pt-2 border-t border-slate-200 dark:border-slate-700">
-                  <Calendar size={16} className="text-emerald-600 dark:text-emerald-500" />
-                  <span>הצטרפת ב-<span className="font-semibold text-slate-900 dark:text-white">{formatDate(joinDate)}</span></span>
-                  {daysSinceJoin !== null && (
-                    <span className="text-slate-500 dark:text-slate-500">• {daysSinceJoin} ימים</span>
-                  )}
+              {/* Meta row - Unique stats not shown elsewhere */}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3 text-left md:text-right">
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10">
+                  <TrendingUp size={16} className="text-emerald-600 dark:text-emerald-300" />
+                  <div>
+                    <div className="text-xs text-slate-500 dark:text-slate-200/70">ממוצע לנכס</div>
+                    <div className="text-sm font-semibold text-slate-900 dark:text-white">{isWealthVisible ? `₪${stats.avgValuePerAsset.toLocaleString()}` : '••••••'}</div>
+                  </div>
                 </div>
-              )}
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10">
+                  <Award size={16} className="text-emerald-600 dark:text-emerald-300" />
+                  <div>
+                    <div className="text-xs text-slate-500 dark:text-slate-200/70">נכס הגדול ביותר</div>
+                    <div className="text-sm font-semibold text-slate-900 dark:text-white truncate" title={stats.largestAsset?.name}>
+                      {stats.largestAsset ? (stats.largestAsset.name.length > 15 ? stats.largestAsset.name.substring(0, 15) + '...' : stats.largestAsset.name) : 'אין נתונים'}
+                    </div>
+                  </div>
+                </div>
+                <div className="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10">
+                  <Tag size={16} className="text-emerald-600 dark:text-emerald-300" />
+                  <div>
+                    <div className="text-xs text-slate-500 dark:text-slate-200/70">תגיות ייחודיות</div>
+                    <div className="text-sm font-semibold text-slate-900 dark:text-white">{stats.uniqueTagsCount}</div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-
-          {/* Join Date Info - Mobile: Full width below image */}
-          {joinDate && (
-            <div className="md:hidden flex items-center justify-center gap-2 text-sm text-slate-600 dark:text-slate-400 pt-4 mt-4 border-t border-slate-200 dark:border-slate-700 w-full">
-              <Calendar size={16} className="text-emerald-600 dark:text-emerald-500" />
-              <span>הצטרפת ב-<span className="font-semibold text-slate-900 dark:text-white">{formatDate(joinDate)}</span></span>
-              {daysSinceJoin !== null && (
-                <span className="text-slate-500 dark:text-slate-500">• {daysSinceJoin} ימים</span>
-              )}
-            </div>
-          )}
         </div>
       </div>
 
@@ -255,9 +372,9 @@ const Profile = ({ user, assets, totalWealth, systemData }) => {
           <h3 className="text-lg font-semibold text-slate-900 dark:text-white">סטטיסטיקות</h3>
         </div>
         <div className="p-6 md:p-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {/* Primary stat with emerald accent */}
-            <div className="p-5 bg-gradient-to-br from-emerald-50 to-emerald-100/50 dark:from-emerald-900/20 dark:to-emerald-900/10 border border-emerald-200 dark:border-emerald-800 rounded-xl">
+          <div className="flex flex-col md:grid md:grid-cols-4 gap-4">
+            {/* Primary stat with emerald accent - Full width on mobile, 1 column on desktop */}
+            <div className="w-full md:col-span-1 p-5 bg-gradient-to-br from-emerald-50 to-emerald-100/50 dark:from-emerald-900/20 dark:to-emerald-900/10 border border-emerald-200 dark:border-emerald-800 rounded-xl">
               <div className="flex items-center gap-2 mb-3">
                 <div className="p-2 bg-emerald-600 dark:bg-emerald-500 rounded-lg">
                   <Wallet size={18} className="text-white" />
@@ -278,40 +395,42 @@ const Profile = ({ user, assets, totalWealth, systemData }) => {
               </div>
             </div>
             
-            {/* Secondary stats */}
-            <div className="p-5 bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-700 rounded-xl">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="p-2 bg-slate-200 dark:bg-slate-700 rounded-lg">
-                  <Database size={18} className="text-slate-600 dark:text-slate-400" />
+            {/* Secondary stats - Grid of 3 on mobile, 3 columns on desktop */}
+            <div className="grid grid-cols-3 md:col-span-3 gap-2 md:gap-4">
+              <div className="p-2 md:p-5 bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-700 rounded-xl">
+                <div className="flex items-center gap-1.5 md:gap-2 mb-2 md:mb-3">
+                  <div className="p-1 md:p-2 bg-slate-200 dark:bg-slate-700 rounded-lg">
+                    <Database size={14} className="md:w-[18px] md:h-[18px] text-slate-600 dark:text-slate-400" />
+                  </div>
+                  <div className="text-[10px] md:text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">כמות נכסים</div>
                 </div>
-                <div className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">כמות נכסים</div>
-              </div>
-              <div className="text-2xl font-bold text-slate-900 dark:text-white">
-                {stats.totalAssets}
-              </div>
-            </div>
-            
-            <div className="p-5 bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-700 rounded-xl">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="p-2 bg-slate-200 dark:bg-slate-700 rounded-lg">
-                  <TrendingUp size={18} className="text-slate-600 dark:text-slate-400" />
+                <div className="text-lg md:text-2xl font-bold text-slate-900 dark:text-white">
+                  {stats.totalAssets}
                 </div>
-                <div className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">אפיקי השקעה</div>
               </div>
-              <div className="text-2xl font-bold text-slate-900 dark:text-white">
-                {stats.categoriesCount}
-              </div>
-            </div>
-            
-            <div className="p-5 bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-700 rounded-xl">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="p-2 bg-slate-200 dark:bg-slate-700 rounded-lg">
-                  <Building2 size={18} className="text-slate-600 dark:text-slate-400" />
+              
+              <div className="p-2 md:p-5 bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-700 rounded-xl">
+                <div className="flex items-center gap-1.5 md:gap-2 mb-2 md:mb-3">
+                  <div className="p-1  md:p-2 bg-slate-200 dark:bg-slate-700 rounded-lg">
+                    <TrendingUp size={14} className="md:w-[18px] md:h-[18px] text-slate-600 dark:text-slate-400" />
+                  </div>
+                  <div className="text-[10px] md:text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">אפיקי השקעה</div>
                 </div>
-                <div className="text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">חשבונות</div>
+                <div className="text-lg md:text-2xl font-bold text-slate-900 dark:text-white">
+                  {stats.categoriesCount}
+                </div>
               </div>
-              <div className="text-2xl font-bold text-slate-900 dark:text-white">
-                {stats.platformsCount}
+              
+              <div className="p-2 md:p-5 bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-700 rounded-xl">
+                <div className="flex items-center gap-1.5 md:gap-2 mb-2 md:mb-3">
+                  <div className="p-1 md:p-2 bg-slate-200 dark:bg-slate-700 rounded-lg">
+                    <Building2 size={14} className="md:w-[18px] md:h-[18px] text-slate-600 dark:text-slate-400" />
+                  </div>
+                  <div className="text-[10px] md:text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider">חשבונות</div>
+                </div>
+                <div className="p-2 md:p-0 text-lg md:text-2xl font-bold text-slate-900 dark:text-white">
+                  {stats.platformsCount}
+                </div>
               </div>
             </div>
           </div>
@@ -338,17 +457,17 @@ const Profile = ({ user, assets, totalWealth, systemData }) => {
                 <div className="flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-900/30 rounded-lg border border-slate-200 dark:border-slate-700">
                   <span className="text-sm text-slate-600 dark:text-slate-400">שווי אפיק מוביל</span>
                   <span className="text-lg font-semibold text-slate-900 dark:text-white">
-                    ₪{stats.topCategory.value.toLocaleString()}
+                    {isWealthVisible ? `₪${stats.topCategory.value.toLocaleString()}` : '••••••'}
                   </span>
                 </div>
               </>
             )}
-            {daysSinceJoin !== null && (
-              <div className="flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-900/30 rounded-lg border border-slate-200 dark:border-slate-700">
-                <span className="text-sm text-slate-600 dark:text-slate-400">ימים פעילים</span>
-                <span className="text-lg font-semibold text-slate-900 dark:text-white">{daysSinceJoin}</span>
-              </div>
-            )}
+            <div className="flex justify-between items-center p-4 bg-slate-50 dark:bg-slate-900/30 rounded-lg border border-slate-200 dark:border-slate-700">
+              <span className="text-sm text-slate-600 dark:text-slate-400">רווח/הפסד כולל</span>
+              <span className={`text-lg font-semibold ${stats.totalProfitLossPercent >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                {stats.totalProfitLossPercent >= 0 ? '+' : ''}{stats.totalProfitLossPercent}%
+              </span>
+            </div>
           </div>
         </div>
       </div>

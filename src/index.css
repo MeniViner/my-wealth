@@ -85,6 +85,43 @@ h1, h2, h3, h4, h5, h6 {
   background: #64748b;
 }
 
+/* Thin Horizontal Scrollbar for Mobile */
+.scrollbar-thin-horizontal {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(203 213 225) transparent;
+}
+
+.scrollbar-thin-horizontal::-webkit-scrollbar {
+  height: 4px;
+}
+
+.scrollbar-thin-horizontal::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 2px;
+}
+
+.scrollbar-thin-horizontal::-webkit-scrollbar-thumb {
+  background-color: rgb(203 213 225);
+  border-radius: 2px;
+  transition: background-color 0.2s ease;
+}
+
+.scrollbar-thin-horizontal::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(148 163 184);
+}
+
+.dark .scrollbar-thin-horizontal {
+  scrollbar-color: rgb(71 85 105) transparent;
+}
+
+.dark .scrollbar-thin-horizontal::-webkit-scrollbar-thumb {
+  background-color: rgb(71 85 105);
+}
+
+.dark .scrollbar-thin-horizontal::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(100 116 139);
+}
+
 /* Fade in animation */
 @keyframes fadeIn {
   from {

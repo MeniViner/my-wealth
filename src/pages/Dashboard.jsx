@@ -1,14 +1,15 @@
 import { useMemo, useState, useEffect } from 'react';
 import {
-  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, 
+  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
   AreaChart, Area, CartesianGrid, LineChart, Line
 } from 'recharts';
-import { Cloud, Eye, EyeOff, Wallet, Calendar, TrendingUp, ChevronDown, ChevronUp } from 'lucide-react';
+import { Cloud, Eye, EyeOff, Wallet, Calendar, TrendingUp, ChevronDown, ChevronUp, XCircle } from 'lucide-react';
 import CustomTooltip from '../components/CustomTooltip';
 import TreemapChart from '../components/TreemapChart';
 import SummaryCard from '../components/SummaryCard';
 import { useDemoData } from '../contexts/DemoDataContext';
 import { fetchPriceHistory } from '../services/priceService';
+import { confirmAlert } from '../utils/alerts';
 
 // Hebrew font stack
 const HEBREW_FONT = "'Assistant', 'Heebo', 'Rubik', sans-serif";
@@ -49,8 +50,8 @@ const formatAxisTickTruncated = (value) => {
 
 // Common axis props for RTL
 const rtlAxisProps = {
-  tick: { 
-    fontSize: 11, 
+  tick: {
+    fontSize: 11,
     fontFamily: HEBREW_FONT,
     fill: '#64748b',
   },
@@ -61,14 +62,14 @@ const rtlAxisProps = {
 // RTL Legend component with percentages
 const RTLLegendWithPercentage = ({ payload, totalValue }) => {
   if (!payload || payload.length === 0) return null;
-  
+
   // Check if dark mode is active
   const isDarkMode = typeof window !== 'undefined' && document.documentElement.classList.contains('dark');
   const textColor = isDarkMode ? '#e2e8f0' : '#475569';
   const percentageColor = isDarkMode ? '#ffffff' : '#1e293b';
-  
+
   return (
-    <div 
+    <div
       dir="rtl"
       style={{
         display: 'flex',
@@ -83,7 +84,7 @@ const RTLLegendWithPercentage = ({ payload, totalValue }) => {
       {payload.map((entry, index) => {
         const value = entry.payload?.value || 0;
         const percentage = totalValue > 0 ? ((value / totalValue) * 100).toFixed(1) : 0;
-        
+
         return (
           <div
             key={`legend-${index}`}
@@ -107,8 +108,8 @@ const RTLLegendWithPercentage = ({ payload, totalValue }) => {
             <span style={{ fontWeight: 500, flex: 1 }}>
               {entry.payload?.name}
             </span>
-            <span style={{ 
-              fontWeight: 600, 
+            <span style={{
+              fontWeight: 600,
               color: percentageColor,
               fontFamily: 'system-ui, sans-serif',
             }}>
@@ -123,7 +124,7 @@ const RTLLegendWithPercentage = ({ payload, totalValue }) => {
 
 // Empty state component
 const NoDataMessage = () => (
-  <div 
+  <div
     dir="rtl"
     style={{
       height: '100%',
@@ -137,12 +138,12 @@ const NoDataMessage = () => (
       padding: '20px',
     }}
   >
-    <svg 
-      width="40" 
-      height="40" 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
+    <svg
+      width="40"
+      height="40"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
       strokeWidth="1.5"
       style={{ marginBottom: '10px', opacity: 0.5 }}
     >
@@ -154,30 +155,42 @@ const NoDataMessage = () => (
 );
 
 const Dashboard = ({ assets, systemData, currencyRate }) => {
-  const { demoAssets, isActive: isDemoActive, demoSystemData } = useDemoData();
-  
+  const { demoAssets, isActive: isDemoActive, demoSystemData, clearDemoAssets } = useDemoData();
+
   // Use demo assets if tour is active, otherwise use real assets
   const displayAssets = isDemoActive && demoAssets.length > 0 ? demoAssets : assets;
-  
+
   // Use demo systemData if available, otherwise use real systemData
   const displaySystemData = isDemoActive && demoSystemData ? demoSystemData : systemData;
-  
+
   // Check if dark mode is active
   const isDarkMode = typeof window !== 'undefined' && document.documentElement.classList.contains('dark');
-  
+
+  // Mobile detection
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   // Load wealth visibility from localStorage
   const [isWealthVisible, setIsWealthVisible] = useState(() => {
     const saved = localStorage.getItem('wealthVisibility');
     return saved !== null ? saved === 'true' : true;
   });
-  
+
   // Save wealth visibility to localStorage when it changes
   useEffect(() => {
     localStorage.setItem('wealthVisibility', isWealthVisible.toString());
     // Dispatch custom event to sync with other components
     window.dispatchEvent(new Event('wealthVisibilityChange'));
   }, [isWealthVisible]);
-  
+
   // Listen for changes from other components
   useEffect(() => {
     const handleStorageChange = () => {
@@ -186,18 +199,18 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
         setIsWealthVisible(saved === 'true');
       }
     };
-    
+
     // Listen to custom event (for same-tab sync)
     window.addEventListener('wealthVisibilityChange', handleStorageChange);
     // Listen to storage event (for cross-tab sync)
     window.addEventListener('storage', handleStorageChange);
-    
+
     return () => {
       window.removeEventListener('wealthVisibilityChange', handleStorageChange);
       window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
-  
+
   // Calculate total wealth
   const totalWealth = useMemo(() => {
     return displayAssets.reduce((sum, item) => sum + item.value, 0);
@@ -211,7 +224,7 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
       }
       return sum;
     }, 0);
-    
+
     // Calculate total cost basis for percentage
     const totalCostBasis = displayAssets.reduce((sum, item) => {
       if (item.assetMode === 'QUANTITY' && item.quantity && item.purchasePrice) {
@@ -222,9 +235,9 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
       }
       return sum;
     }, 0);
-    
+
     const totalPLPercent = totalCostBasis > 0 ? (totalPL / totalCostBasis) * 100 : 0;
-    
+
     return {
       amount: totalPL,
       percent: totalPLPercent
@@ -236,7 +249,7 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
     // Try to use priceChange24h from assets
     let dailyPL = 0;
     let hasDailyData = false;
-    
+
     displayAssets.forEach(item => {
       if (item.priceChange24h !== null && item.priceChange24h !== undefined && item.value) {
         // Calculate 24h change based on percentage
@@ -246,15 +259,15 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
         hasDailyData = true;
       }
     });
-    
+
     // If no daily data available, estimate as 0 or use a small portion of total P/L
     if (!hasDailyData) {
       // Estimate daily P/L as 1/30 of total P/L (rough monthly estimate)
       dailyPL = totalProfitLoss.amount / 30;
     }
-    
+
     const dailyPLPercent = totalWealth > 0 ? (dailyPL / totalWealth) * 100 : 0;
-    
+
     return {
       amount: dailyPL,
       percent: dailyPLPercent
@@ -374,13 +387,25 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
 
   // State for collapsible chart
   const [isChartOpen, setIsChartOpen] = useState(false);
-  
+
   // State for timeframe selection
   const [timeRange, setTimeRange] = useState('1M');
-  
+
   // State for portfolio history data
   const [portfolioHistory, setPortfolioHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+
+  // Handle turning off demo mode
+  const handleTurnOffDemo = async () => {
+    const confirmed = await confirmAlert(
+      'כיבוי מצב דמו',
+      'תמיד ניתן להפעיל מחדש מצב דמו בהגדרות',
+      'info'
+    );
+    if (confirmed) {
+      clearDemoAssets();
+    }
+  };
 
   // Calculate days based on timeRange
   const getDaysForTimeRange = (range) => {
@@ -423,17 +448,17 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
 
     const calculatePortfolioHistory = async () => {
       setHistoryLoading(true);
-      
+
       try {
         const days = getDaysForTimeRange(timeRange);
         const rate = currencyRate || 3.65;
-        
+
         // Get trackable assets (those with quantity and symbol/apiId)
-        const trackableAssets = displayAssets.filter(asset => 
-          asset.assetMode === 'QUANTITY' && 
-          asset.quantity && 
+        const trackableAssets = displayAssets.filter(asset =>
+          asset.assetMode === 'QUANTITY' &&
+          asset.quantity &&
           asset.quantity > 0 &&
-          asset.marketDataSource && 
+          asset.marketDataSource &&
           asset.marketDataSource !== 'manual' &&
           (asset.apiId || asset.symbol)
         );
@@ -443,7 +468,7 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
           const currentValue = totalWealth;
           const dataPoints = [];
           const now = new Date();
-          
+
           for (let i = days; i >= 0; i--) {
             const date = new Date(now);
             date.setDate(date.getDate() - i);
@@ -453,7 +478,7 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
               timestamp: date.getTime()
             });
           }
-          
+
           setPortfolioHistory(dataPoints);
           setHistoryLoading(false);
           return;
@@ -465,9 +490,9 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
             try {
               const symbol = asset.apiId || asset.symbol;
               const source = asset.marketDataSource === 'coingecko' ? 'coingecko' : 'yahoo';
-              
+
               const priceHistory = await fetchPriceHistory(symbol, source, days);
-              
+
               if (!priceHistory || priceHistory.length === 0) {
                 return null;
               }
@@ -491,13 +516,13 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
 
         // Filter out null results
         const validHistories = assetHistories.filter(h => h !== null && h.length > 0);
-        
+
         if (validHistories.length === 0) {
           // Fallback: create flat line
           const currentValue = totalWealth;
           const dataPoints = [];
           const now = new Date();
-          
+
           for (let i = days; i >= 0; i--) {
             const date = new Date(now);
             date.setDate(date.getDate() - i);
@@ -507,7 +532,7 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
               timestamp: date.getTime()
             });
           }
-          
+
           setPortfolioHistory(dataPoints);
           setHistoryLoading(false);
           return;
@@ -515,7 +540,7 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
 
         // Aggregate by date: sum all asset values for each date
         const dateMap = new Map();
-        
+
         validHistories.forEach(history => {
           history.forEach(({ date, timestamp, value }) => {
             if (!dateMap.has(date)) {
@@ -533,12 +558,12 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
         const fixedAssetsValue = displayAssets
           .filter(asset => {
             // Assets that don't have live prices
-            return !(asset.assetMode === 'QUANTITY' && 
-                   asset.quantity && 
-                   asset.quantity > 0 &&
-                   asset.marketDataSource && 
-                   asset.marketDataSource !== 'manual' &&
-                   (asset.apiId || asset.symbol));
+            return !(asset.assetMode === 'QUANTITY' &&
+              asset.quantity &&
+              asset.quantity > 0 &&
+              asset.marketDataSource &&
+              asset.marketDataSource !== 'manual' &&
+              (asset.apiId || asset.symbol));
           })
           .reduce((sum, asset) => {
             return sum + (asset.value || 0);
@@ -569,23 +594,34 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
         <div>
           <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">דשבורד ראשי</h2>
         </div>
+        {isDemoActive && (
+          <button
+            onClick={handleTurnOffDemo}
+            className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 rounded-lg transition-colors text-sm font-medium"
+          >
+            <XCircle className="w-4 h-4" />
+            כבה מצב דמו
+          </button>
+        )}
       </header>
 
       {/* Top Summary Cards */}
       {hasData && (
-        <div className="grid grid-cols-3 md:grid-cols-3 gap-1.5 md:gap-4 mb-6">
-          <SummaryCard
-            title={`תיק לפי מטבע ראשי (${mainCurrency})`}
-            value={isWealthVisible ? formatCurrency(totalWealth) : '••••••'}
-            icon={Wallet}
-            iconBgColor="bg-blue-500/10"
-          />
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5 md:gap-4 mb-6">
+          {!isMobile && (
+            <SummaryCard
+              title={`תיק לפי מטבע ראשי (${mainCurrency})`}
+              value={isWealthVisible ? formatCurrency(totalWealth) : '••••••'}
+              icon={Wallet}
+              iconBgColor="bg-blue-500/10"
+            />
+          )}
           <SummaryCard
             title="רווח/הפסד יומי"
             value={isWealthVisible ? formatCurrency(dailyProfitLoss.amount) : '••••••'}
             icon={Calendar}
             iconBgColor="bg-purple-500/10"
-            plData={isWealthVisible ? dailyProfitLoss : null}
+            plData={ dailyProfitLoss }
           />
           <SummaryCard
             title="רווח/הפסד כולל"
@@ -601,7 +637,7 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
       {hasData && (
         <div className="bg-white dark:bg-[#1E1E2D] rounded-xl p-4 md:p-6 shadow-sm border border-slate-200 dark:border-slate-700">
           {/* Clickable Header */}
-          <div 
+          <div
             onClick={() => setIsChartOpen(!isChartOpen)}
             className="flex justify-between items-center cursor-pointer mb-4"
             data-coachmark="wealth-card"
@@ -632,12 +668,11 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
           </div>
 
           {/* Collapsible Content */}
-          <div 
-            className={`transition-all duration-300 ease-in-out overflow-hidden ${
-              isChartOpen 
-                ? 'max-h-[1000px] opacity-100 mt-4' 
+          <div
+            className={`transition-all duration-300 ease-in-out overflow-hidden ${isChartOpen
+                ? 'max-h-[1000px] opacity-100 mt-4'
                 : 'max-h-0 opacity-0 mt-0'
-            }`}
+              }`}
           >
             {/* Timeframe Selectors and XLS Button */}
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-4 border-b border-slate-200 dark:border-slate-700">
@@ -646,11 +681,10 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                   <button
                     key={period}
                     onClick={() => setTimeRange(period)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                      timeRange === period
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${timeRange === period
                         ? 'bg-emerald-600 dark:bg-emerald-500 text-white'
                         : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
-                    }`}
+                      }`}
                   >
                     {period}
                   </button>
@@ -680,21 +714,21 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart 
-                    data={portfolioHistory} 
+                  <AreaChart
+                    data={portfolioHistory}
                     margin={{ top: 10, right: 10, left: 10, bottom: 20 }}
                   >
                     <defs>
                       <linearGradient id="balanceGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1}/>
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis 
-                      dataKey="date" 
-                      tick={{ 
-                        fontSize: 11, 
+                    <XAxis
+                      dataKey="date"
+                      tick={{
+                        fontSize: 11,
                         fontFamily: HEBREW_FONT,
                         fill: '#64748b',
                       }}
@@ -710,9 +744,9 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                       height={timeRange === '1D' ? 30 : 55}
                       dy={timeRange === '1D' ? 5 : 5}
                     />
-                    <YAxis 
-                      tick={{ 
-                        fontSize: 11, 
+                    <YAxis
+                      tick={{
+                        fontSize: 11,
                         fontFamily: HEBREW_FONT,
                         fill: '#64748b',
                       }}
@@ -720,14 +754,14 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                       tickLine={{ stroke: '#e2e8f0' }}
                       tickFormatter={formatAxisTick}
                     />
-                    <Tooltip 
+                    <Tooltip
                       content={({ active, payload }) => {
                         if (!active || !payload || !payload[0]) return null;
                         const data = payload[0].payload;
                         const date = new Date(data.timestamp);
-                        const dateStr = date.toLocaleDateString('he-IL', { 
-                          year: 'numeric', 
-                          month: 'long', 
+                        const dateStr = date.toLocaleDateString('he-IL', {
+                          year: 'numeric',
+                          month: 'long',
                           day: 'numeric',
                           ...(timeRange === '1D' && { hour: '2-digit', minute: '2-digit' })
                         });
@@ -742,10 +776,10 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                       }}
                       wrapperStyle={{ zIndex: 1000 }}
                     />
-                    <Area 
-                      type="monotone" 
-                      dataKey="value" 
-                      stroke="#3b82f6" 
+                    <Area
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#3b82f6"
                       strokeWidth={2}
                       fillOpacity={1}
                       fill="url(#balanceGradient)"
@@ -786,15 +820,15 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                         const y = cy + radius * Math.sin(-midAngle * RADIAN);
                         const textColor = isDarkMode ? '#ffffff' : '#1e293b';
                         return (
-                          <text 
-                            x={x} 
-                            y={y} 
+                          <text
+                            x={x}
+                            y={y}
                             fill={textColor}
-                            textAnchor={x > cx ? 'start' : 'end'} 
+                            textAnchor={x > cx ? 'start' : 'end'}
                             dominantBaseline="central"
-                            style={{ 
-                              fontSize: '12px', 
-                              fontWeight: 600, 
+                            style={{
+                              fontSize: '12px',
+                              fontWeight: 600,
                               fontFamily: HEBREW_FONT,
                             }}
                           >
@@ -807,17 +841,17 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                       dataKey="value"
                     >
                       {pieDataByCategory.map((entry, index) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={displaySystemData.categories.find(c => c.name === entry.name)?.color || '#3b82f6'} 
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={displaySystemData.categories.find(c => c.name === entry.name)?.color || '#3b82f6'}
                         />
                       ))}
                     </Pie>
-                    <Tooltip 
+                    <Tooltip
                       content={<CustomTooltip totalValue={totalWealth} showPercentage />}
                       wrapperStyle={{ zIndex: 1000 }}
                     />
-                    <Legend 
+                    <Legend
                       content={<RTLLegendWithPercentage totalValue={totalWealth} />}
                       layout="vertical"
                       align="right"
@@ -837,13 +871,13 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                   <AreaChart data={areaDataByCategory} margin={{ top: 10, right: 50, left: -50, bottom: -30 }}>
                     <defs>
                       <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1}/>
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis 
-                      dataKey="name" 
+                    <XAxis
+                      dataKey="name"
                       {...rtlAxisProps}
                       tickFormatter={formatAxisTickTruncated}
                       angle={-35}
@@ -851,18 +885,18 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                       height={55}
                       dy={5}
                     />
-                    <YAxis 
+                    <YAxis
                       {...rtlAxisProps}
                       tickFormatter={formatAxisTick}
                     />
-                    <Tooltip 
+                    <Tooltip
                       content={<CustomTooltip totalValue={totalWealth} showPercentage />}
                       wrapperStyle={{ zIndex: 1000 }}
                     />
-                    <Area 
-                      type="monotone" 
-                      dataKey="value" 
-                      stroke="#3b82f6" 
+                    <Area
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#3b82f6"
                       strokeWidth={2}
                       fillOpacity={1}
                       fill="url(#areaGradient)"
@@ -873,7 +907,7 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
             </div>
 
             {/* Treemap - Platforms */}
-            <TreemapChart 
+            <TreemapChart
               data={treemapData}
               title="מפת גודל נכסים לפי פלטפורמות"
               height="h-64"
@@ -887,12 +921,12 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
               <div className="h-72 md:h-80 min-h-[280px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={dataBySymbol} margin={{ top: 10, right: 10, left: 5, bottom: 5 }}>
-                    <YAxis 
+                    <YAxis
                       {...rtlAxisProps}
                       tickFormatter={formatAxisTick}
                       hide
                     />
-                    <Tooltip 
+                    <Tooltip
                       content={<CustomTooltip totalValue={totalWealth} showPercentage />}
                       cursor={{ fill: 'rgba(0, 0, 0, 0.05)' }}
                       wrapperStyle={{ zIndex: 1000 }}
@@ -903,15 +937,15 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                           const symbolName = typeof s === 'string' ? s : s.name;
                           return symbolName === entry.name;
                         });
-                        const color = symbol ? (typeof symbol === 'string' ? '#94a3b8' : symbol.color) : 
+                        const color = symbol ? (typeof symbol === 'string' ? '#94a3b8' : symbol.color) :
                           ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#6366f1', '#ec4899', '#14b8a6'][index % 8];
                         return (
                           <Cell key={`cell-${index}`} fill={color} />
                         );
                       })}
                     </Bar>
-                    <XAxis 
-                      dataKey="name" 
+                    <XAxis
+                      dataKey="name"
                       {...rtlAxisProps}
                       tick={{
                         ...rtlAxisProps.tick,
@@ -931,7 +965,7 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
           </div>
 
           {/* Large Treemap Section - Full Width */}
-          <TreemapChart 
+          <TreemapChart
             data={treemapDataByAssets}
             title="מפת נכסים - כל הנכסים"
             height="h-80 md:h-96"
@@ -949,21 +983,21 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={dataByInstrument} margin={{ top: 10, right: 10, left: 5, bottom: 5 }}>
                     <YAxis {...rtlAxisProps} tickFormatter={formatAxisTick} hide />
-                    <Tooltip 
+                    <Tooltip
                       content={<CustomTooltip totalValue={totalWealth} showPercentage />}
                       cursor={{ fill: 'rgba(0, 0, 0, 0.05)' }}
                       wrapperStyle={{ zIndex: 1000 }}
                     />
                     <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={50}>
                       {dataByInstrument.map((entry, index) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={displaySystemData.instruments.find(i => i.name === entry.name)?.color || '#3b82f6'} 
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={displaySystemData.instruments.find(i => i.name === entry.name)?.color || '#3b82f6'}
                         />
                       ))}
                     </Bar>
-                    <XAxis 
-                      dataKey="name" 
+                    <XAxis
+                      dataKey="name"
                       {...rtlAxisProps}
                       tick={{
                         ...rtlAxisProps.tick,
@@ -1001,15 +1035,15 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                         const y = cy + radius * Math.sin(-midAngle * RADIAN);
                         const textColor = isDarkMode ? '#ffffff' : '#1e293b';
                         return (
-                          <text 
-                            x={x} 
-                            y={y} 
+                          <text
+                            x={x}
+                            y={y}
                             fill={textColor}
-                            textAnchor={x > cx ? 'start' : 'end'} 
+                            textAnchor={x > cx ? 'start' : 'end'}
                             dominantBaseline="central"
-                            style={{ 
-                              fontSize: '11px', 
-                              fontWeight: 600, 
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: 600,
                               fontFamily: HEBREW_FONT,
                             }}
                           >
@@ -1028,11 +1062,11 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                         );
                       })}
                     </Pie>
-                    <Tooltip 
+                    <Tooltip
                       content={<CustomTooltip totalValue={totalWealth} showPercentage />}
                       wrapperStyle={{ zIndex: 1000 }}
                     />
-                    <Legend 
+                    <Legend
                       content={<RTLLegendWithPercentage totalValue={totalWealth} />}
                       layout="vertical"
                       align="right"
@@ -1052,16 +1086,16 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={dataByPlatform} layout="vertical" margin={{ top: 5, right: -85, left: 5, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis 
-                    type="number" 
+                  <XAxis
+                    type="number"
                     {...rtlAxisProps}
                     tickFormatter={formatAxisTick}
                   />
-                  <YAxis 
-                    dataKey="name" 
-                    type="category" 
-                    tick={{ 
-                      fontSize: 11, 
+                  <YAxis
+                    dataKey="name"
+                    type="category"
+                    tick={{
+                      fontSize: 11,
                       fontFamily: HEBREW_FONT,
                       fill: '#64748b',
                     }}
@@ -1070,16 +1104,16 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                     width={100}
                     orientation="right"
                   />
-                  <Tooltip 
+                  <Tooltip
                     content={<CustomTooltip totalValue={totalWealth} showPercentage />}
                     cursor={{ fill: 'rgba(0, 0, 0, 0.05)' }}
                     wrapperStyle={{ zIndex: 1000 }}
                   />
                   <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={50}>
                     {dataByPlatform.map((entry, index) => (
-                      <Cell 
-                        key={`cell-${index}`} 
-                        fill={displaySystemData.platforms.find(p => p.name === entry.name)?.color || '#3b82f6'} 
+                      <Cell
+                        key={`cell-${index}`}
+                        fill={displaySystemData.platforms.find(p => p.name === entry.name)?.color || '#3b82f6'}
                       />
                     ))}
                   </Bar>
@@ -1097,11 +1131,11 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={topAssets} margin={{ top: 10, right: 10, left: 5, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <YAxis 
+                    <YAxis
                       {...rtlAxisProps}
                       tickFormatter={formatAxisTick}
                     />
-                    <Tooltip 
+                    <Tooltip
                       content={<CustomTooltip totalValue={totalWealth} showPercentage />}
                       cursor={{ fill: 'rgba(0, 0, 0, 0.05)' }}
                       wrapperStyle={{ zIndex: 1000 }}
@@ -1114,8 +1148,8 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                         );
                       })}
                     </Bar>
-                    <XAxis 
-                      dataKey="name" 
+                    <XAxis
+                      dataKey="name"
                       {...rtlAxisProps}
                       tick={{
                         ...rtlAxisProps.tick,
@@ -1139,8 +1173,8 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={areaDataByCategory} margin={{ top: 10, right: 15, left: 5, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis 
-                      dataKey="name" 
+                    <XAxis
+                      dataKey="name"
                       {...rtlAxisProps}
                       tickFormatter={formatAxisTickTruncated}
                       angle={-35}
@@ -1148,18 +1182,18 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                       height={55}
                       dy={5}
                     />
-                    <YAxis 
+                    <YAxis
                       {...rtlAxisProps}
                       tickFormatter={formatAxisTick}
                     />
-                    <Tooltip 
+                    <Tooltip
                       content={<CustomTooltip totalValue={totalWealth} showPercentage />}
                       wrapperStyle={{ zIndex: 1000 }}
                     />
-                    <Line 
-                      type="monotone" 
-                      dataKey="value" 
-                      stroke="#3b82f6" 
+                    <Line
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#3b82f6"
                       strokeWidth={3}
                       dot={{ fill: '#3b82f6', r: 5, strokeWidth: 2, stroke: '#fff' }}
                       activeDot={{ r: 7, fill: '#3b82f6', stroke: '#fff', strokeWidth: 2 }}

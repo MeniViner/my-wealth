@@ -7,7 +7,7 @@ import { useSystemData } from './hooks/useSystemData';
 import { useCurrency } from './hooks/useCurrency';
 import { useAIConfig } from './hooks/useAIConfig';
 import { useOnboarding } from './hooks/useOnboarding';
-import { useDemoData } from './contexts/DemoDataContext';
+import { useDemoData, DemoDataProvider } from './contexts/DemoDataContext';
 import { db, appId } from './services/firebase';
 import { generatePortfolioContext } from './utils/aiContext';
 import Layout from './components/Layout';
@@ -24,7 +24,6 @@ import Rebalancing from './pages/Rebalancing';
 import Profile from './pages/Profile';
 import OnboardingWizard from './components/OnboardingWizard';
 import CoachmarkTour from './components/CoachmarkTour';
-import { DemoDataProvider } from './contexts/DemoDataContext';
 import { DEFAULT_SYSTEM_DATA } from './constants/defaults';
 import { confirmAlert, successAlert, errorAlert } from './utils/alerts';
 
@@ -121,7 +120,7 @@ function App() {
     }
   };
 
-  // Handle initialize database
+  // Handle initialize database - only works in normal mode, not in demo mode
   const handleInitializeDB = async () => {
     // Verify user is logged in
     if (!user) {
@@ -202,18 +201,126 @@ function App() {
   // Show onboarding wizard for new users
   if (!hasCompletedOnboarding) {
     return (
-      <OnboardingWizard
-        user={user}
-        onComplete={completeOnboarding}
-        onAddAsset={addAsset}
-        systemData={systemData}
-        setSystemData={setSystemData}
-      />
+      <DemoDataProvider>
+        <OnboardingWizardWithDemo
+          user={user}
+          onComplete={completeOnboarding}
+          addAsset={addAsset}
+          systemData={systemData}
+          setSystemData={setSystemData}
+        />
+      </DemoDataProvider>
     );
   }
 
   return (
     <DemoDataProvider>
+      <AppWithDemo 
+        user={user}
+        assets={assets}
+        systemData={systemData}
+        setSystemData={setSystemData}
+        currencyRate={currencyRate}
+        totalWealth={totalWealth}
+        aiConfig={aiConfig}
+        addAsset={addAsset}
+        updateAsset={updateAsset}
+        deleteAsset={deleteAsset}
+        handleInitializeDB={handleInitializeDB}
+        refreshCurrencyRate={refreshCurrencyRate}
+        resetOnboarding={resetOnboarding}
+        startCoachmarks={startCoachmarks}
+        showCoachmarks={showCoachmarks}
+        dismissCoachmarks={dismissCoachmarks}
+        portfolioContextString={portfolioContextString}
+        refreshPrices={refreshPrices}
+        pricesLoading={pricesLoading}
+        lastPriceUpdate={lastPriceUpdate}
+      />
+    </DemoDataProvider>
+  );
+}
+
+// Internal component that can use useDemoData hook
+const AppWithDemo = ({
+  user,
+  assets,
+  systemData,
+  setSystemData,
+  currencyRate,
+  totalWealth,
+  aiConfig,
+  addAsset,
+  updateAsset,
+  deleteAsset,
+  handleInitializeDB,
+  refreshCurrencyRate,
+  resetOnboarding,
+  startCoachmarks,
+  showCoachmarks,
+  dismissCoachmarks,
+  portfolioContextString,
+  refreshPrices,
+  pricesLoading,
+  lastPriceUpdate
+}) => {
+  const { isActive: isDemoActive, addDemoAsset, updateDemoAsset, deleteDemoAsset, updateDemoSystemData, demoSystemData, demoAssets } = useDemoData();
+  
+  // Handle asset save (both add and update) - route to demo or Firebase based on mode
+  const handleSaveAsset = async (assetData) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:270',message:'handleSaveAsset called',data:{isDemoActive,hasId:!!assetData.id,assetName:assetData.name},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
+    if (isDemoActive) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.jsx:273',message:'handleSaveAsset demo mode',data:{hasId:!!assetData.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
+      // In demo mode, save only to localStorage
+      if (assetData.id) {
+        updateDemoAsset(assetData.id, assetData);
+      } else {
+        addDemoAsset(assetData);
+      }
+    } else {
+      // Normal mode, save to Firebase
+      if (assetData.id) {
+        await updateAsset(assetData.id, assetData);
+      } else {
+        await addAsset(assetData);
+      }
+    }
+  };
+
+  // Handle asset delete - route to demo or Firebase based on mode
+  const handleDeleteAsset = async (assetId) => {
+    if (isDemoActive) {
+      // In demo mode, delete only from localStorage
+      deleteDemoAsset(assetId);
+    } else {
+      // Normal mode, delete from Firebase
+      await deleteAsset(assetId);
+    }
+  };
+
+  // Handle systemData update - route to demo or Firebase based on mode
+  const handleSetSystemData = async (newSystemData) => {
+    if (isDemoActive) {
+      // In demo mode, save only to localStorage
+      updateDemoSystemData(newSystemData);
+    } else {
+      // Normal mode, save to Firebase
+      await setSystemData(newSystemData);
+    }
+  };
+
+  // Use demo systemData if in demo mode, otherwise use real systemData
+  const displaySystemData = isDemoActive && demoSystemData ? demoSystemData : systemData;
+  
+  // Use demo assets if in demo mode, otherwise use real assets
+  const displayAssets = isDemoActive && demoAssets.length > 0 ? demoAssets : assets;
+
+  return (
+    <>
       {/* Coachmark Tour - shown after onboarding */}
       <CoachmarkTour 
         isActive={showCoachmarks} 
@@ -224,20 +331,20 @@ function App() {
         <Routes>
         <Route 
           path="/" 
-          element={<Dashboard assets={assets} systemData={systemData} currencyRate={currencyRate} />} 
+          element={<Dashboard assets={displayAssets} systemData={displaySystemData} currencyRate={currencyRate} />} 
         />
         <Route 
           path="/advisor" 
-          element={<AIAdvisor assets={assets} totalWealth={totalWealth} user={user} portfolioContext={portfolioContextString} aiConfig={aiConfig} />} 
+          element={<AIAdvisor assets={displayAssets} totalWealth={totalWealth} user={user} portfolioContext={portfolioContextString} aiConfig={aiConfig} />} 
         />
         <Route 
           path="/assets" 
           element={
             <AssetManager 
-              assets={assets} 
-              onDelete={deleteAsset} 
-              systemData={systemData}
-              setSystemData={setSystemData}
+              assets={displayAssets} 
+              onDelete={handleDeleteAsset} 
+              systemData={displaySystemData}
+              setSystemData={handleSetSystemData}
               onResetData={handleInitializeDB}
               user={user}
               onRefreshPrices={refreshPrices}
@@ -250,11 +357,9 @@ function App() {
           path="/assets/add" 
           element={
             <AssetForm 
-              onSave={async (assetData) => {
-                await handleSaveAsset(assetData);
-              }}
-              systemData={systemData}
-              setSystemData={setSystemData}
+              onSave={handleSaveAsset}
+              systemData={displaySystemData}
+              setSystemData={handleSetSystemData}
               portfolioContext={portfolioContextString}
             />
           } 
@@ -263,12 +368,10 @@ function App() {
           path="/assets/edit/:id" 
           element={
             <AssetForm 
-              onSave={async (assetData) => {
-                await handleSaveAsset(assetData);
-              }}
-              assets={assets}
-              systemData={systemData}
-              setSystemData={setSystemData}
+              onSave={handleSaveAsset}
+              assets={displayAssets}
+              systemData={displaySystemData}
+              setSystemData={handleSetSystemData}
               portfolioContext={portfolioContextString}
             />
           } 
@@ -277,8 +380,8 @@ function App() {
           path="/settings" 
           element={
             <Settings 
-              systemData={systemData} 
-              setSystemData={setSystemData} 
+              systemData={displaySystemData} 
+              setSystemData={handleSetSystemData} 
               currencyRate={currencyRate} 
               user={user} 
               onResetData={handleInitializeDB}
@@ -300,8 +403,8 @@ function App() {
           path="/rebalancing" 
           element={
             <Rebalancing 
-              assets={assets} 
-              systemData={systemData} 
+              assets={displayAssets} 
+              systemData={displaySystemData} 
               user={user} 
               currencyRate={currencyRate}
               portfolioContext={portfolioContextString}
@@ -317,16 +420,41 @@ function App() {
           element={
             <Profile 
               user={user}
-              assets={assets}
+              assets={displayAssets}
               totalWealth={totalWealth}
-              systemData={systemData}
+              systemData={displaySystemData}
             />
           } 
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>
-    </DemoDataProvider>
+    </>
+  );
+}
+
+// OnboardingWizard wrapper that can use demo mode
+const OnboardingWizardWithDemo = ({ user, onComplete, addAsset, systemData, setSystemData }) => {
+  const { isActive: isDemoActive, addDemoAsset } = useDemoData();
+  
+  const handleAddAsset = async (assetData) => {
+    if (isDemoActive) {
+      // In demo mode, add only to localStorage
+      addDemoAsset(assetData);
+    } else {
+      // Normal mode, add to Firebase
+      await addAsset(assetData);
+    }
+  };
+
+  return (
+    <OnboardingWizard
+      user={user}
+      onComplete={onComplete}
+      onAddAsset={handleAddAsset}
+      systemData={systemData}
+      setSystemData={setSystemData}
+    />
   );
 }
 

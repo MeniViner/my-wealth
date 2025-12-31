@@ -236,7 +236,7 @@ const COACHMARKS = [
 const CoachmarkTour = ({ isActive, onComplete }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { initializeDemoAssets, clearDemoAssets } = useDemoData();
+  const { initializeDemoAssets } = useDemoData();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [spotlightPosition, setSpotlightPosition] = useState(() => {
     // Initialize with safe defaults
@@ -263,10 +263,10 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
       initializeDemoAssets();
       setShowDemoBanner(true);
     } else {
-      clearDemoAssets();
+      // Don't clear demo when tour ends - let user turn it off manually from Dashboard
       setShowDemoBanner(false);
     }
-  }, [isActive, initializeDemoAssets, clearDemoAssets]);
+  }, [isActive, initializeDemoAssets]);
 
   // Reset to first step when tour starts
   useEffect(() => {
@@ -589,8 +589,7 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
   const handleComplete = async () => {
     toggleMobileMenu(false);
     
-    // Clear demo data
-    clearDemoAssets();
+    // Don't clear demo data - let user turn it off manually from Dashboard
     setShowDemoBanner(false);
     
     if (location.pathname !== '/') {

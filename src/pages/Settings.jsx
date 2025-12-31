@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, DollarSign, Moon, Sun, Palette, Rocket, GraduationCap, RefreshCw } from 'lucide-react';
+import { Settings as SettingsIcon, DollarSign, Moon, Sun, Palette, Rocket, GraduationCap, RefreshCw, TestTube, Clock } from 'lucide-react';
 import { confirmAlert, successToast } from '../utils/alerts';
 import { useDarkMode } from '../hooks/useDarkMode';
+import { useDemoData } from '../contexts/DemoDataContext';
 
 const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, onRefreshCurrency, onResetOnboarding, onStartCoachmarks }) => {
   const [activeSection, setActiveSection] = useState('appearance');
   const [isRefreshingCurrency, setIsRefreshingCurrency] = useState(false);
   const { isDarkMode, toggleDarkMode } = useDarkMode();
+  const { isActive: isDemoActive, refreshInterval, updateRefreshInterval } = useDemoData();
 
   // Read hash from URL to set active section
   useEffect(() => {
@@ -124,6 +126,18 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
         >
           מראה
         </button>
+        {isDemoActive && (
+          <button
+            onClick={() => setActiveSection('demo')}
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+              activeSection === 'demo'
+                ? 'border-amber-600 dark:border-amber-400 text-amber-600 dark:text-amber-400'
+                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
+          >
+            מצב דמו
+          </button>
+        )}
         <button
           onClick={() => setActiveSection('onboarding')}
           className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
@@ -174,6 +188,84 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
                     }`}
                   />
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Demo Mode Section */}
+      {activeSection === 'demo' && isDemoActive && (
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50">
+              <div className="flex items-center gap-2.5">
+                <TestTube size={18} className="text-amber-600 dark:text-amber-400" />
+                <h3 className="text-base font-semibold text-slate-700 dark:text-slate-100">הגדרות מצב דמו</h3>
+              </div>
+            </div>
+            <div className="p-6 space-y-6">
+              {/* Refresh Interval Control */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                    <Clock size={20} className="text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div>
+                    <h4 className="text-base font-semibold text-slate-800 dark:text-white">
+                      מרווח רענון נתונים
+                    </h4>
+                    <p className="text-sm text-slate-600 dark:text-slate-300">
+                      בחר כמה שניות בין כל רענון של ערכי הנכסים במצב דמו
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="bg-slate-50 dark:bg-slate-700/50 p-5 rounded-xl border border-slate-200 dark:border-slate-600">
+                  <div className="flex items-center gap-4 mb-4">
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-200 flex-shrink-0">
+                      מרווח (שניות):
+                    </label>
+                    <input
+                      type="number"
+                      min="5"
+                      max="60"
+                      value={refreshInterval}
+                      onChange={(e) => {
+                        const value = parseInt(e.target.value, 10);
+                        if (!isNaN(value) && value >= 5 && value <= 60) {
+                          updateRefreshInterval(value);
+                        }
+                      }}
+                      className="flex-1 px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                    />
+                    <span className="text-sm text-slate-500 dark:text-slate-400 flex-shrink-0">
+                      שניות
+                    </span>
+                  </div>
+                  
+                  <div className="mt-4">
+                    <input
+                      type="range"
+                      min="5"
+                      max="60"
+                      step="1"
+                      value={refreshInterval}
+                      onChange={(e) => updateRefreshInterval(parseInt(e.target.value, 10))}
+                      className="w-full h-2 bg-slate-200 dark:bg-slate-600 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                    />
+                    <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400 mt-2">
+                      <span>5 שניות</span>
+                      <span>60 שניות (דקה)</span>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+                    <p className="text-xs text-amber-800 dark:text-amber-200">
+                      <strong>הערה:</strong> המספר הוא בשניות בלבד. הערכים ירעננו כל {refreshInterval} שניות.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

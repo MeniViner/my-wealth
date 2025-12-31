@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { Wallet, LayoutDashboard, Sparkles, Database, Plus, Settings, BarChart3, LogOut, User, Shield, LayoutGrid, Scale, Eye, EyeOff, Menu, X, Moon, Sun } from 'lucide-react';
+import { Wallet, LayoutDashboard, Sparkles, Database, Plus, Settings, BarChart3, LogOut, User, Shield, LayoutGrid, Scale, Eye, EyeOff, Menu, X, Moon, Sun, TestTube } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useAdmin } from '../hooks/useAdmin';
 import { useDarkMode } from '../hooks/useDarkMode';
+import { useDemoData } from '../contexts/DemoDataContext';
 import { confirmAlert } from '../utils/alerts';
 
 const Layout = ({ children, totalWealth, currencyRate, user }) => {
@@ -12,6 +13,7 @@ const Layout = ({ children, totalWealth, currencyRate, user }) => {
   const { signOut } = useAuth();
   const { isAdmin } = useAdmin(user);
   const { isDarkMode, toggleDarkMode } = useDarkMode();
+  const { isActive: isDemoActive, toggleDemoMode } = useDemoData();
   
   // Load wealth visibility from localStorage
   const [isWealthVisible, setIsWealthVisible] = useState(() => {
@@ -67,6 +69,27 @@ const Layout = ({ children, totalWealth, currencyRate, user }) => {
   };
   return (
     <div className="min-h-[100svh] md:min-h-screen flex flex-col md:flex-row bg-slate-50 dark:bg-slate-900 font-sans text-right overflow-x-hidden" dir="rtl">
+      {/* Demo Mode Banner */}
+      {isDemoActive && (
+        <div 
+          onClick={async () => {
+            const confirmed = await confirmAlert(
+              'כיבוי מצב דמו',
+              'מצב הדמו יכובה. תמיד ניתן להפעיל אותו מחדש בהגדרות. האם להמשיך?',
+              'info'
+            );
+            if (confirmed) {
+              toggleDemoMode();
+            }
+          }}
+          className="fixed top-0 left-0 right-0 z-[100] bg-gradient-to-r from-amber-500 to-orange-500 text-white py-0 md:py-1 px-4 shadow-lg flex items-center justify-center gap-2 text-sm font-semibold cursor-pointer hover:from-amber-600 hover:to-orange-600 transition-all"
+          title="לחץ לכיבוי מצב דמו"
+        >
+          <TestTube size={16} />
+          <span>מצב דמו פעיל - הנתונים נשמרים באופן מקומי בלבד </span>
+        </div>
+      )}
+      
       {/* Mobile Menu Button */}
       <button
         onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -290,7 +313,7 @@ const Layout = ({ children, totalWealth, currencyRate, user }) => {
         />
       )}
 
-      <main className={`flex-1 ${isAdvisorPage ? 'p-0' : 'p-4 md:p-8'} bg-slate-50 dark:bg-slate-900 ${isAdvisorPage ? 'h-[100svh] md:h-screen' : 'min-h-[100svh] md:min-h-screen'} md:mr-64 overflow-hidden`}>
+      <main className={`flex-1 ${isAdvisorPage ? 'p-0' : 'p-4 md:p-8'} bg-slate-50 dark:bg-slate-900 ${isAdvisorPage ? 'h-[100svh] md:h-screen' : 'min-h-[100svh] md:min-h-screen'} md:mr-64 overflow-hidden ${isDemoActive ? 'md:mt-10 mt-10' : ''}`}>
         {children}
       </main>
     </div>

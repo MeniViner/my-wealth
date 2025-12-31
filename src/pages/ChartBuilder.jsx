@@ -8,7 +8,9 @@ import { aggregateData, getColorForItem, translateTag } from '../utils/chartUtil
 import ChartRenderer from '../components/ChartRenderer';
 import { successAlert, errorAlert, confirmAlert, successToast } from '../utils/alerts';
 import CustomSelect from '../components/CustomSelect';
-import { Save, BarChart3, Filter, X, Eye, PieChart, BarChart, BarChart2, Radar, Gauge, LayoutGrid, Plus, Trash2, ArrowUp, ArrowDown, Monitor, Smartphone, Edit2, Check, AreaChart, LineChart, TrendingUp, Grid, Settings } from 'lucide-react';
+import { generatePortfolioContext } from '../utils/aiContext';
+import { callGeminiAI } from '../services/gemini';
+import { Save, BarChart3, Filter, X, Eye, PieChart, BarChart, BarChart2, Radar, Gauge, LayoutGrid, Plus, Trash2, ArrowUp, ArrowDown, Monitor, Smartphone, Edit2, Check, AreaChart, LineChart, TrendingUp, Grid, Settings, Sparkles, Loader2, ChevronDown, ChevronUp, LucideBarChartHorizontal } from 'lucide-react';
 
 const ChartBuilder = () => {
   const { user } = useAuth();
@@ -42,6 +44,11 @@ const ChartBuilder = () => {
   const [activeTab, setActiveTab] = useState('create'); // 'create' or 'manage'
   const [isDrawerOpen, setIsDrawerOpen] = useState(false); // Mobile drawer state
   const [isEditingTitle, setIsEditingTitle] = useState(false); // For inline title editing
+  const [aiSuggestions, setAiSuggestions] = useState([]); // AI chart suggestions
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false); // Loading state for suggestions
+  const [customPrompt, setCustomPrompt] = useState(''); // Custom prompt for chart creation
+  const [loadingCustomChart, setLoadingCustomChart] = useState(false); // Loading state for custom chart
+  const [isAiSectionOpen, setIsAiSectionOpen] = useState(false); // AI section collapsed state (default: open)
 
   // Translation functions for chart types and data keys
   const translateChartType = (chartType) => {
@@ -203,6 +210,9 @@ const ChartBuilder = () => {
           tags: []
         }
       });
+
+      // Switch to manage tab after successful save
+      setActiveTab('manage');
     } catch (error) {
       console.error('Error saving chart config:', error);
       await errorAlert('שגיאה', 'אירעה שגיאה בשמירת הגרף');
@@ -268,6 +278,271 @@ const ChartBuilder = () => {
 
     return () => unsubscribe();
   }, [user]);
+
+  // Generate AI suggestions for charts
+  const generateAiSuggestions = async () => {
+    if (assets.length === 0) {
+      await errorAlert('שגיאה', 'אין נכסים בתיק ליצירת הצעות');
+      return;
+    }
+
+    setLoadingSuggestions(true);
+    try {
+      const portfolioContext = generatePortfolioContext(assets);
+      
+      // Get available options for the AI
+      const availableChartTypes = ['PieChart', 'BarChart', 'HorizontalBarChart', 'RadialBar', 'Treemap', 'RadarChart', 'AreaChart', 'LineChart', 'ComposedChart'];
+      const availableDataKeys = ['category', 'platform', 'instrument', 'symbol', 'tags', 'currency'];
+      const availableCategories = uniqueCategories;
+      const availablePlatforms = uniquePlatforms;
+      const availableInstruments = uniqueInstruments;
+      const availableCurrencies = uniqueCurrencies;
+
+      const prompt = `אתה עוזר ליצירת גרפים עבור תיק השקעות.
+
+${portfolioContext}
+
+זמינים לך:
+- סוגי גרפים: ${availableChartTypes.join(', ')}
+- קיבוץ לפי: ${availableDataKeys.join(', ')}
+- קטגוריות: ${availableCategories.join(', ') || 'אין'}
+- פלטפורמות: ${availablePlatforms.join(', ') || 'אין'}
+- מטבעות בסיס: ${availableInstruments.join(', ') || 'אין'}
+- מטבעות: ${availableCurrencies.join(', ') || 'אין'}
+
+צור 3 הצעות שונות ומעניינות לגרפים שיעזרו למשתמש להבין את התיק שלו.
+כל הצעה צריכה להיות שונה ומציגה זווית אחרת של התיק.
+
+החזר JSON בלבד בפורמט הבא (ללא טקסט נוסף):
+{
+  "suggestions": [
+    {
+      "title": "שם הגרף בעברית",
+      "chartType": "PieChart",
+      "dataKey": "category",
+      "aggregationType": "sum",
+      "filters": {
+        "category": "",
+        "platform": "",
+        "instrument": "",
+        "currency": "",
+        "tags": []
+      },
+      "size": "medium",
+      "showGrid": true
+    }
+  ]
+}
+
+חשוב:
+- השם צריך להיות בעברית ותיאורי
+- בחר סוג גרף שמתאים לנתונים
+- בחר dataKey שמתאים לניתוח
+- השתמש בפילטרים רק אם זה מוסיף ערך
+- ודא שהגרף יציג נתונים מעניינים`;
+
+      const response = await callGeminiAI(prompt, portfolioContext);
+      
+      // Try to extract JSON from response
+      let jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        // Try to find JSON in code blocks
+        jsonMatch = response.match(/```json\s*(\{[\s\S]*?\})\s*```/);
+        if (jsonMatch) {
+          jsonMatch = [jsonMatch[0], jsonMatch[1]];
+        } else {
+          jsonMatch = response.match(/```\s*(\{[\s\S]*?\})\s*```/);
+          if (jsonMatch) {
+            jsonMatch = [jsonMatch[0], jsonMatch[1]];
+          }
+        }
+      }
+
+      if (jsonMatch) {
+        const jsonStr = jsonMatch[1] || jsonMatch[0];
+        const parsed = JSON.parse(jsonStr);
+        
+        if (parsed.suggestions && Array.isArray(parsed.suggestions)) {
+          // Validate and set default values
+          const validatedSuggestions = parsed.suggestions.slice(0, 3).map(suggestion => ({
+            title: suggestion.title || 'גרף חדש',
+            chartType: availableChartTypes.includes(suggestion.chartType) ? suggestion.chartType : 'PieChart',
+            dataKey: availableDataKeys.includes(suggestion.dataKey) ? suggestion.dataKey : 'category',
+            aggregationType: suggestion.aggregationType || 'sum',
+            isVisible: true,
+            order: 1,
+            size: suggestion.size || 'medium',
+            showGrid: suggestion.showGrid !== false,
+            filters: {
+              category: availableCategories.includes(suggestion.filters?.category) ? suggestion.filters.category : '',
+              platform: availablePlatforms.includes(suggestion.filters?.platform) ? suggestion.filters.platform : '',
+              instrument: availableInstruments.includes(suggestion.filters?.instrument) ? suggestion.filters.instrument : '',
+              currency: availableCurrencies.includes(suggestion.filters?.currency) ? suggestion.filters.currency : '',
+              tags: Array.isArray(suggestion.filters?.tags) ? suggestion.filters.tags : []
+            }
+          }));
+          
+          setAiSuggestions(validatedSuggestions);
+          
+          // Save suggestions to localStorage
+          try {
+            const storageKey = `chartBuilder_aiSuggestions_${user?.uid || 'guest'}`;
+            localStorage.setItem(storageKey, JSON.stringify(validatedSuggestions));
+          } catch (storageError) {
+            console.error('Error saving suggestions to localStorage:', storageError);
+          }
+        } else {
+          throw new Error('פורמט תשובה לא תקין');
+        }
+      } else {
+        throw new Error('לא נמצא JSON בתשובה');
+      }
+    } catch (error) {
+      console.error('Error generating AI suggestions:', error);
+      await errorAlert('שגיאה', 'אירעה שגיאה ביצירת הצעות. נסה שוב.');
+    } finally {
+      setLoadingSuggestions(false);
+    }
+  };
+
+  // Generate chart from custom prompt
+  const generateChartFromPrompt = async () => {
+    if (!customPrompt.trim()) {
+      await errorAlert('שגיאה', 'אנא הזן בקשת גרף');
+      return;
+    }
+
+    if (assets.length === 0) {
+      await errorAlert('שגיאה', 'אין נכסים בתיק ליצירת גרף');
+      return;
+    }
+
+    setLoadingCustomChart(true);
+    try {
+      const portfolioContext = generatePortfolioContext(assets);
+      
+      const availableChartTypes = ['PieChart', 'BarChart', 'HorizontalBarChart', 'RadialBar', 'Treemap', 'RadarChart', 'AreaChart', 'LineChart', 'ComposedChart'];
+      const availableDataKeys = ['category', 'platform', 'instrument', 'symbol', 'tags', 'currency'];
+      const availableCategories = uniqueCategories;
+      const availablePlatforms = uniquePlatforms;
+      const availableInstruments = uniqueInstruments;
+      const availableCurrencies = uniqueCurrencies;
+
+      const prompt = `אתה עוזר ליצירת גרף עבור תיק השקעות.
+
+${portfolioContext}
+
+זמינים לך:
+- סוגי גרפים: ${availableChartTypes.join(', ')}
+- קיבוץ לפי: ${availableDataKeys.join(', ')}
+- קטגוריות: ${availableCategories.join(', ') || 'אין'}
+- פלטפורמות: ${availablePlatforms.join(', ') || 'אין'}
+- מטבעות בסיס: ${availableInstruments.join(', ') || 'אין'}
+- מטבעות: ${availableCurrencies.join(', ') || 'אין'}
+
+המשתמש ביקש: "${customPrompt}"
+
+צור גרף שמתאים לבקשה. החזר JSON בלבד בפורמט הבא (ללא טקסט נוסף):
+{
+  "title": "שם הגרף בעברית",
+  "chartType": "PieChart",
+  "dataKey": "category",
+  "aggregationType": "sum",
+  "filters": {
+    "category": "",
+    "platform": "",
+    "instrument": "",
+    "currency": "",
+    "tags": []
+  },
+  "size": "medium",
+  "showGrid": true
+}
+
+חשוב:
+- השם צריך להיות בעברית ותיאורי
+- בחר סוג גרף שמתאים לבקשה
+- בחר dataKey שמתאים לניתוח
+- השתמש בפילטרים רק אם זה מוסיף ערך`;
+
+      const response = await callGeminiAI(prompt, portfolioContext);
+      
+      // Try to extract JSON from response
+      let jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        jsonMatch = response.match(/```json\s*(\{[\s\S]*?\})\s*```/);
+        if (jsonMatch) {
+          jsonMatch = [jsonMatch[0], jsonMatch[1]];
+        } else {
+          jsonMatch = response.match(/```\s*(\{[\s\S]*?\})\s*```/);
+          if (jsonMatch) {
+            jsonMatch = [jsonMatch[0], jsonMatch[1]];
+          }
+        }
+      }
+
+      if (jsonMatch) {
+        const jsonStr = jsonMatch[1] || jsonMatch[0];
+        const parsed = JSON.parse(jsonStr);
+        
+        // Validate and set default values
+        const chartConfig = {
+          title: parsed.title || 'גרף חדש',
+          chartType: availableChartTypes.includes(parsed.chartType) ? parsed.chartType : 'PieChart',
+          dataKey: availableDataKeys.includes(parsed.dataKey) ? parsed.dataKey : 'category',
+          aggregationType: parsed.aggregationType || 'sum',
+          isVisible: true,
+          order: 1,
+          size: parsed.size || 'medium',
+          showGrid: parsed.showGrid !== false,
+          filters: {
+            category: availableCategories.includes(parsed.filters?.category) ? parsed.filters.category : '',
+            platform: availablePlatforms.includes(parsed.filters?.platform) ? parsed.filters.platform : '',
+            instrument: availableInstruments.includes(parsed.filters?.instrument) ? parsed.filters.instrument : '',
+            currency: availableCurrencies.includes(parsed.filters?.currency) ? parsed.filters.currency : '',
+            tags: Array.isArray(parsed.filters?.tags) ? parsed.filters.tags : []
+          }
+        };
+        
+        setConfig(chartConfig);
+        setCustomPrompt('');
+        await successToast('הגרף נוצר בהצלחה!', 2000);
+      } else {
+        throw new Error('לא נמצא JSON בתשובה');
+      }
+    } catch (error) {
+      console.error('Error generating chart from prompt:', error);
+      await errorAlert('שגיאה', 'אירעה שגיאה ביצירת הגרף. נסה שוב.');
+    } finally {
+      setLoadingCustomChart(false);
+    }
+  };
+
+  // Load suggestions from localStorage on mount
+  useEffect(() => {
+    if (user && assets.length > 0) {
+      try {
+        const storageKey = `chartBuilder_aiSuggestions_${user.uid}`;
+        const savedSuggestions = localStorage.getItem(storageKey);
+        if (savedSuggestions) {
+          const parsed = JSON.parse(savedSuggestions);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setAiSuggestions(parsed);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading suggestions from localStorage:', error);
+      }
+    }
+  }, [user, assets.length]);
+
+  // Load suggestions on mount (only once when entering create tab with assets)
+  useEffect(() => {
+    if (activeTab === 'create' && assets.length > 0 && aiSuggestions.length === 0 && !loadingSuggestions) {
+      generateAiSuggestions();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   // Chart management functions
   const handleDeleteChart = async (chartId, chartTitle) => {
@@ -432,6 +707,168 @@ const ChartBuilder = () => {
               >
                 ביטול עריכה
               </button>
+            </div>
+          )}
+
+          {/* AI Chart Creation Section */}
+          {!editingChartId && (
+            <div className="mb-6">
+              {/* Collapsible Header */}
+              <button
+                onClick={() => setIsAiSectionOpen(!isAiSectionOpen)}
+                className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-emerald-50 to-blue-50 dark:from-emerald-900/20 dark:to-blue-900/20 rounded-2xl border border-emerald-200 dark:border-emerald-800 hover:bg-gradient-to-r hover:from-emerald-100 hover:to-blue-100 dark:hover:from-emerald-900/30 dark:hover:to-blue-900/30 transition"
+              >
+                <div className="flex items-center gap-2">
+                  <Sparkles size={20} className="text-emerald-600 dark:text-emerald-400" />
+                  <h3 className="text-lg font-bold text-slate-800 dark:text-white">יצירת גרפים עם AI</h3>
+                </div>
+                {isAiSectionOpen ? (
+                  <ChevronUp size={20} className="text-slate-600 dark:text-slate-400" />
+                ) : (
+                  <ChevronDown size={20} className="text-slate-600 dark:text-slate-400" />
+                )}
+              </button>
+
+              {/* Collapsible Content */}
+              {isAiSectionOpen && (
+                <div className="mt-4 space-y-4">
+                  {/* Custom Prompt Section */}
+                  <div className="bg-gradient-to-r from-emerald-50 to-blue-50 dark:from-emerald-900/20 dark:to-blue-900/20 p-5 rounded-2xl border border-emerald-200 dark:border-emerald-800">
+                    {/* <div className="flex items-center gap-2 mb-3">
+                      <Sparkles size={20} className="text-emerald-600 dark:text-emerald-400" />
+                      <h3 className="text-lg font-bold text-slate-800 dark:text-white">צור גרף עם AI</h3>
+                    </div> */}
+                    <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
+                      תאר את הגרף שברצונך ליצור, וה-AI ימלא את כל השדות עבורך
+                    </p>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="text"
+                        value={customPrompt}
+                        onChange={(e) => setCustomPrompt(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            generateChartFromPrompt();
+                          }
+                        }}
+                        placeholder="לדוגמה: 'גרף עוגה של חלוקת התיק לפי קטגוריות' או 'גרף עמודות של נכסים לפי פלטפורמה'"
+                        className="flex-1 w-full px-4 py-3 rounded-xl border-2 border-emerald-200 dark:border-emerald-800 bg-white dark:bg-slate-800 text-slate-800 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                        disabled={loadingCustomChart}
+                      />
+                      <button
+                        onClick={generateChartFromPrompt}
+                        disabled={loadingCustomChart || !customPrompt.trim()}
+                        className="w-full sm:w-auto px-6 py-3 bg-emerald-600 dark:bg-emerald-500 text-white rounded-xl hover:bg-emerald-700 dark:hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 font-medium shadow-lg whitespace-nowrap"
+                      >
+                        {loadingCustomChart ? (
+                          <>
+                            <Loader2 size={18} className="animate-spin" />
+                            <span>יוצר...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles size={18} />
+                            <span>צור גרף</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* AI Suggestions Section */}
+                  <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-2">
+                        <BarChart3 size={20} className="text-slate-600 dark:text-slate-400" />
+                        <h3 className="text-lg font-bold text-slate-800 dark:text-white">הצעות AI לגרפים</h3>
+                      </div>
+                      <button
+                        onClick={generateAiSuggestions}
+                        disabled={loadingSuggestions || assets.length === 0}
+                        className="px-4 py-2 text-sm bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-2"
+                      >
+                        {loadingSuggestions ? (
+                          <>
+                            <Loader2 size={16} className="animate-spin" />
+                            <span>טוען...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles size={16} />
+                            <span>רענן הצעות</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    
+                    {loadingSuggestions ? (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {[1, 2, 3].map((index) => (
+                          <div
+                            key={index}
+                            className="bg-slate-50 dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700 animate-pulse"
+                          >
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="h-4 bg-slate-300 dark:bg-slate-700 rounded w-3/4"></div>
+                              <div className="h-6 w-6 bg-slate-300 dark:bg-slate-700 rounded"></div>
+                            </div>
+                            <div className="flex flex-wrap gap-2 mb-3">
+                              <div className="h-5 bg-slate-300 dark:bg-slate-700 rounded w-16"></div>
+                              <div className="h-5 bg-slate-300 dark:bg-slate-700 rounded w-20"></div>
+                            </div>
+                            <div className="h-3 bg-slate-300 dark:bg-slate-700 rounded w-2/3"></div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : aiSuggestions.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {aiSuggestions.map((suggestion, index) => {
+                          const suggestionData = aggregateData(assets, suggestion.dataKey, suggestion.filters);
+                          return (
+                            <div
+                              key={index}
+                              className="bg-slate-50 dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-emerald-300 dark:hover:border-emerald-700 transition cursor-pointer group"
+                              onClick={() => setConfig(suggestion)}
+                            >
+                              <div className="flex items-start justify-between mb-3">
+                                <h4 className="font-semibold text-slate-800 dark:text-white text-sm flex-1">
+                                  {suggestion.title}
+                                </h4>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setConfig(suggestion);
+                                  }}
+                                  className="p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 opacity-0 group-hover:opacity-100 transition"
+                                  title="השתמש בהצעה זו"
+                                >
+                                  <Plus size={16} />
+                                </button>
+                              </div>
+                              <div className="flex flex-wrap gap-2 mb-3">
+                                <span className="px-2 py-1 text-xs bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded">
+                                  {translateChartType(suggestion.chartType)}
+                                </span>
+                                <span className="px-2 py-1 text-xs bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded">
+                                  {translateDataKey(suggestion.dataKey)}
+                                </span>
+                              </div>
+                              <div className="text-xs text-slate-500 dark:text-slate-400">
+                                {suggestionData.length} פריטים • ₪{suggestionData.reduce((sum, item) => sum + item.value, 0).toLocaleString()}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+                        <p className="text-sm">לחץ על "רענן הצעות" כדי ליצור 3 הצעות לגרפים</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -673,7 +1110,7 @@ const ChartBuilder = () => {
                 {['BarChart', 'StackedBarChart', 'HorizontalBarChart', 'AreaChart', 'LineChart', 'ComposedChart'].includes(config.chartType) && (
                   <button
                     onClick={() => setConfig({ ...config, showGrid: !config.showGrid })}
-                    className={`p-2 rounded-lg transition ${
+                    className={`p-2 rounded-lg transition hidden md:block ${
                       config.showGrid
                         ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
                         : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
@@ -793,12 +1230,12 @@ const ChartBuilder = () => {
               <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-3 uppercase tracking-wide">
                 סוג גרף
               </label>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-5 gap-2">
                 {[
                   { value: 'PieChart', label: 'עוגה', icon: PieChart },
-                  { value: 'BarChart', label: 'עמודות', icon: BarChart },
-                  { value: 'StackedBarChart', label: 'מוערם', icon: BarChart2 },
-                  { value: 'HorizontalBarChart', label: 'אופקי', icon: BarChart2 },
+                  { value: 'BarChart', label: 'עמודות', icon: BarChart3 },
+                  // { value: 'StackedBarChart', label: 'מוערם', icon: BarChart2 },
+                  { value: 'HorizontalBarChart', label: 'אופקי', icon: LucideBarChartHorizontal  },
                   { value: 'AreaChart', label: 'אזור', icon: AreaChart },
                   { value: 'LineChart', label: 'קו', icon: LineChart },
                   { value: 'ComposedChart', label: 'משולב', icon: TrendingUp },

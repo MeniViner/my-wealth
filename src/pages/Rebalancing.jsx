@@ -952,7 +952,7 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
                           type="text"
                           value={groupAIPrompts[group.id] || ''}
                           onChange={(e) => setGroupAIPrompts(prev => ({ ...prev, [group.id]: e.target.value }))}
-                          placeholder="לדוגמה: 60% מניות, 30% קריפטו, 10% מזומן"
+                          placeholder="לדוגמה: אני רוצה שרוב התיק ילך למניות, קצת לקריפטו ו3 חודשי מחיה מזומן"
                           className="flex-1 border border-slate-300 dark:border-slate-600 rounded-xl px-4 py-2.5 text-sm text-right focus:outline-none focus:ring-2 focus:ring-slate-200 focus:border-slate-500 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100"
                           onKeyDown={(e) => {
                             if (e.key === 'Enter' && !e.shiftKey) {

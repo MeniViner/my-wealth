@@ -13,6 +13,7 @@ import { searchAssets, POPULAR_INDICES } from '../services/marketDataService';
  * @param {string} placeholder - Placeholder text
  * @param {boolean} allowManual - Allow manual entry if API fails (default: true)
  * @param {boolean} showCategorySelector - Show category selector tabs (default: true)
+ * @param {string[]} allowedCategories - Array of allowed categories to show: ['us-stock', 'il-stock', 'index', 'crypto'] (default: all)
  */
 const TickerSearch = ({ 
   type, 
@@ -21,10 +22,17 @@ const TickerSearch = ({
   displayValue = '',
   placeholder = 'חפש טיקר...',
   allowManual = true,
-  showCategorySelector = true
+  showCategorySelector = true,
+  allowedCategories = ['us-stock', 'il-stock', 'index', 'crypto'] // Default: show all
 }) => {
-  // Category selector state
-  const [selectedCategory, setSelectedCategory] = useState('us-stock'); // Default to US Stocks
+  // Category selector state - set initial to first allowed category
+  const getInitialCategory = () => {
+    if (allowedCategories.length > 0) {
+      return allowedCategories[0];
+    }
+    return 'us-stock';
+  };
+  const [selectedCategory, setSelectedCategory] = useState(getInitialCategory());
   const [query, setQuery] = useState(value || '');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -36,6 +44,7 @@ const TickerSearch = ({
   const inputRef = useRef(null);
   const dropdownRef = useRef(null);
   const debounceTimerRef = useRef(null);
+  const prevAllowedCategoriesRef = useRef(JSON.stringify(allowedCategories));
 
   // Determine actual search type based on category selector or prop
   const actualSearchType = showCategorySelector ? selectedCategory : (type || 'us-stock');
@@ -46,14 +55,14 @@ const TickerSearch = ({
     
     switch (selectedCategory) {
       case 'crypto':
-        return 'חפש קריפטו (BTC, ETH, SOL...)';
+        return ' (BTC, ETH, SOL...) חפש מטבע קריפטו';
       case 'il-stock':
-        return 'חפש מניה ישראלית (POLI.TA, TEVA...)';
+        return ' (POLI.TA, TEVA...) חפש מניה ישראלית';
       case 'index':
-        return 'חפש מדד (S&P 500, ת"א 35, NASDAQ...)';
+        return ' (S&P 500, ת"א 35, NASDAQ...) חפש מדד';
       case 'us-stock':
       default:
-        return 'חפש מניה אמריקאית (AAPL, TSLA, SPY...)';
+        return ' (AAPL, TSLA, SPY...) חפש מניה אמריקאית';
     }
   };
 
@@ -96,6 +105,28 @@ const TickerSearch = ({
       setLoading(false);
     }
   }, [actualSearchType]);
+
+  // Update selectedCategory when allowedCategories changes
+  useEffect(() => {
+    const currentAllowedStr = JSON.stringify(allowedCategories);
+    const prevAllowedStr = prevAllowedCategoriesRef.current;
+    
+    // Only update if allowedCategories actually changed
+    if (currentAllowedStr !== prevAllowedStr) {
+      prevAllowedCategoriesRef.current = currentAllowedStr;
+      
+      if (allowedCategories.length > 0 && !allowedCategories.includes(selectedCategory)) {
+        const firstAllowed = allowedCategories[0];
+        setSelectedCategory(firstAllowed);
+        setQuery('');
+        setResults([]);
+        setShowDropdown(false);
+        setSelectedIndex(-1);
+        setSelectedAsset(null);
+        onSelect(null);
+      }
+    }
+  }, [allowedCategories, selectedCategory, onSelect]);
 
   // Handle category change - clear results and query
   const handleCategoryChange = (newCategory) => {
@@ -244,55 +275,63 @@ const TickerSearch = ({
       {/* Category Selector - Segmented Control */}
       {showCategorySelector && (
         <div className="mb-3 flex gap-1 p-1 bg-slate-100 dark:bg-slate-700 rounded-lg flex-wrap">
-          <button
-            type="button"
-            onClick={() => handleCategoryChange('us-stock')}
-            className={`flex-1 min-w-[70px] px-2 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
-              selectedCategory === 'us-stock'
-                ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            🇺🇸 מניות US
-          </button>
-          <button
-            type="button"
-            onClick={() => handleCategoryChange('il-stock')}
-            className={`flex-1 min-w-[70px] px-2 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
-              selectedCategory === 'il-stock'
-                ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            🇮🇱 מניות IL
-          </button>
-          <button
-            type="button"
-            onClick={() => handleCategoryChange('index')}
-            className={`flex-1 min-w-[70px] px-2 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
-              selectedCategory === 'index'
-                ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            📊 מדדים
-          </button>
-          <button
-            type="button"
-            onClick={() => handleCategoryChange('crypto')}
-            className={`flex-1 min-w-[70px] px-2 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
-              selectedCategory === 'crypto'
-                ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            🪙 קריפטו
-          </button>
+          {allowedCategories.includes('us-stock') && (
+            <button
+              type="button"
+              onClick={() => handleCategoryChange('us-stock')}
+              className={`flex-1 min-w-[70px] px-2 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
+                selectedCategory === 'us-stock'
+                  ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+             מניות US
+            </button>
+          )}
+          {allowedCategories.includes('il-stock') && (
+            <button
+              type="button"
+              onClick={() => handleCategoryChange('il-stock')}
+              className={`flex-1 min-w-[70px] px-2 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
+                selectedCategory === 'il-stock'
+                  ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+             מניות IL
+            </button>
+          )}
+          {allowedCategories.includes('index') && (
+            <button
+              type="button"
+              onClick={() => handleCategoryChange('index')}
+              className={`flex-1 min-w-[70px] px-2 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
+                selectedCategory === 'index'
+                  ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+             מדדים
+            </button>
+          )}
+          {allowedCategories.includes('crypto') && (
+            <button
+              type="button"
+              onClick={() => handleCategoryChange('crypto')}
+              className={`flex-1 min-w-[70px] px-2 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${
+                selectedCategory === 'crypto'
+                  ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
+                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              קריפטו
+            </button>
+          )}
         </div>
       )}
       
       <div className="relative">
-        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none">
+        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none">
           {loading ? (
             <Loader2 size={18} className="animate-spin" />
           ) : (

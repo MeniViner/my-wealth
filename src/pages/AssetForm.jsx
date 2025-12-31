@@ -109,22 +109,24 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
   useEffect(() => {
     if (editAsset) {
       setFormData({
-        name: editAsset.name,
+        name: editAsset.name || '',
         symbol: editAsset.symbol || '',
+        displayName: editAsset.displayName || '',
         apiId: editAsset.apiId || '',
         marketDataSource: editAsset.marketDataSource || '',
-        instrument: editAsset.instrument,
-        platform: editAsset.platform,
-        category: editAsset.category,
+        instrument: editAsset.instrument || (systemData.instruments[0]?.name || ''),
+        platform: editAsset.platform || (systemData.platforms[0]?.name || ''),
+        category: editAsset.category || (systemData.categories[0]?.name || 'אחר'),
         currency: editAsset.currency || 'ILS',
-        originalValue: editAsset.originalValue || editAsset.value,
+        originalValue: editAsset.originalValue || editAsset.value || '',
         tags: editAsset.tags ? editAsset.tags.join(', ') : '',
         // Load new fields from existing asset
         assetType: editAsset.assetType || 'STOCK',
         assetMode: editAsset.assetMode || (editAsset.quantity ? 'QUANTITY' : 'LEGACY'),
         quantity: editAsset.quantity || '',
         purchasePrice: editAsset.purchasePrice || '',
-        purchaseDate: editAsset.purchaseDate || ''
+        purchaseDate: editAsset.purchaseDate || new Date().toISOString().split('T')[0],
+        totalCost: editAsset.totalCost || ''
       });
     } else {
       // Reset form when not editing
@@ -274,7 +276,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
     if (formData.assetMode !== 'QUANTITY') return;
 
     const price = Number(formData.purchasePrice) || 0;
-    
+
     // Need price to calculate anything
     if (price <= 0) return;
 
@@ -294,7 +296,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         }
       }
     }
-    
+
     // User edited quantity → calculate totalCost
     if (lastEditedField === 'quantity' && quantity > 0) {
       const calculatedTotal = quantity * price;
@@ -385,7 +387,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         // Reset apiId and marketDataSource if category changed to non-searchable type
         const shouldResetApiData = newCategory !== 'מניות' && newCategory !== 'קריפטו';
         return {
-          ...prev, 
+          ...prev,
           symbol: parsed.symbol || prev.symbol,
           category: newCategory,
           tags: parsed.tags ? parsed.tags.replace(/\.$/, '') : prev.tags,
@@ -428,8 +430,8 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
           parsed = { tags: result.replace(/\.$/, ''), symbol: '' };
         }
       }
-      setFormData(prev => ({ 
-        ...prev, 
+      setFormData(prev => ({
+        ...prev,
         tags: parsed.tags ? parsed.tags.replace(/\.$/, '') : prev.tags,
         symbol: parsed.symbol || prev.symbol
       }));
@@ -445,7 +447,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     // Build asset data based on mode
     const assetData = {
       name: formData.name,
@@ -481,12 +483,12 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
       assetData.id = editAsset.id;
     }
     await onSave(assetData);
-    
+
     // הצגת הודעת הצלחה
     if (isEdit) {
       await successToast(`עריכה - ${formData.name} - נשמרה`, 2000);
     }
-    
+
     navigate('/assets');
   };
 
@@ -508,8 +510,8 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
   return (
     <div className="max-w-3xl mx-auto pb-safe" style={{ paddingBottom: 'max(3rem, env(safe-area-inset-bottom))' }}>
       <header className="flex items-center gap-4 mb-8 mr-12 md:mr-0">
-        <button 
-          onClick={() => navigate('/assets')} 
+        <button
+          onClick={() => navigate('/assets')}
           className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition"
         >
           <ArrowRight size={24} className="text-slate-800 dark:text-slate-200" />
@@ -518,18 +520,18 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
           {editAsset ? 'עריכת נכס' : 'הוספת נכס חדש'}
         </h2>
       </header>
-      <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-800 p-6 md:p-8 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-700 space-y-6">
+      <form onSubmit={handleSubmit} className="md:bg-white md:dark:bg-slate-800 p-2 md:p-8 md:rounded-2xl md:shadow-lg md:border md:border-slate-100 dark:border-slate-700 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">חשבונות וארנקים</label>
             {!showNewPlatform ? (
               <CustomSelect
-                value={formData.platform}
+                value={formData.platform || ''}
                 onChange={(val) => {
                   if (val === '__NEW__') {
                     setShowNewPlatform(true);
                   } else {
-                    setFormData({...formData, platform: val});
+                    setFormData({ ...formData, platform: val });
                   }
                 }}
                 options={[
@@ -586,12 +588,12 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">מטבעות בסיס</label>
             {!showNewInstrument ? (
               <CustomSelect
-                value={formData.instrument}
+                value={formData.instrument || ''}
                 onChange={(val) => {
                   if (val === '__NEW__') {
                     setShowNewInstrument(true);
                   } else {
-                    setFormData({...formData, instrument: val});
+                    setFormData({ ...formData, instrument: val });
                   }
                 }}
                 options={[
@@ -644,124 +646,103 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
               </div>
             )}
           </div>
-          <div className="md:col-span-2">
-            <div className="flex justify-between items-center mb-2">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">שם הנכס</label>
-            </div>
-            <input 
-              type="text" 
-              required 
-              className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100" 
-              value={formData.name} 
-              onChange={e => setFormData({...formData, name: e.target.value})} 
-              placeholder="לדוג': מחקה מדד נאסד''ק"
-            />
-          </div>
+
           <div className="md:col-span-2">
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">אפיק השקעה</label>
             <div className="flex gap-2 flex-wrap">
               {systemData.categories.map(cat => (
-                <button 
-                  type="button" 
-                  key={cat.name} 
-                  onClick={() => setFormData({...formData, category: cat.name})} 
-                  className={`px-4 py-2 rounded-full border flex items-center gap-2 transition
+                <button
+                  type="button"
+                  key={cat.name}
+                  onClick={() => setFormData({ ...formData, category: cat.name })}
+                  className={`px-3.5 py-1 md:px-4 md:py-2 rounded-full border flex items-center gap-2 transition
                     ${formData.category === cat.name ? 'bg-slate-800 dark:bg-slate-700 text-white' : 'bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100'}`}
                 >
-                  <div className="w-2 h-2 rounded-full" style={{backgroundColor: cat.color}}></div>
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }}></div>
                   {cat.name}
                 </button>
               ))}
             </div>
           </div>
-          <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">סמל נכס / Ticker</label>
-            {formData.category === 'מזומן' ? (
-              // For Cash category, show only instruments (currencies)
-              <CustomSelect
-                value={formData.symbol || ''}
-                onChange={(val) => {
-                  setFormData({...formData, symbol: val});
-                }}
-                options={[
-                  { value: '', label: '-- בחר מטבע --' },
-                  ...(systemData.instruments || []).map(i => ({
-                    value: i.name,
-                    label: i.name,
-                    iconColor: i.color
-                  }))
-                ]}
-                placeholder="בחר מטבע בסיס"
-                iconColor={currentColor('instruments', formData.symbol)}
-              />
-            ) : (formData.category === 'מניות' || formData.category === 'קריפטו') ? (
-              // Smart Ticker Search with Category Selector
-              <TickerSearch
-                type={formData.category === 'קריפטו' ? 'crypto' : 'us-stock'} // Default type (will be overridden by selector)
-                value={formData.symbol}
-                displayValue={formData.displayName || formData.name} // Show Hebrew name
-                onSelect={(asset) => {
-                  if (asset) {
-                    // Determine asset type from the selection
-                    let assetType = 'STOCK';
-                    if (asset.marketDataSource === 'coingecko') {
-                      assetType = 'CRYPTO';
-                    } else if (asset.assetType === 'INDEX' || asset.symbol?.startsWith('^')) {
-                      assetType = 'INDEX';
-                    } else if (asset.assetType === 'ETF') {
-                      assetType = 'ETF';
+          {/* סמל נכס / Ticker - Hidden for Cash category */}
+          {formData.category !== 'מזומן' && (
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">סמל נכס / Ticker</label>
+              {(formData.category === 'מניות' || formData.category === 'קריפטו') ? (
+                // Smart Ticker Search with Category Selector
+                <TickerSearch
+                  type={formData.category === 'קריפטו' ? 'crypto' : 'us-stock'} // Default type (will be overridden by selector)
+                  value={formData.symbol || ''}
+                  displayValue={formData.displayName || formData.name || ''} // Show Hebrew name
+                  onSelect={(asset) => {
+                    if (asset) {
+                      // Determine asset type from the selection
+                      let assetType = 'STOCK';
+                      if (asset.marketDataSource === 'coingecko') {
+                        assetType = 'CRYPTO';
+                      } else if (asset.assetType === 'INDEX' || asset.symbol?.startsWith('^')) {
+                        assetType = 'INDEX';
+                      } else if (asset.assetType === 'ETF') {
+                        assetType = 'ETF';
+                      }
+
+                      // Get the best display name (Hebrew if available)
+                      const displayName = asset.nameHe || asset.name || asset.symbol;
+
+                      setFormData({
+                        ...formData,
+                        name: formData.name || displayName, // Use Hebrew name for display
+                        displayName: displayName, // Store display name separately
+                        symbol: asset.symbol, // Always store the ticker
+                        apiId: asset.id,
+                        marketDataSource: asset.marketDataSource || 'yahoo',
+                        assetType: assetType,
+                        // Reset price when asset changes so it can be auto-fetched
+                        purchasePrice: ''
+                      });
+                      // Clear price data when asset changes
+                      setCurrentPriceData(null);
+                      setLastEditedField(null);
+                    } else {
+                      setFormData({
+                        ...formData,
+                        symbol: '',
+                        displayName: '',
+                        apiId: '',
+                        marketDataSource: '',
+                        assetType: 'STOCK'
+                      });
+                      setCurrentPriceData(null);
                     }
-
-                    // Get the best display name (Hebrew if available)
-                    const displayName = asset.nameHe || asset.name || asset.symbol;
-
-                    setFormData({
-                      ...formData,
-                      name: formData.name || displayName, // Use Hebrew name for display
-                      displayName: displayName, // Store display name separately
-                      symbol: asset.symbol, // Always store the ticker
-                      apiId: asset.id,
-                      marketDataSource: asset.marketDataSource || 'yahoo',
-                      assetType: assetType,
-                      // Reset price when asset changes so it can be auto-fetched
-                      purchasePrice: ''
-                    });
-                    // Clear price data when asset changes
-                    setCurrentPriceData(null);
-                    setLastEditedField(null);
-                  } else {
-                    setFormData({
-                      ...formData,
-                      symbol: '',
-                      displayName: '',
-                      apiId: '',
-                      marketDataSource: '',
-                      assetType: 'STOCK'
-                    });
-                    setCurrentPriceData(null);
+                  }}
+                  allowManual={true}
+                  showCategorySelector={true}
+                  allowedCategories={
+                    formData.category === 'מניות'
+                      ? ['us-stock', 'il-stock', 'index'] // Stocks: show US, IL, and Indices
+                      : formData.category === 'קריפטו'
+                        ? ['crypto'] // Crypto: show only Crypto
+                        : ['us-stock', 'il-stock', 'index', 'crypto'] // Default: show all
                   }
-                }}
-                allowManual={true}
-                showCategorySelector={true}
-              />
-            ) : (
-              // Manual input for Real Estate and Other categories
-              <>
-                {!showNewSymbol ? (
-                  <div className="space-y-2">
-                    <CustomSelect
-                      value={formData.symbol || ''}
-                      onChange={(val) => {
-                        if (val === '__NEW__') {
-                          setShowNewSymbol(true);
-                        } else {
-                          setFormData({...formData, symbol: val});
-                        }
-                      }}
-                      options={[
-                        { value: '', label: '-- בחר סמל --' },
-                        ...(systemData.symbols && systemData.symbols.length > 0 
-                          ? systemData.symbols.map(s => {
+                />
+              ) : (
+                // Manual input for Real Estate and Other categories
+                <>
+                  {!showNewSymbol ? (
+                    <div className="space-y-2">
+                      <CustomSelect
+                        value={formData.symbol || ''}
+                        onChange={(val) => {
+                          if (val === '__NEW__') {
+                            setShowNewSymbol(true);
+                          } else {
+                            setFormData({ ...formData, symbol: val });
+                          }
+                        }}
+                        options={[
+                          { value: '', label: '-- בחר סמל --' },
+                          ...(systemData.symbols && systemData.symbols.length > 0
+                            ? systemData.symbols.map(s => {
                               const symbolName = typeof s === 'string' ? s : s.name;
                               const symbolColor = typeof s === 'string' ? '#94a3b8' : s.color;
                               return {
@@ -770,68 +751,85 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                                 iconColor: symbolColor
                               };
                             })
-                          : []
-                        ),
-                        { value: '__NEW__', label: 'הוסף סמל חדש' }
-                      ]}
-                      placeholder="-- בחר סמל --"
-                      iconColor={currentColor('symbols', formData.symbol)}
-                    />
-                    <input
-                      type="text"
-                      className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 font-mono"
-                      placeholder="או הזן סמל ידנית"
-                      value={formData.symbol}
-                      onChange={e => setFormData({...formData, symbol: e.target.value.toUpperCase()})}
-                      
-                    />
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={newSymbolValue}
-                      onChange={e => setNewSymbolValue(e.target.value.toUpperCase())}
-                      onKeyDown={e => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleAddSymbol();
-                        } else if (e.key === 'Escape') {
+                            : []
+                          ),
+                          { value: '__NEW__', label: 'הוסף סמל חדש' }
+                        ]}
+                        placeholder="-- בחר סמל --"
+                        iconColor={currentColor('symbols', formData.symbol)}
+                      />
+                      <input
+                        type="text"
+                        className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 font-mono"
+                        placeholder="או הזן סמל ידנית"
+                        value={formData.symbol || ''}
+                        onChange={e => setFormData({ ...formData, symbol: e.target.value.toUpperCase() })}
+
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={newSymbolValue}
+                        onChange={e => setNewSymbolValue(e.target.value.toUpperCase())}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddSymbol();
+                          } else if (e.key === 'Escape') {
+                            setShowNewSymbol(false);
+                            setNewSymbolValue('');
+                          }
+                        }}
+                        placeholder="הזן סמל חדש"
+                        className="flex-1 p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 font-mono"
+                        autoFocus
+
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddSymbol}
+                        className="px-4 py-3 bg-emerald-600 dark:bg-emerald-700 text-white rounded-lg hover:bg-emerald-700 dark:hover:bg-emerald-600 flex items-center gap-2"
+                      >
+                        הוסף
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
                           setShowNewSymbol(false);
                           setNewSymbolValue('');
-                        }
-                      }}
-                      placeholder="הזן סמל חדש"
-                      className="flex-1 p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 font-mono"
-                      autoFocus
-                      
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddSymbol}
-                      className="px-4 py-3 bg-emerald-600 dark:bg-emerald-700 text-white rounded-lg hover:bg-emerald-700 dark:hover:bg-emerald-600 flex items-center gap-2"
-                    >
-                      הוסף
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowNewSymbol(false);
-                        setNewSymbolValue('');
-                      }}
-                      className="px-4 py-3 bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-500"
-                    >
-                      ביטול
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1" dir="rtl">
-              {formData.category === 'מניות' || formData.category === 'קריפטו' 
-                ? 'חיפוש חכם - נבחר אוטומטית מהמאגר הרשמי' 
-                : 'מזהה סטנדרטי לזיהוי נכסים זהים על פני פלטפורמות שונות'}
-            </p>
+                        }}
+                        className="px-4 py-3 bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-500"
+                      >
+                        ביטול
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+              {/* <p className="text-xs text-slate-500 dark:text-slate-400 mt-1" dir="rtl">
+                {formData.category === 'מניות' || formData.category === 'קריפטו'
+                  ? 'חיפוש חכם - נבחר אוטומטית מהמאגר הרשמי'
+                  : 'מזהה סטנדרטי לזיהוי נכסים זהים על פני פלטפורמות שונות'}
+              </p> */}
+            </div>
+          )}
+          <div className="md:col-span-2">
+            <div className="flex justify-betweFen items-center mb-2">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">שם הנכס</label>
+              {(formData.category === 'מניות' || formData.category === 'קריפטו') && (
+                <label className="text-xs mr-2 text-slate-500 dark:text-slate-400">(במניות וקריפטו מוזן אוטומטי)</label>
+              )}
+            </div>
+            <input
+              type="text"
+              required
+              className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100"
+              value={formData.name}
+              onChange={e => setFormData({ ...formData, name: e.target.value })}
+              placeholder="לדוג': מחקה מדד נאסד''ק"
+            />
           </div>
           {/* Mode Toggle: Quantity vs Legacy - Hidden for Cash */}
           {formData.category !== 'מזומן' && (
@@ -840,32 +838,30 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
               <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-700 rounded-lg">
                 <button
                   type="button"
-                  onClick={() => setFormData({...formData, assetMode: 'QUANTITY'})}
-                  className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                    formData.assetMode === 'QUANTITY'
+                  onClick={() => setFormData({ ...formData, assetMode: 'QUANTITY' })}
+                  className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${formData.assetMode === 'QUANTITY'
                       ? 'bg-white dark:bg-slate-600 text-emerald-600 dark:text-emerald-400 shadow-sm'
                       : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                  }`}
+                    }`}
                 >
                   <Hash size={16} />
                   כמות × מחיר (מומלץ)
                 </button>
                 <button
                   type="button"
-                  onClick={() => setFormData({...formData, assetMode: 'LEGACY'})}
-                  className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${
-                    formData.assetMode === 'LEGACY'
+                  onClick={() => setFormData({ ...formData, assetMode: 'LEGACY' })}
+                  className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${formData.assetMode === 'LEGACY'
                       ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
                       : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                  }`}
+                    }`}
                 >
                   <Calculator size={16} />
                   שווי סטטי
                 </button>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                {formData.assetMode === 'QUANTITY' 
-                  ? '✨ מאפשר מעקב אוטומטי אחר שינויי מחיר וחישוב רווח/הפסד' 
+                {formData.assetMode === 'QUANTITY'
+                  ? '✨ מאפשר מעקב אוטומטי אחר שינויי מחיר וחישוב רווח/הפסד'
                   : 'הזנת שווי כולל ללא מעקב אוטומטי'}
               </p>
             </div>
@@ -878,23 +874,21 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={() => setFormData({...formData, currency: 'ILS'})}
-                  className={`flex-1 px-4 py-1 rounded-xl border-2 transition-all font-medium ${
-                    formData.currency === 'ILS'
+                  onClick={() => setFormData({ ...formData, currency: 'ILS' })}
+                  className={`flex-1 px-4 py-1 rounded-xl border-2 transition-all font-medium ${formData.currency === 'ILS'
                       ? 'bg-emerald-600 dark:bg-emerald-500 text-white border-emerald-600 dark:border-emerald-500 shadow-md'
                       : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:border-emerald-400 dark:hover:border-emerald-500'
-                  }`}
+                    }`}
                 >
                   <span className="text-2xl mb-1 block">₪</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => setFormData({...formData, currency: 'USD'})}
-                  className={`flex-1 px-4 py-1 rounded-xl border-2 transition-all font-medium ${
-                    formData.currency === 'USD'
+                  onClick={() => setFormData({ ...formData, currency: 'USD' })}
+                  className={`flex-1 px-4 py-1 rounded-xl border-2 transition-all font-medium ${formData.currency === 'USD'
                       ? 'bg-emerald-600 dark:bg-emerald-500 text-white border-emerald-600 dark:border-emerald-500 shadow-md'
                       : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:border-emerald-400 dark:hover:border-emerald-500'
-                  }`}
+                    }`}
                 >
                   <span className="text-2xl mb-1 mt-1 block">$</span>
                 </button>
@@ -908,13 +902,13 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">סכום</label>
               <div className="relative">
-                <input 
-                  type="number" 
-                  required 
+                <input
+                  type="number"
+                  required
                   step="any"
-                  className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 font-mono pr-12" 
-                  value={formData.originalValue} 
-                  onChange={e => setFormData({...formData, originalValue: e.target.value})} 
+                  className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 font-mono pr-12"
+                  value={formData.originalValue || ''}
+                  onChange={e => setFormData({ ...formData, originalValue: e.target.value })}
                   placeholder="הזן סכום"
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 text-sm font-bold">
@@ -933,12 +927,12 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                     <span className="text-xs text-slate-500">(ישמש למחיר היחידה)</span>
                   </span>
                 </label>
-                <input 
-                  type="date" 
-                  className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100" 
-                  value={formData.purchaseDate} 
+                <input
+                  type="date"
+                  className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100"
+                  value={formData.purchaseDate}
                   onChange={e => {
-                    setFormData({...formData, purchaseDate: e.target.value, purchasePrice: ''});
+                    setFormData({ ...formData, purchaseDate: e.target.value, purchasePrice: '' });
                     setLastEditedField('purchaseDate');
                   }}
                   max={new Date().toISOString().split('T')[0]}
@@ -960,7 +954,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                       className="text-xs text-emerald-600 dark:text-emerald-400 font-bold flex gap-1 items-center disabled:opacity-50"
                       title="שלוף מחיר נוכחי"
                     >
-                      {priceLoading ? <Loader2 size={12} className="animate-spin"/> : <RefreshCw size={12}/>}
+                      {priceLoading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
                       נוכחי
                     </button>
                     <span className="text-slate-300 dark:text-slate-600">|</span>
@@ -971,19 +965,19 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                       className="text-xs text-blue-600 dark:text-blue-400 font-bold flex gap-1 items-center disabled:opacity-50"
                       title="שלוף מחיר היסטורי לפי תאריך"
                     >
-                      {priceLoading ? <Loader2 size={12} className="animate-spin"/> : <Calendar size={12}/>}
+                      {priceLoading ? <Loader2 size={12} className="animate-spin" /> : <Calendar size={12} />}
                       היסטורי
                     </button>
                   </div>
                 </div>
                 <div className="relative">
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     step="any"
-                    className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-600 text-slate-900 dark:text-slate-100 font-mono pr-12" 
-                    value={formData.purchasePrice} 
+                    className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-600 text-slate-900 dark:text-slate-100 font-mono pr-12"
+                    value={formData.purchasePrice || ''}
                     onChange={e => {
-                      setFormData({...formData, purchasePrice: e.target.value});
+                      setFormData({ ...formData, purchasePrice: e.target.value });
                       setLastEditedField('purchasePrice');
                     }}
                     placeholder="נשלף אוטומטית"
@@ -993,7 +987,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                   </span>
                   {priceLoading && (
                     <span className="absolute right-3 top-1/2 -translate-y-1/2">
-                      <Loader2 size={16} className="animate-spin text-blue-500"/>
+                      <Loader2 size={16} className="animate-spin text-blue-500" />
                     </span>
                   )}
                 </div>
@@ -1014,21 +1008,20 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                         </span>
                       </label>
                       <div className="relative">
-                        <input 
-                          type="number" 
+                        <input
+                          type="number"
                           step="any"
-                          className={`w-full p-3 border rounded-lg text-slate-900 dark:text-slate-100 font-mono pr-12 transition-all ${
-                            lastEditedField === 'totalCost' 
-                              ? 'border-blue-400 dark:border-blue-500 bg-white dark:bg-slate-700 ring-2 ring-blue-200 dark:ring-blue-800' 
+                          className={`w-full p-3 border rounded-lg text-slate-900 dark:text-slate-100 font-mono pr-12 transition-all ${lastEditedField === 'totalCost'
+                              ? 'border-blue-400 dark:border-blue-500 bg-white dark:bg-slate-700 ring-2 ring-blue-200 dark:ring-blue-800'
                               : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700'
-                          }`}
-                          value={formData.totalCost} 
+                            }`}
+                          value={formData.totalCost || ''}
                           onChange={e => {
-                            setFormData({...formData, totalCost: e.target.value});
+                            setFormData({ ...formData, totalCost: e.target.value });
                             setLastEditedField('totalCost');
                           }}
                           placeholder={`לדוגמה: 500`}
-                          
+
                         />
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 text-sm font-bold">
                           {formData.currency === 'ILS' ? '₪' : '$'}
@@ -1049,25 +1042,24 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                           כמות יחידות (כמה קנית?)
                         </span>
                       </label>
-                      <input 
-                        type="number" 
+                      <input
+                        type="number"
                         step="any"
-                        className={`w-full p-3 border rounded-lg text-slate-900 dark:text-slate-100 font-mono transition-all ${
-                          lastEditedField === 'quantity' 
-                            ? 'border-blue-400 dark:border-blue-500 bg-white dark:bg-slate-700 ring-2 ring-blue-200 dark:ring-blue-800' 
+                        className={`w-full p-3 border rounded-lg text-slate-900 dark:text-slate-100 font-mono transition-all ${lastEditedField === 'quantity'
+                            ? 'border-blue-400 dark:border-blue-500 bg-white dark:bg-slate-700 ring-2 ring-blue-200 dark:ring-blue-800'
                             : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700'
-                        }`}
-                        value={formData.quantity} 
+                          }`}
+                        value={formData.quantity || ''}
                         onChange={e => {
-                          setFormData({...formData, quantity: e.target.value});
+                          setFormData({ ...formData, quantity: e.target.value });
                           setLastEditedField('quantity');
                         }}
                         placeholder="לדוגמה: 2.5"
-                        
+
                       />
                       {lastEditedField === 'quantity' && formData.purchasePrice && formData.quantity && (
                         <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 font-medium">
-                          ✓ עלות: {formData.currency === 'ILS' ? '₪' : '$'}{(Number(formData.quantity) * Number(formData.purchasePrice)).toLocaleString('he-IL', {maximumFractionDigits: 2})}
+                          ✓ עלות: {formData.currency === 'ILS' ? '₪' : '$'}{(Number(formData.quantity) * Number(formData.purchasePrice)).toLocaleString('he-IL', { maximumFractionDigits: 2 })}
                         </p>
                       )}
                     </div>
@@ -1086,7 +1078,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                     {estimatedValue.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                   <div className="text-sm text-emerald-600/80 dark:text-emerald-400/80">
-                    = {formData.quantity || '?'} יחידות × {formData.purchasePrice ? `${formData.currency === 'ILS' ? '₪' : '$'}${Number(formData.purchasePrice).toLocaleString('he-IL', {maximumFractionDigits: 4})}` : '?'} ליחידה
+                    = {formData.quantity || '?'} יחידות × {formData.purchasePrice ? `${formData.currency === 'ILS' ? '₪' : '$'}${Number(formData.purchasePrice).toLocaleString('he-IL', { maximumFractionDigits: 4 })}` : '?'} ליחידה
                   </div>
                 </div>
                 {!formData.purchasePrice && formData.apiId && (
@@ -1100,12 +1092,12 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
             /* LEGACY Mode - Static Value */
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">שווי כולל</label>
-              <input 
-                type="number" 
-                required 
-                className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100" 
-                value={formData.originalValue} 
-                onChange={e => setFormData({...formData, originalValue: e.target.value})} 
+              <input
+                type="number"
+                required
+                className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100"
+                value={formData.originalValue}
+                onChange={e => setFormData({ ...formData, originalValue: e.target.value })}
               />
             </div>
           )}
@@ -1113,26 +1105,26 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
           <div className="md:col-span-2">
             <div className="flex justify-between mb-2">
               <label className="text-sm font-medium text-slate-700 dark:text-slate-200">תגיות</label>
-              <button 
-                type="button" 
-                onClick={handleGenerateTags} 
+              <button
+                type="button"
+                onClick={handleGenerateTags}
                 className="text-xs text-purple-600 dark:text-purple-400 font-bold flex gap-1 items-center"
               >
-                {tagLoading ? <Loader2 size={12} className="animate-spin"/> : <Sparkles size={12}/>}    צור עם AI
+                {tagLoading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}    צור עם AI
               </button>
             </div>
-            <input 
-              type="text" 
-              className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100" 
-              value={formData.tags} 
-              onChange={e => setFormData({...formData, tags: e.target.value})} 
+            <input
+              type="text"
+              className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100"
+              value={formData.tags || ''}
+              onChange={e => setFormData({ ...formData, tags: e.target.value })}
             />
           </div>
         </div>
         <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
-          <button 
-            type="button" 
-            onClick={() => navigate('/assets')} 
+          <button
+            type="button"
+            onClick={() => navigate('/assets')}
             className="px-6 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
           >
             ביטול
