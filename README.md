@@ -150,3 +150,6 @@ npm install
 
 פרויקט זה הוא פרויקט אישי לשימוש פרטי.
 
+--
+https://my-wealth-dashboard.web.app/
+
