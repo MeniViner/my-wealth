@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { doc, getDoc, setDoc, onSnapshot, collection, addDoc, query, orderBy } from 'firebase/firestore';
 import { Scale, Target, Loader2, Save, Sparkles, AlertCircle, TrendingUp, TrendingDown, Plus, Trash2, X, Tag, Database, Palette, DollarSign, Layers, Copy, Check, Eye, Percent, FileText, ChevronDown, ChevronUp } from 'lucide-react';
 import { db, appId } from '../services/firebase';
-import { callGeminiAI } from '../services/gemini';
+import { callGeminiAI, parseAndValidateRebalancingAllocation } from '../services/gemini';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 import { successToast, errorAlert, confirmAlert } from '../utils/alerts';
 
@@ -617,23 +617,15 @@ ${currentTargets ? `**יעדים נוכחיים (אם קיימים):**\n${curren
         throw new Error(result);
       }
 
-      let parsedResult;
-      try {
-        const jsonMatch = result.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          parsedResult = JSON.parse(jsonMatch[0]);
-        } else {
-          throw new Error('לא נמצא JSON בתשובה');
-        }
-      } catch (parseError) {
-        console.error('Parse error:', parseError, 'Result:', result);
-        throw new Error('לא ניתן לפרש את תשובת ה-AI. אנא נסה שוב עם בקשה ברורה יותר.');
+      // Parse and validate using Zod schema
+      const validation = parseAndValidateRebalancingAllocation(result);
+      
+      if (!validation.success) {
+        throw new Error(validation.error || 'AI Suggestion Failed');
       }
 
-      const total = Object.values(parsedResult).reduce((sum, val) => sum + (Number(val) || 0), 0);
-      if (Math.abs(total - 100) > 0.1) {
-        throw new Error(`האחוזים שהתקבלו מסתכמים ל-${total.toFixed(2)}% במקום 100%. אנא נסה שוב.`);
-      }
+      // Validation passed - use validated data (already ensures sum = 100%)
+      const parsedResult = validation.data;
 
       setGroups(prev => prev.map(g => {
         if (g.id === groupId) {

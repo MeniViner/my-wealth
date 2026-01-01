@@ -58,10 +58,57 @@ service cloud.firestore {
         allow delete: if isAdminInContext(appId);
         
         // Assets collection - user's financial assets
+        // STRICT PER-USER ISOLATION: Only allow access when userId matches request.auth.uid
         match /assets/{assetId} {
-          // Admins can read all, users can only read/write their own
-          allow read: if isAdminOrOwner(userId, appId);
-          allow write: if isOwner(userId) || isAdminInContext(appId);
+          // Users can ONLY read their own assets (userId must match auth.uid)
+          allow read: if isAuthenticated() && request.auth.uid == userId;
+          // Users can create/update their own assets only
+          allow create, update: if isAuthenticated() && request.auth.uid == userId;
+          // Delete requires admin claim OR user is owner (for safety)
+          allow delete: if isAuthenticated() && (request.auth.uid == userId || isAdminInContext(appId));
+        }
+        
+        // Portfolios collection - user's portfolio configurations
+        // STRICT PER-USER ISOLATION: Only allow access when userId matches request.auth.uid
+        match /portfolios/{portfolioId} {
+          // Users can ONLY read their own portfolios (userId must match auth.uid)
+          allow read: if isAuthenticated() && request.auth.uid == userId;
+          // Users can create/update their own portfolios only
+          allow create, update: if isAuthenticated() && request.auth.uid == userId;
+          // Delete requires admin claim OR user is owner (for safety)
+          allow delete: if isAuthenticated() && (request.auth.uid == userId || isAdminInContext(appId));
+        }
+        
+        // Reports collection - AI advisor reports
+        // STRICT PER-USER ISOLATION: Only allow access when userId matches request.auth.uid
+        match /reports/{reportId} {
+          // Users can ONLY read their own reports (userId must match auth.uid)
+          allow read: if isAuthenticated() && request.auth.uid == userId;
+          // Users can create/update their own reports only
+          allow create, update: if isAuthenticated() && request.auth.uid == userId;
+          // Delete requires admin claim OR user is owner (for safety)
+          allow delete: if isAuthenticated() && (request.auth.uid == userId || isAdminInContext(appId));
+        }
+        
+        // Dashboard widgets collection - chart configurations
+        // STRICT PER-USER ISOLATION: Only allow access when userId matches request.auth.uid
+        match /dashboard_widgets/{widgetId} {
+          // Users can ONLY read their own widgets (userId must match auth.uid)
+          allow read: if isAuthenticated() && request.auth.uid == userId;
+          // Users can create/update their own widgets only
+          allow create, update: if isAuthenticated() && request.auth.uid == userId;
+          // Delete requires admin claim OR user is owner (for safety)
+          allow delete: if isAuthenticated() && (request.auth.uid == userId || isAdminInContext(appId));
+        }
+        
+        // Also support "widgets" collection alias for backward compatibility
+        match /widgets/{widgetId} {
+          // Users can ONLY read their own widgets (userId must match auth.uid)
+          allow read: if isAuthenticated() && request.auth.uid == userId;
+          // Users can create/update their own widgets only
+          allow create, update: if isAuthenticated() && request.auth.uid == userId;
+          // Delete requires admin claim OR user is owner (for safety)
+          allow delete: if isAuthenticated() && (request.auth.uid == userId || isAdminInContext(appId));
         }
         
         // Settings subcollection
@@ -71,31 +118,24 @@ service cloud.firestore {
           allow write: if isOwner(userId) || isAdminInContext(appId);
         }
         
-        // Reports collection - AI advisor reports
-        match /reports/{reportId} {
-          // Admins can read all, users can only read/write their own
-          allow read: if isAdminOrOwner(userId, appId);
-          allow write: if isOwner(userId) || isAdminInContext(appId);
-        }
-        
-        // Dashboard widgets collection - chart configurations
-        match /dashboard_widgets/{widgetId} {
-          // Admins can read all, users can only read/write their own
-          allow read: if isAdminOrOwner(userId, appId);
-          allow write: if isOwner(userId) || isAdminInContext(appId);
-        }
-        
         // Chats collection - AI chat conversations
+        // STRICT PER-USER ISOLATION: Only allow access when userId matches request.auth.uid
         match /chats/{chatId} {
-          // Admins can read all, users can only read/write their own
-          allow read: if isAdminOrOwner(userId, appId);
-          allow write: if isOwner(userId) || isAdminInContext(appId);
+          // Users can ONLY read their own chats (userId must match auth.uid)
+          allow read: if isAuthenticated() && request.auth.uid == userId;
+          // Users can create/update their own chats only
+          allow create, update: if isAuthenticated() && request.auth.uid == userId;
+          // Delete requires admin claim OR user is owner (for safety)
+          allow delete: if isAuthenticated() && (request.auth.uid == userId || isAdminInContext(appId));
           
           // Messages subcollection within each chat
           match /messages/{messageId} {
-            // Admins can read all, users can only read/write their own
-            allow read: if isAdminOrOwner(userId, appId);
-            allow write: if isOwner(userId) || isAdminInContext(appId);
+            // Users can ONLY read their own messages (userId must match auth.uid)
+            allow read: if isAuthenticated() && request.auth.uid == userId;
+            // Users can create/update their own messages only
+            allow create, update: if isAuthenticated() && request.auth.uid == userId;
+            // Delete requires admin claim OR user is owner (for safety)
+            allow delete: if isAuthenticated() && (request.auth.uid == userId || isAdminInContext(appId));
           }
         }
       }

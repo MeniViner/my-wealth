@@ -42,8 +42,9 @@ export { auth, db };
 // App ID for Firebase collections
 export const appId = import.meta.env.VITE_APP_ID || 'my-wealth-app';
 
-// Make auth available globally for console debugging
-if (typeof window !== 'undefined' && auth) {
+// Make auth available globally for console debugging - ONLY in development mode
+// SECURITY: These debug tools are NOT included in production builds
+if (import.meta.env.DEV && typeof window !== 'undefined' && auth) {
   window.__firebaseAuth = auth;
   window.__getCurrentUser = () => {
     if (auth && auth.currentUser) {

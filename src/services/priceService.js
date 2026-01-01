@@ -51,7 +51,7 @@ const setCachedPrice = (key, data) => {
 /**
  * Fetch URL through CORS proxy with fallback
  * @param {string} targetUrl - The URL to fetch
- * @returns {Promise<Response>}
+ * @returns {Promise<{response: Response, usingAllOrigins: boolean}>}
  */
 const fetchWithProxy = async (targetUrl) => {
   // Try corsproxy.io first
@@ -71,41 +71,77 @@ const fetchWithProxy = async (targetUrl) => {
   }
   
   // Fallback to allorigins.win
-  proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
-  const response = await fetch(proxyUrl, {
-    method: 'GET',
-    headers: { 'Accept': 'application/json' }
-  });
-  
-  return { response, usingAllOrigins: true };
+  try {
+    proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+    const response = await fetch(proxyUrl, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' }
+    });
+    
+    return { response, usingAllOrigins: true };
+  } catch (error) {
+    console.error('Both proxy services failed:', error);
+    // Return a failed response object to prevent crashes
+    throw new Error('Proxy fetch failed: Unable to fetch data through available proxies');
+  }
 };
 
 /**
  * Parse response from proxy (handles allorigins wrapper)
+ * Returns null if parsing fails (e.g., HTML error page from Yahoo)
  */
 const parseProxyResponse = async (response, usingAllOrigins) => {
-  const responseText = await response.text();
-  
   try {
-    const parsed = JSON.parse(responseText);
+    const responseText = await response.text();
     
-    // allorigins.win wraps response in { contents: "..." }
-    if (usingAllOrigins && parsed.contents) {
-      return JSON.parse(parsed.contents);
+    // Check if response is HTML (common when Yahoo blocks the request)
+    if (responseText.trim().startsWith('<!DOCTYPE') || responseText.trim().startsWith('<html')) {
+      console.warn('Received HTML instead of JSON - likely blocked by Yahoo Finance');
+      return null;
     }
     
-    return parsed;
-  } catch (parseError) {
-    // Try to extract JSON from response
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      if (parsed.contents) {
+    try {
+      const parsed = JSON.parse(responseText);
+      
+      // allorigins.win wraps response in { contents: "..." }
+      if (usingAllOrigins && parsed.contents) {
+        // Check if contents is HTML
+        if (typeof parsed.contents === 'string' && 
+            (parsed.contents.trim().startsWith('<!DOCTYPE') || parsed.contents.trim().startsWith('<html'))) {
+          console.warn('Received HTML in allorigins wrapper - likely blocked by Yahoo Finance');
+          return null;
+        }
         return JSON.parse(parsed.contents);
       }
+      
       return parsed;
+    } catch (parseError) {
+      // Try to extract JSON from response
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          if (parsed.contents) {
+            // Check if contents is HTML
+            if (typeof parsed.contents === 'string' && 
+                (parsed.contents.trim().startsWith('<!DOCTYPE') || parsed.contents.trim().startsWith('<html'))) {
+              console.warn('Received HTML in extracted JSON - likely blocked by Yahoo Finance');
+              return null;
+            }
+            return JSON.parse(parsed.contents);
+          }
+          return parsed;
+        } catch (e) {
+          console.warn('Failed to parse extracted JSON:', e);
+          return null;
+        }
+      }
+      console.warn('Could not parse response - not valid JSON');
+      return null;
     }
-    throw new Error('Could not parse response');
+  } catch (error) {
+    console.error('Error parsing proxy response:', error);
+    return null;
   }
 };
 
@@ -232,18 +268,31 @@ export const fetchYahooPrice = async (symbol) => {
     const { response, usingAllOrigins } = await fetchWithProxy(targetUrl);
     
     if (!response.ok) {
-      throw new Error(`Yahoo Finance API error: ${response.status}`);
+      console.warn(`Yahoo Finance API error for ${symbol}: ${response.status}`);
+      return null;
     }
     
     const data = await parseProxyResponse(response, usingAllOrigins);
     
+    // If parseProxyResponse returns null (HTML error page), return null safely
+    if (!data) {
+      console.warn(`Failed to parse Yahoo Finance response for ${symbol} - likely blocked`);
+      return null;
+    }
+    
     // Extract price data from chart response
     const chartResult = data?.chart?.result?.[0];
     if (!chartResult) {
-      throw new Error(`No data found for ${symbol}`);
+      console.warn(`No data found for ${symbol}`);
+      return null;
     }
     
     const meta = chartResult.meta;
+    if (!meta) {
+      console.warn(`No metadata found for ${symbol}`);
+      return null;
+    }
+    
     const currentPrice = meta.regularMarketPrice || 0;
     const previousClose = meta.previousClose || meta.chartPreviousClose || currentPrice;
     const change = currentPrice - previousClose;
@@ -279,6 +328,7 @@ export const fetchYahooPrice = async (symbol) => {
     return result;
   } catch (error) {
     console.error(`Error fetching Yahoo price for ${symbol}:`, error);
+    // Return null instead of throwing to prevent app crashes
     return null;
   }
 };
@@ -447,14 +497,22 @@ export const fetchYahooHistoricalPrice = async (symbol, date) => {
     const { response, usingAllOrigins } = await fetchWithProxy(targetUrl);
     
     if (!response.ok) {
-      throw new Error(`Yahoo Finance history API error: ${response.status}`);
+      console.warn(`Yahoo Finance history API error for ${symbol}: ${response.status}`);
+      return null;
     }
     
     const data = await parseProxyResponse(response, usingAllOrigins);
     
+    // If parseProxyResponse returns null (HTML error page), return null safely
+    if (!data) {
+      console.warn(`Failed to parse Yahoo Finance historical response for ${symbol}`);
+      return null;
+    }
+    
     const chartResult = data?.chart?.result?.[0];
     if (!chartResult) {
-      throw new Error(`No historical data found for ${symbol}`);
+      console.warn(`No historical data found for ${symbol}`);
+      return null;
     }
     
     // Get close price
@@ -468,6 +526,7 @@ export const fetchYahooHistoricalPrice = async (symbol, date) => {
     return null;
   } catch (error) {
     console.error(`Error fetching Yahoo historical price for ${symbol}:`, error);
+    // Return null instead of throwing to prevent app crashes
     return null;
   }
 };
@@ -539,24 +598,43 @@ export const fetchPriceHistory = async (symbol, source, days = 30) => {
     const range = days <= 7 ? '5d' : days <= 30 ? '1mo' : days <= 90 ? '3mo' : '1y';
     const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=${range}`;
     
-    const { response, usingAllOrigins } = await fetchWithProxy(targetUrl);
-    if (!response.ok) throw new Error('Yahoo chart API error');
-    
-    const data = await parseProxyResponse(response, usingAllOrigins);
-    const chartResult = data?.chart?.result?.[0];
-    
-    if (!chartResult) return [];
-    
-    const timestamps = chartResult.timestamp || [];
-    const closes = chartResult.indicators?.quote?.[0]?.close || [];
-    
-    const prices = timestamps.map((ts, i) => ({
-      date: new Date(ts * 1000),
-      price: closes[i] || 0
-    })).filter(p => p.price > 0);
-    
-    priceCache.set(cacheKey, { data: prices, timestamp: Date.now() });
-    return prices;
+    try {
+      const { response, usingAllOrigins } = await fetchWithProxy(targetUrl);
+      if (!response.ok) {
+        console.warn(`Yahoo chart API error for ${symbol}: ${response.status}`);
+        return [];
+      }
+      
+      const data = await parseProxyResponse(response, usingAllOrigins);
+      
+      // If parseProxyResponse returns null (HTML error page), return empty array safely
+      if (!data) {
+        console.warn(`Failed to parse Yahoo Finance chart response for ${symbol}`);
+        return [];
+      }
+      
+      const chartResult = data?.chart?.result?.[0];
+      
+      if (!chartResult) {
+        console.warn(`No chart data found for ${symbol}`);
+        return [];
+      }
+      
+      const timestamps = chartResult.timestamp || [];
+      const closes = chartResult.indicators?.quote?.[0]?.close || [];
+      
+      const prices = timestamps.map((ts, i) => ({
+        date: new Date(ts * 1000),
+        price: closes[i] || 0
+      })).filter(p => p.price > 0);
+      
+      priceCache.set(cacheKey, { data: prices, timestamp: Date.now() });
+      return prices;
+    } catch (error) {
+      console.error(`Error fetching price history for ${symbol}:`, error);
+      // Return empty array instead of throwing to prevent app crashes
+      return [];
+    }
   } catch (error) {
     console.error('Error fetching price history:', error);
     return [];

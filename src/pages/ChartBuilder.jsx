@@ -9,7 +9,7 @@ import ChartRenderer from '../components/ChartRenderer';
 import { successAlert, errorAlert, confirmAlert, successToast } from '../utils/alerts';
 import CustomSelect from '../components/CustomSelect';
 import { generatePortfolioContext } from '../utils/aiContext';
-import { callGeminiAI } from '../services/gemini';
+import { callGeminiAI, parseAndValidateChartSuggestions, parseAndValidateSingleChart } from '../services/gemini';
 import { Save, BarChart3, Filter, X, Eye, PieChart, BarChart, BarChart2, Radar, Gauge, LayoutGrid, Plus, Trash2, ArrowUp, ArrowDown, Monitor, Smartphone, Edit2, Check, AreaChart, LineChart, TrendingUp, Grid, Settings, Sparkles, Loader2, ChevronDown, ChevronUp, LucideBarChartHorizontal } from 'lucide-react';
 
 const ChartBuilder = () => {
@@ -343,59 +343,46 @@ ${portfolioContext}
 
       const response = await callGeminiAI(prompt, portfolioContext);
       
-      // Try to extract JSON from response
-      let jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        // Try to find JSON in code blocks
-        jsonMatch = response.match(/```json\s*(\{[\s\S]*?\})\s*```/);
-        if (jsonMatch) {
-          jsonMatch = [jsonMatch[0], jsonMatch[1]];
-        } else {
-          jsonMatch = response.match(/```\s*(\{[\s\S]*?\})\s*```/);
-          if (jsonMatch) {
-            jsonMatch = [jsonMatch[0], jsonMatch[1]];
-          }
-        }
-      }
-
-      if (jsonMatch) {
-        const jsonStr = jsonMatch[1] || jsonMatch[0];
-        const parsed = JSON.parse(jsonStr);
-        
-        if (parsed.suggestions && Array.isArray(parsed.suggestions)) {
-          // Validate and set default values
-          const validatedSuggestions = parsed.suggestions.slice(0, 3).map(suggestion => ({
-            title: suggestion.title || 'גרף חדש',
-            chartType: availableChartTypes.includes(suggestion.chartType) ? suggestion.chartType : 'PieChart',
-            dataKey: availableDataKeys.includes(suggestion.dataKey) ? suggestion.dataKey : 'category',
-            aggregationType: suggestion.aggregationType || 'sum',
+      // Parse and validate using Zod schema
+      const validation = parseAndValidateChartSuggestions(response);
+      
+      if (!validation.success) {
+        // Use fallback data if validation fails
+        if (validation.data) {
+          setAiSuggestions(validation.data.suggestions.map(s => ({
+            ...s,
             isVisible: true,
-            order: 1,
-            size: suggestion.size || 'medium',
-            showGrid: suggestion.showGrid !== false,
-            filters: {
-              category: availableCategories.includes(suggestion.filters?.category) ? suggestion.filters.category : '',
-              platform: availablePlatforms.includes(suggestion.filters?.platform) ? suggestion.filters.platform : '',
-              instrument: availableInstruments.includes(suggestion.filters?.instrument) ? suggestion.filters.instrument : '',
-              currency: availableCurrencies.includes(suggestion.filters?.currency) ? suggestion.filters.currency : '',
-              tags: Array.isArray(suggestion.filters?.tags) ? suggestion.filters.tags : []
-            }
-          }));
-          
-          setAiSuggestions(validatedSuggestions);
-          
-          // Save suggestions to localStorage
-          try {
-            const storageKey = `chartBuilder_aiSuggestions_${user?.uid || 'guest'}`;
-            localStorage.setItem(storageKey, JSON.stringify(validatedSuggestions));
-          } catch (storageError) {
-            console.error('Error saving suggestions to localStorage:', storageError);
-          }
+            order: 1
+          })));
+          await errorAlert('אזהרה', `AI Suggestion Failed: ${validation.error}. הוצגו הצעות ברירת מחדל.`);
         } else {
-          throw new Error('פורמט תשובה לא תקין');
+          throw new Error(validation.error || 'AI Suggestion Failed');
         }
       } else {
-        throw new Error('לא נמצא JSON בתשובה');
+        // Validation passed - use validated data
+        const validatedSuggestions = validation.data.suggestions.slice(0, 3).map(suggestion => ({
+          ...suggestion,
+          isVisible: true,
+          order: 1,
+          // Ensure filters match available options
+          filters: {
+            category: availableCategories.includes(suggestion.filters?.category) ? suggestion.filters.category : '',
+            platform: availablePlatforms.includes(suggestion.filters?.platform) ? suggestion.filters.platform : '',
+            instrument: availableInstruments.includes(suggestion.filters?.instrument) ? suggestion.filters.instrument : '',
+            currency: availableCurrencies.includes(suggestion.filters?.currency) ? suggestion.filters.currency : '',
+            tags: Array.isArray(suggestion.filters?.tags) ? suggestion.filters.tags : []
+          }
+        }));
+        
+        setAiSuggestions(validatedSuggestions);
+        
+        // Save suggestions to localStorage
+        try {
+          const storageKey = `chartBuilder_aiSuggestions_${user?.uid || 'guest'}`;
+          localStorage.setItem(storageKey, JSON.stringify(validatedSuggestions));
+        } catch (storageError) {
+          console.error('Error saving suggestions to localStorage:', storageError);
+        }
       }
     } catch (error) {
       console.error('Error generating AI suggestions:', error);
@@ -467,49 +454,50 @@ ${portfolioContext}
 
       const response = await callGeminiAI(prompt, portfolioContext);
       
-      // Try to extract JSON from response
-      let jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        jsonMatch = response.match(/```json\s*(\{[\s\S]*?\})\s*```/);
-        if (jsonMatch) {
-          jsonMatch = [jsonMatch[0], jsonMatch[1]];
+      // Parse and validate using Zod schema
+      const validation = parseAndValidateSingleChart(response);
+      
+      let chartConfig;
+      if (!validation.success) {
+        // Use fallback data if validation fails
+        if (validation.data) {
+          chartConfig = {
+            ...validation.data,
+            isVisible: true,
+            order: 1,
+            // Ensure filters match available options
+            filters: {
+              category: availableCategories.includes(validation.data.filters?.category) ? validation.data.filters.category : '',
+              platform: availablePlatforms.includes(validation.data.filters?.platform) ? validation.data.filters.platform : '',
+              instrument: availableInstruments.includes(validation.data.filters?.instrument) ? validation.data.filters.instrument : '',
+              currency: availableCurrencies.includes(validation.data.filters?.currency) ? validation.data.filters.currency : '',
+              tags: Array.isArray(validation.data.filters?.tags) ? validation.data.filters.tags : []
+            }
+          };
+          await errorAlert('אזהרה', `AI Suggestion Failed: ${validation.error}. הוצגה תצורת ברירת מחדל.`);
         } else {
-          jsonMatch = response.match(/```\s*(\{[\s\S]*?\})\s*```/);
-          if (jsonMatch) {
-            jsonMatch = [jsonMatch[0], jsonMatch[1]];
-          }
+          throw new Error(validation.error || 'AI Suggestion Failed');
         }
-      }
-
-      if (jsonMatch) {
-        const jsonStr = jsonMatch[1] || jsonMatch[0];
-        const parsed = JSON.parse(jsonStr);
-        
-        // Validate and set default values
-        const chartConfig = {
-          title: parsed.title || 'גרף חדש',
-          chartType: availableChartTypes.includes(parsed.chartType) ? parsed.chartType : 'PieChart',
-          dataKey: availableDataKeys.includes(parsed.dataKey) ? parsed.dataKey : 'category',
-          aggregationType: parsed.aggregationType || 'sum',
+      } else {
+        // Validation passed - use validated data
+        chartConfig = {
+          ...validation.data,
           isVisible: true,
           order: 1,
-          size: parsed.size || 'medium',
-          showGrid: parsed.showGrid !== false,
+          // Ensure filters match available options
           filters: {
-            category: availableCategories.includes(parsed.filters?.category) ? parsed.filters.category : '',
-            platform: availablePlatforms.includes(parsed.filters?.platform) ? parsed.filters.platform : '',
-            instrument: availableInstruments.includes(parsed.filters?.instrument) ? parsed.filters.instrument : '',
-            currency: availableCurrencies.includes(parsed.filters?.currency) ? parsed.filters.currency : '',
-            tags: Array.isArray(parsed.filters?.tags) ? parsed.filters.tags : []
+            category: availableCategories.includes(validation.data.filters?.category) ? validation.data.filters.category : '',
+            platform: availablePlatforms.includes(validation.data.filters?.platform) ? validation.data.filters.platform : '',
+            instrument: availableInstruments.includes(validation.data.filters?.instrument) ? validation.data.filters.instrument : '',
+            currency: availableCurrencies.includes(validation.data.filters?.currency) ? validation.data.filters.currency : '',
+            tags: Array.isArray(validation.data.filters?.tags) ? validation.data.filters.tags : []
           }
         };
-        
-        setConfig(chartConfig);
-        setCustomPrompt('');
-        await successToast('הגרף נוצר בהצלחה!', 2000);
-      } else {
-        throw new Error('לא נמצא JSON בתשובה');
       }
+      
+      setConfig(chartConfig);
+      setCustomPrompt('');
+      await successToast('הגרף נוצר בהצלחה!', 2000);
     } catch (error) {
       console.error('Error generating chart from prompt:', error);
       await errorAlert('שגיאה', 'אירעה שגיאה ביצירת הגרף. נסה שוב.');

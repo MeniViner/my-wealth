@@ -7,6 +7,7 @@ import { Cloud, Eye, EyeOff, Wallet, Calendar, TrendingUp, ChevronDown, ChevronU
 import CustomTooltip from '../components/CustomTooltip';
 import TreemapChart from '../components/TreemapChart';
 import SummaryCard from '../components/SummaryCard';
+import ErrorBoundary from '../components/ErrorBoundary';
 import { useDemoData } from '../contexts/DemoDataContext';
 import { fetchPriceHistory } from '../services/priceService';
 import { confirmAlert } from '../utils/alerts';
@@ -700,24 +701,28 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
             </div>
 
             {/* Balance Chart - Time Series */}
-            <div className="h-64 md:h-80">
-              {historyLoading ? (
-                <div className="h-full flex items-center justify-center">
-                  <div className="text-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600 mx-auto mb-2"></div>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">טוען נתונים...</p>
+            <ErrorBoundary
+              title="שגיאה בטעינת גרף ההיסטוריה"
+              message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
+            >
+              <div className="h-64 md:h-80">
+                {historyLoading ? (
+                  <div className="h-full flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600 mx-auto mb-2"></div>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">טוען נתונים...</p>
+                    </div>
                   </div>
-                </div>
-              ) : portfolioHistory.length === 0 ? (
-                <div className="h-full flex items-center justify-center">
-                  <p className="text-sm text-slate-500 dark:text-slate-400">אין נתונים להצגה</p>
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart
-                    data={portfolioHistory}
-                    margin={{ top: 10, right: 10, left: 10, bottom: 20 }}
-                  >
+                ) : portfolioHistory.length === 0 ? (
+                  <div className="h-full flex items-center justify-center">
+                    <p className="text-sm text-slate-500 dark:text-slate-400">אין נתונים להצגה</p>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={portfolioHistory}
+                      margin={{ top: 10, right: 10, left: 10, bottom: 20 }}
+                    >
                     <defs>
                       <linearGradient id="balanceGradient" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
@@ -786,10 +791,11 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                       dot={false}
                       activeDot={{ r: 4, fill: '#3b82f6', stroke: '#fff', strokeWidth: 2 }}
                     />
-                  </AreaChart>
-                </ResponsiveContainer>
-              )}
-            </div>
+                    </AreaChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </ErrorBoundary>
           </div>
         </div>
       )}
@@ -802,11 +808,15 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
         <>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
             {/* Pie Chart - Category Distribution */}
-            <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-visible">
-              <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">פיזור לפי קטגוריות</h3>
-              <div className="h-64 md:h-80 min-h-[250px] overflow-visible">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
+            <ErrorBoundary
+              title="שגיאה בטעינת גרף הקטגוריות"
+              message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
+            >
+              <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-visible">
+                <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">פיזור לפי קטגוריות</h3>
+                <div className="h-64 md:h-80 min-h-[250px] overflow-visible">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
                     <Pie
                       data={pieDataByCategory}
                       cx="40%"
@@ -858,17 +868,22 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                       verticalAlign="middle"
                       wrapperStyle={{ paddingRight: '10px' }}
                     />
-                  </PieChart>
-                </ResponsiveContainer>
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
-            </div>
+            </ErrorBoundary>
 
             {/* Area Chart - Category Balance */}
-            <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-              <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">איזון תיק לפי קטגוריות</h3>
-              <div className="h-72 md:h-80 min-h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={areaDataByCategory} margin={{ top: 10, right: 50, left: -50, bottom: -30 }}>
+            <ErrorBoundary
+              title="שגיאה בטעינת גרף האיזון"
+              message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
+            >
+              <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+                <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">איזון תיק לפי קטגוריות</h3>
+                <div className="h-72 md:h-80 min-h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={areaDataByCategory} margin={{ top: 10, right: 50, left: -50, bottom: -30 }}>
                     <defs>
                       <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
@@ -901,26 +916,36 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                       fillOpacity={1}
                       fill="url(#areaGradient)"
                     />
-                  </AreaChart>
-                </ResponsiveContainer>
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
-            </div>
+            </ErrorBoundary>
 
             {/* Treemap - Platforms */}
-            <TreemapChart
-              data={treemapData}
-              title="מפת גודל נכסים לפי פלטפורמות"
-              height="h-64"
-              aspectRatio={4 / 3}
-              totalValue={totalWealth}
-            />
+            <ErrorBoundary
+              title="שגיאה בטעינת מפת הפלטפורמות"
+              message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
+            >
+              <TreemapChart
+                data={treemapData}
+                title="מפת גודל נכסים לפי פלטפורמות"
+                height="h-64"
+                aspectRatio={4 / 3}
+                totalValue={totalWealth}
+              />
+            </ErrorBoundary>
 
             {/* Bar Chart - Allocation by Symbol */}
-            <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-              <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">הקצאה לפי נכס</h3>
-              <div className="h-72 md:h-80 min-h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dataBySymbol} margin={{ top: 10, right: 10, left: 5, bottom: 5 }}>
+            <ErrorBoundary
+              title="שגיאה בטעינת גרף ההקצאה"
+              message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
+            >
+              <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+                <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">הקצאה לפי נכס</h3>
+                <div className="h-72 md:h-80 min-h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={dataBySymbol} margin={{ top: 10, right: 10, left: 5, bottom: 5 }}>
                     <YAxis
                       {...rtlAxisProps}
                       tickFormatter={formatAxisTick}
@@ -958,30 +983,40 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                       height={55}
                       dy={5}
                     />
-                  </BarChart>
-                </ResponsiveContainer>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
-            </div>
+            </ErrorBoundary>
           </div>
 
           {/* Large Treemap Section - Full Width */}
-          <TreemapChart
-            data={treemapDataByAssets}
-            title="מפת נכסים - כל הנכסים"
-            height="h-80 md:h-96"
-            aspectRatio={16 / 9}
-            className="mt-6"
-            totalValue={totalWealth}
-          />
+          <ErrorBoundary
+            title="שגיאה בטעינת מפת הנכסים"
+            message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
+          >
+            <TreemapChart
+              data={treemapDataByAssets}
+              title="מפת נכסים - כל הנכסים"
+              height="h-80 md:h-96"
+              aspectRatio={16 / 9}
+              className="mt-6"
+              totalValue={totalWealth}
+            />
+          </ErrorBoundary>
 
           {/* Additional Charts Section */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 mt-6">
             {/* Bar Chart - Instruments */}
-            <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-              <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">במה מושקע הכסף?</h3>
-              <div className="h-72 md:h-80 min-h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dataByInstrument} margin={{ top: 10, right: 10, left: 5, bottom: 5 }}>
+            <ErrorBoundary
+              title="שגיאה בטעינת גרף המכשירים"
+              message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
+            >
+              <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+                <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">במה מושקע הכסף?</h3>
+                <div className="h-72 md:h-80 min-h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={dataByInstrument} margin={{ top: 10, right: 10, left: 5, bottom: 5 }}>
                     <YAxis {...rtlAxisProps} tickFormatter={formatAxisTick} hide />
                     <Tooltip
                       content={<CustomTooltip totalValue={totalWealth} showPercentage />}
@@ -1010,17 +1045,22 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                       height={55}
                       dy={5}
                     />
-                  </BarChart>
-                </ResponsiveContainer>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
-            </div>
+            </ErrorBoundary>
 
             {/* Pie Chart - Currency Distribution */}
-            <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-visible">
-              <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">פיזור לפי מטבעות</h3>
-              <div className="h-56 md:h-64 min-h-[220px] overflow-visible">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
+            <ErrorBoundary
+              title="שגיאה בטעינת גרף המטבעות"
+              message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
+            >
+              <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-visible">
+                <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">פיזור לפי מטבעות</h3>
+                <div className="h-56 md:h-64 min-h-[220px] overflow-visible">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
                     <Pie
                       data={dataByCurrency}
                       cx="40%"
@@ -1073,18 +1113,23 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                       verticalAlign="middle"
                       wrapperStyle={{ paddingRight: '10px' }}
                     />
-                  </PieChart>
-                </ResponsiveContainer>
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
-            </div>
+            </ErrorBoundary>
           </div>
 
           {/* Horizontal Bar Chart - Platforms - Full Width */}
-          <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 mt-6">
-            <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">פיזור לפי פלטפורמות</h3>
-            <div className="h-64 md:h-80 min-h-[280px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={dataByPlatform} layout="vertical" margin={{ top: 5, right: -85, left: 5, bottom: 5 }}>
+          <ErrorBoundary
+            title="שגיאה בטעינת גרף הפלטפורמות"
+            message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
+          >
+            <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 mt-6">
+              <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">פיזור לפי פלטפורמות</h3>
+              <div className="h-64 md:h-80 min-h-[280px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={dataByPlatform} layout="vertical" margin={{ top: 5, right: -85, left: 5, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis
                     type="number"
@@ -1117,19 +1162,24 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                       />
                     ))}
                   </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
-          </div>
+          </ErrorBoundary>
 
           {/* Additional Charts Section - Top 10 and Line Chart */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 mt-6">
             {/* Bar Chart - Top 10 Assets */}
-            <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-              <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">10 הנכסים הגדולים ביותר</h3>
-              <div className="h-72 md:h-80 min-h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={topAssets} margin={{ top: 10, right: 10, left: 5, bottom: 5 }}>
+            <ErrorBoundary
+              title="שגיאה בטעינת גרף 10 הנכסים הגדולים"
+              message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
+            >
+              <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+                <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">10 הנכסים הגדולים ביותר</h3>
+                <div className="h-72 md:h-80 min-h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={topAssets} margin={{ top: 10, right: 10, left: 5, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                     <YAxis
                       {...rtlAxisProps}
@@ -1161,17 +1211,22 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                       height={55}
                       dy={5}
                     />
-                  </BarChart>
-                </ResponsiveContainer>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
-            </div>
+            </ErrorBoundary>
 
             {/* Line Chart - Category Comparison */}
-            <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-              <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">השוואת קטגוריות</h3>
-              <div className="h-72 md:h-80 min-h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={areaDataByCategory} margin={{ top: 10, right: 15, left: 5, bottom: 5 }}>
+            <ErrorBoundary
+              title="שגיאה בטעינת גרף ההשוואה"
+              message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
+            >
+              <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+                <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">השוואת קטגוריות</h3>
+                <div className="h-72 md:h-80 min-h-[280px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={areaDataByCategory} margin={{ top: 10, right: 15, left: 5, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                     <XAxis
                       dataKey="name"
@@ -1198,10 +1253,11 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                       dot={{ fill: '#3b82f6', r: 5, strokeWidth: 2, stroke: '#fff' }}
                       activeDot={{ r: 7, fill: '#3b82f6', stroke: '#fff', strokeWidth: 2 }}
                     />
-                  </LineChart>
-                </ResponsiveContainer>
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
-            </div>
+            </ErrorBoundary>
           </div>
         </>
       )}

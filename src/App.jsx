@@ -11,6 +11,7 @@ import { useDemoData, DemoDataProvider } from './contexts/DemoDataContext';
 import { db, appId } from './services/firebase';
 import { generatePortfolioContext } from './utils/aiContext';
 import Layout from './components/Layout';
+import ErrorBoundary from './components/ErrorBoundary';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import AssetManager from './pages/AssetManager';
@@ -22,6 +23,7 @@ import DynamicDashboard from './pages/DynamicDashboard';
 import UserManagement from './pages/UserManagement';
 import Rebalancing from './pages/Rebalancing';
 import Profile from './pages/Profile';
+import NotFound from './pages/NotFound';
 import OnboardingWizard from './components/OnboardingWizard';
 import CoachmarkTour from './components/CoachmarkTour';
 import { DEFAULT_SYSTEM_DATA } from './constants/defaults';
@@ -45,13 +47,16 @@ function App() {
   
   // Get demo data context (must be inside DemoDataProvider, so we'll move this)
 
-  // Expose reset function for testing (can call window.__resetOnboarding() in console)
+  // Expose reset function for testing - ONLY in development mode
+  // SECURITY: This debug function is NOT included in production builds
   useEffect(() => {
-    if (user && resetOnboarding) {
+    if (import.meta.env.DEV && user && resetOnboarding) {
       window.__resetOnboarding = resetOnboarding;
     }
     return () => {
-      delete window.__resetOnboarding;
+      if (import.meta.env.DEV && window.__resetOnboarding) {
+        delete window.__resetOnboarding;
+      }
     };
   }, [user, resetOnboarding]);
 
@@ -328,107 +333,177 @@ const AppWithDemo = ({
       />
       
       <Layout totalWealth={totalWealth} currencyRate={currencyRate} user={user}>
-        <Routes>
-        <Route 
-          path="/" 
-          element={<Dashboard assets={displayAssets} systemData={displaySystemData} currencyRate={currencyRate} />} 
-        />
-        <Route 
-          path="/advisor" 
-          element={<AIAdvisor assets={displayAssets} totalWealth={totalWealth} user={user} portfolioContext={portfolioContextString} aiConfig={aiConfig} />} 
-        />
-        <Route 
-          path="/assets" 
-          element={
-            <AssetManager 
-              assets={displayAssets} 
-              onDelete={handleDeleteAsset} 
-              systemData={displaySystemData}
-              setSystemData={handleSetSystemData}
-              onResetData={handleInitializeDB}
-              user={user}
-              onRefreshPrices={refreshPrices}
-              pricesLoading={pricesLoading}
-              lastPriceUpdate={lastPriceUpdate}
+        <ErrorBoundary
+          title="שגיאה בטעינת הדף"
+          message="אירעה שגיאה בטעינת הדף. אנא נסה לרענן את הדף או לחזור לדף הבית."
+        >
+          <Routes>
+            <Route 
+              path="/" 
+              element={
+                <ErrorBoundary
+                  title="שגיאה בטעינת הדשבורד"
+                  message="אירעה שגיאה בטעינת הדשבורד. חלק מהגרפים עלולים לא להיטען, אך שאר האפליקציה תמשיך לעבוד."
+                >
+                  <Dashboard assets={displayAssets} systemData={displaySystemData} currencyRate={currencyRate} />
+                </ErrorBoundary>
+              } 
             />
-          } 
-        />
-        <Route 
-          path="/assets/add" 
-          element={
-            <AssetForm 
-              onSave={handleSaveAsset}
-              systemData={displaySystemData}
-              setSystemData={handleSetSystemData}
-              portfolioContext={portfolioContextString}
+            <Route 
+              path="/advisor" 
+              element={
+                <ErrorBoundary
+                  title="שגיאה בטעינת היועץ"
+                  message="אירעה שגיאה בטעינת היועץ. אנא נסה לרענן את הדף."
+                >
+                  <AIAdvisor assets={displayAssets} totalWealth={totalWealth} user={user} portfolioContext={portfolioContextString} aiConfig={aiConfig} />
+                </ErrorBoundary>
+              } 
             />
-          } 
-        />
-        <Route 
-          path="/assets/edit/:id" 
-          element={
-            <AssetForm 
-              onSave={handleSaveAsset}
-              assets={displayAssets}
-              systemData={displaySystemData}
-              setSystemData={handleSetSystemData}
-              portfolioContext={portfolioContextString}
+            <Route 
+              path="/assets" 
+              element={
+                <ErrorBoundary
+                  title="שגיאה בטעינת מנהל הנכסים"
+                  message="אירעה שגיאה בטעינת מנהל הנכסים. אנא נסה לרענן את הדף."
+                >
+                  <AssetManager 
+                    assets={displayAssets} 
+                    onDelete={handleDeleteAsset} 
+                    systemData={displaySystemData}
+                    setSystemData={handleSetSystemData}
+                    onResetData={handleInitializeDB}
+                    user={user}
+                    onRefreshPrices={refreshPrices}
+                    pricesLoading={pricesLoading}
+                    lastPriceUpdate={lastPriceUpdate}
+                  />
+                </ErrorBoundary>
+              } 
             />
-          } 
-        />
-        <Route 
-          path="/settings" 
-          element={
-            <Settings 
-              systemData={displaySystemData} 
-              setSystemData={handleSetSystemData} 
-              currencyRate={currencyRate} 
-              user={user} 
-              onResetData={handleInitializeDB}
-              onRefreshCurrency={refreshCurrencyRate}
-              onResetOnboarding={resetOnboarding}
-              onStartCoachmarks={startCoachmarks}
+            <Route 
+              path="/assets/add" 
+              element={
+                <ErrorBoundary
+                  title="שגיאה בטעינת טופס הנכס"
+                  message="אירעה שגיאה בטעינת טופס הוספת הנכס. אנא נסה לרענן את הדף."
+                >
+                  <AssetForm 
+                    onSave={handleSaveAsset}
+                    systemData={displaySystemData}
+                    setSystemData={handleSetSystemData}
+                    portfolioContext={portfolioContextString}
+                  />
+                </ErrorBoundary>
+              } 
             />
-          } 
-        />
-        <Route 
-          path="/chart-builder" 
-          element={<ChartBuilder />} 
-        />
-        <Route 
-          path="/dashboard/custom" 
-          element={<DynamicDashboard />} 
-        />
-        <Route 
-          path="/rebalancing" 
-          element={
-            <Rebalancing 
-              assets={displayAssets} 
-              systemData={displaySystemData} 
-              user={user} 
-              currencyRate={currencyRate}
-              portfolioContext={portfolioContextString}
+            <Route 
+              path="/assets/edit/:id" 
+              element={
+                <ErrorBoundary
+                  title="שגיאה בטעינת טופס העריכה"
+                  message="אירעה שגיאה בטעינת טופס עריכת הנכס. אנא נסה לרענן את הדף."
+                >
+                  <AssetForm 
+                    onSave={handleSaveAsset}
+                    assets={displayAssets}
+                    systemData={displaySystemData}
+                    setSystemData={handleSetSystemData}
+                    portfolioContext={portfolioContextString}
+                  />
+                </ErrorBoundary>
+              } 
             />
-          } 
-        />
-        <Route 
-          path="/admin/users" 
-          element={<UserManagement user={user} />} 
-        />
-        <Route 
-          path="/profile" 
-          element={
-            <Profile 
-              user={user}
-              assets={displayAssets}
-              totalWealth={totalWealth}
-              systemData={displaySystemData}
+            <Route 
+              path="/settings" 
+              element={
+                <ErrorBoundary
+                  title="שגיאה בטעינת ההגדרות"
+                  message="אירעה שגיאה בטעינת ההגדרות. אנא נסה לרענן את הדף."
+                >
+                  <Settings 
+                    systemData={displaySystemData} 
+                    setSystemData={handleSetSystemData} 
+                    currencyRate={currencyRate} 
+                    user={user} 
+                    onResetData={handleInitializeDB}
+                    onRefreshCurrency={refreshCurrencyRate}
+                    onResetOnboarding={resetOnboarding}
+                    onStartCoachmarks={startCoachmarks}
+                  />
+                </ErrorBoundary>
+              } 
             />
-          } 
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Layout>
+            <Route 
+              path="/chart-builder" 
+              element={
+                <ErrorBoundary
+                  title="שגיאה בטעינת בונה הגרפים"
+                  message="אירעה שגיאה בטעינת בונה הגרפים. אנא נסה לרענן את הדף."
+                >
+                  <ChartBuilder />
+                </ErrorBoundary>
+              } 
+            />
+            <Route 
+              path="/dashboard/custom" 
+              element={
+                <ErrorBoundary
+                  title="שגיאה בטעינת הדשבורד המותאם"
+                  message="אירעה שגיאה בטעינת הדשבורד המותאם. חלק מהגרפים עלולים לא להיטען, אך שאר האפליקציה תמשיך לעבוד."
+                >
+                  <DynamicDashboard />
+                </ErrorBoundary>
+              } 
+            />
+            <Route 
+              path="/rebalancing" 
+              element={
+                <ErrorBoundary
+                  title="שגיאה בטעינת איזון מחדש"
+                  message="אירעה שגיאה בטעינת דף איזון מחדש. אנא נסה לרענן את הדף."
+                >
+                  <Rebalancing 
+                    assets={displayAssets} 
+                    systemData={displaySystemData} 
+                    user={user} 
+                    currencyRate={currencyRate}
+                    portfolioContext={portfolioContextString}
+                  />
+                </ErrorBoundary>
+              } 
+            />
+            <Route 
+              path="/admin/users" 
+              element={
+                <ErrorBoundary
+                  title="שגיאה בטעינת ניהול משתמשים"
+                  message="אירעה שגיאה בטעינת דף ניהול המשתמשים. אנא נסה לרענן את הדף."
+                >
+                  <UserManagement user={user} />
+                </ErrorBoundary>
+              } 
+            />
+            <Route 
+              path="/profile" 
+              element={
+                <ErrorBoundary
+                  title="שגיאה בטעינת הפרופיל"
+                  message="אירעה שגיאה בטעינת דף הפרופיל. אנא נסה לרענן את הדף."
+                >
+                  <Profile 
+                    user={user}
+                    assets={displayAssets}
+                    totalWealth={totalWealth}
+                    systemData={displaySystemData}
+                  />
+                </ErrorBoundary>
+              } 
+            />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </ErrorBoundary>
+      </Layout>
     </>
   );
 }
