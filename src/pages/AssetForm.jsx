@@ -6,7 +6,7 @@ import { infoAlert, successToast, errorAlert } from '../utils/alerts';
 import { generateRandomColor } from '../constants/defaults';
 import TickerSearch from '../components/TickerSearch';
 import CustomSelect from '../components/CustomSelect';
-import { fetchAssetPrice, fetchAssetHistoricalPrice } from '../services/priceService';
+import { fetchAssetPrice, fetchAssetHistoricalPrice, convertCurrency } from '../services/priceService';
 
 const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioContext = "" }) => {
   const navigate = useNavigate();
@@ -44,6 +44,12 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
   const [priceLoading, setPriceLoading] = useState(false);
   const [currentPriceData, setCurrentPriceData] = useState(null);
   const [lastEditedField, setLastEditedField] = useState(null); // Track which field was edited last
+  
+  // Reactive currency conversion state
+  const [nativePrice, setNativePrice] = useState(null); // Raw price from API in native currency
+  const [nativeCurrency, setNativeCurrency] = useState(null); // Native currency of the asset (e.g., 'USD', 'ILS')
+  const [exchangeRate, setExchangeRate] = useState(null); // Cached USD/ILS exchange rate
+  const [isPriceManual, setIsPriceManual] = useState(false); // True if user manually edited price (disable auto-updates)
   const [showNewSymbol, setShowNewSymbol] = useState(false);
   const [newSymbolValue, setNewSymbolValue] = useState('');
   const [showNewPlatform, setShowNewPlatform] = useState(false);
@@ -209,15 +215,21 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
 
       if (priceData) {
         setCurrentPriceData(priceData);
-        // Auto-fill purchase price if empty
-        if (!formData.purchasePrice) {
-          setFormData(prev => ({
-            ...prev,
-            purchasePrice: priceData.currentPrice.toFixed(2),
-            currency: priceData.currency === 'ILS' ? 'ILS' : 'USD'
-          }));
+        const assetNativeCurrency = priceData.currency || 'USD';
+        const assetNativePrice = priceData.currentPrice;
+        
+        // Update native price and currency (this will trigger Effect C to convert)
+        setNativePrice(assetNativePrice);
+        setNativeCurrency(assetNativeCurrency);
+        setIsPriceManual(false); // Reset manual mode
+        
+        // Get converted price for toast message
+        let displayPrice = assetNativePrice;
+        if (assetNativeCurrency !== formData.currency) {
+          displayPrice = await convertCurrency(assetNativePrice, assetNativeCurrency, formData.currency);
         }
-        await successToast(`מחיר נוכחי: ${priceData.currentPrice.toFixed(2)} ${priceData.currency}`, 2000);
+        
+        await successToast(`מחיר נוכחי: ${displayPrice.toFixed(2)} ${formData.currency}`, 2000);
       } else {
         await errorAlert('שגיאה', 'לא ניתן לשלוף מחיר. נסה שוב או הזן ידנית.');
       }
@@ -248,11 +260,23 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
       }, formData.purchaseDate);
 
       if (historicalPrice !== null) {
-        setFormData(prev => ({
-          ...prev,
-          purchasePrice: historicalPrice.toFixed(2)
-        }));
-        await successToast(`מחיר היסטורי: ${historicalPrice.toFixed(2)}`, 2000);
+        // Get native currency (from current price data or default)
+        const assetNativeCurrency = nativeCurrency || 'USD';
+        
+        // Update native price (this will trigger Effect C to convert)
+        setNativePrice(historicalPrice);
+        if (!nativeCurrency) {
+          setNativeCurrency(assetNativeCurrency);
+        }
+        setIsPriceManual(false); // Reset manual mode
+        
+        // Get converted price for toast message
+        let displayPrice = historicalPrice;
+        if (assetNativeCurrency !== formData.currency) {
+          displayPrice = await convertCurrency(historicalPrice, assetNativeCurrency, formData.currency);
+        }
+        
+        await successToast(`מחיר היסטורי: ${displayPrice.toFixed(2)} ${formData.currency}`, 2000);
       } else {
         await errorAlert('שגיאה', 'לא ניתן לשלוף מחיר היסטורי. נסה תאריך אחר או הזן ידנית.');
       }
@@ -263,15 +287,17 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
     setPriceLoading(false);
   };
 
-  // Calculate estimated value based on quantity and price
+  // Calculate estimated value based on quantity and price (REACTIVE - updates instantly)
   const estimatedValue = useMemo(() => {
     if (formData.assetMode === 'QUANTITY' && formData.quantity && formData.purchasePrice) {
-      return Number(formData.quantity) * Number(formData.purchasePrice);
+      const qty = Number(formData.quantity) || 0;
+      const price = Number(formData.purchasePrice) || 0;
+      return qty * price;
     }
     return Number(formData.originalValue) || 0;
   }, [formData.assetMode, formData.quantity, formData.purchasePrice, formData.originalValue]);
 
-  // Auto-calculate: when totalCost changes → update quantity, when quantity changes → update totalCost
+  // Auto-calculate: when totalCost changes → update quantity, when quantity changes → update totalCost (REACTIVE)
   useEffect(() => {
     if (formData.assetMode !== 'QUANTITY') return;
 
@@ -288,7 +314,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
       const calculatedQuantity = totalCost / price;
       if (calculatedQuantity > 0 && !isNaN(calculatedQuantity) && isFinite(calculatedQuantity)) {
         const newQuantity = calculatedQuantity.toFixed(6);
-        if (newQuantity !== formData.quantity) {
+        if (Math.abs(Number(newQuantity) - Number(formData.quantity)) > 0.000001) {
           setFormData(prev => ({
             ...prev,
             quantity: newQuantity
@@ -297,8 +323,22 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
       }
     }
 
-    // User edited quantity → calculate totalCost
+    // User edited quantity → calculate totalCost (REACTIVE - updates instantly)
     if (lastEditedField === 'quantity' && quantity > 0) {
+      const calculatedTotal = quantity * price;
+      if (calculatedTotal > 0 && !isNaN(calculatedTotal) && isFinite(calculatedTotal)) {
+        const newTotal = calculatedTotal.toFixed(2);
+        if (newTotal !== formData.totalCost) {
+          setFormData(prev => ({
+            ...prev,
+            totalCost: newTotal
+          }));
+        }
+      }
+    }
+    
+    // Also update totalCost when price changes (REACTIVE)
+    if (lastEditedField !== 'totalCost' && quantity > 0 && price > 0) {
       const calculatedTotal = quantity * price;
       if (calculatedTotal > 0 && !isNaN(calculatedTotal) && isFinite(calculatedTotal)) {
         const newTotal = calculatedTotal.toFixed(2);
@@ -319,7 +359,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         formData.assetMode !== 'QUANTITY' ||
         !formData.purchaseDate ||
         (!formData.apiId && !formData.symbol) ||
-        formData.purchasePrice // Don't auto-fetch if price already exists
+        isPriceManual // Don't auto-fetch if user is in manual mode
       ) {
         return;
       }
@@ -333,10 +373,15 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         }, formData.purchaseDate);
 
         if (historicalPrice !== null && historicalPrice > 0) {
-          setFormData(prev => ({
-            ...prev,
-            purchasePrice: historicalPrice.toFixed(4)
-          }));
+          // Get native currency from current price data or default to USD
+          const assetNativeCurrency = nativeCurrency || 'USD';
+          
+          // Update native price (this will trigger Effect C to convert)
+          setNativePrice(historicalPrice);
+          if (!nativeCurrency) {
+            setNativeCurrency(assetNativeCurrency);
+          }
+          setIsPriceManual(false); // Reset manual mode
         }
       } catch (error) {
         console.error('Error auto-fetching historical price:', error);
@@ -347,7 +392,130 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
     // Debounce the fetch
     const timeoutId = setTimeout(fetchPriceForDate, 500);
     return () => clearTimeout(timeoutId);
-  }, [formData.purchaseDate, formData.apiId, formData.symbol, formData.marketDataSource, formData.assetMode]);
+  }, [formData.purchaseDate, formData.apiId, formData.symbol, formData.marketDataSource, formData.assetMode, nativeCurrency, isPriceManual]);
+
+  // ==================== REACTIVE CURRENCY CONVERSION SYSTEM ====================
+  
+  // Effect A: Fetch native price when asset is selected
+  useEffect(() => {
+    const fetchNativePrice = async () => {
+      // Only fetch if we have an asset and we're in QUANTITY mode
+      if (formData.assetMode !== 'QUANTITY' || (!formData.apiId && !formData.symbol)) {
+        return;
+      }
+
+      // Don't fetch if price is manually entered (user is in manual mode)
+      if (isPriceManual) {
+        return;
+      }
+
+      setPriceLoading(true);
+      try {
+        const priceData = await fetchAssetPrice({
+          apiId: formData.apiId,
+          marketDataSource: formData.marketDataSource,
+          symbol: formData.symbol
+        });
+
+        if (priceData) {
+          setCurrentPriceData(priceData);
+          const assetNativeCurrency = priceData.currency || 'USD';
+          const assetNativePrice = priceData.currentPrice;
+          
+          // Update native price and currency
+          setNativePrice(assetNativePrice);
+          setNativeCurrency(assetNativeCurrency);
+          setIsPriceManual(false); // Reset manual mode when fetching from API
+        }
+      } catch (error) {
+        console.error('Error fetching native price:', error);
+      }
+      setPriceLoading(false);
+    };
+
+    // Debounce to avoid too many API calls
+    const timeoutId = setTimeout(fetchNativePrice, 300);
+    return () => clearTimeout(timeoutId);
+  }, [formData.apiId, formData.symbol, formData.marketDataSource, formData.assetMode, isPriceManual]);
+
+  // Effect B: Fetch/update exchange rate when needed
+  useEffect(() => {
+    const updateExchangeRate = async () => {
+      // Only fetch if we need conversion (native currency !== selected currency)
+      if (!nativeCurrency || nativeCurrency === formData.currency) {
+        return;
+      }
+
+      // Only fetch if we need USD/ILS conversion
+      if ((nativeCurrency === 'USD' && formData.currency === 'ILS') || 
+          (nativeCurrency === 'ILS' && formData.currency === 'USD')) {
+        try {
+          const { getExchangeRate } = await import('../services/priceService');
+          const rate = await getExchangeRate();
+          setExchangeRate(rate);
+        } catch (error) {
+          console.error('Error fetching exchange rate:', error);
+        }
+      }
+    };
+
+    updateExchangeRate();
+  }, [nativeCurrency, formData.currency]);
+
+  // Effect C: Convert price when currency or native price changes (REACTIVE)
+  useEffect(() => {
+    const convertPrice = async () => {
+      // Don't convert if:
+      // 1. No native price
+      // 2. No native currency
+      // 3. Currencies are the same
+      // 4. Currently loading
+      if (!nativePrice || !nativeCurrency || 
+          nativeCurrency === formData.currency || priceLoading) {
+        return;
+      }
+
+      // If price is manual but we have nativePrice, still convert when currency changes
+      // This allows currency toggle to work even in manual mode
+      // But we only convert if we have a valid nativePrice to convert from
+
+      try {
+        let convertedPrice = nativePrice;
+        
+        // Convert if currencies differ
+        if (nativeCurrency !== formData.currency) {
+          if (exchangeRate) {
+            if (nativeCurrency === 'USD' && formData.currency === 'ILS') {
+              convertedPrice = nativePrice * exchangeRate;
+            } else if (nativeCurrency === 'ILS' && formData.currency === 'USD') {
+              convertedPrice = nativePrice / exchangeRate;
+            }
+          } else {
+            // Fallback: use convertCurrency function
+            convertedPrice = await convertCurrency(nativePrice, nativeCurrency, formData.currency);
+          }
+        }
+
+        // Update price field immediately (Excel-like reactivity)
+        // Only update if the price actually changed (avoid unnecessary updates)
+        const currentPrice = Number(formData.purchasePrice) || 0;
+        const priceDiff = Math.abs(convertedPrice - currentPrice);
+        
+        if (priceDiff > 0.01) { // Only update if difference is significant
+          setFormData(prev => ({
+            ...prev,
+            purchasePrice: convertedPrice.toFixed(2)
+          }));
+        }
+      } catch (error) {
+        console.error('Error converting price:', error);
+      }
+    };
+
+    // Small delay to avoid race conditions
+    const timeoutId = setTimeout(convertPrice, 50);
+    return () => clearTimeout(timeoutId);
+  }, [nativePrice, nativeCurrency, formData.currency, exchangeRate, priceLoading]);
 
   // Smart AI Suggest - suggests category, symbol, and tags based on portfolio patterns
   const handleAISuggest = async () => {
@@ -656,7 +824,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                   key={cat.name}
                   onClick={() => setFormData({ ...formData, category: cat.name })}
                   className={`px-3.5 py-1 md:px-4 md:py-2 rounded-full border flex items-center gap-2 transition
-                    ${formData.category === cat.name ? 'bg-slate-800 dark:bg-slate-700 text-white' : 'bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100'}`}
+                    ${formData.category === cat.name ? 'bg-emerald-600 dark:bg-emerald-500 text-white border-emerald-600 dark:border-emerald-500' : 'bg-white dark:bg-slate-700 hover:bg-slate-50 dark:hover:bg-slate-600 border-slate-200 dark:border-slate-600 text-slate-900 dark:text-slate-100'}`}
                 >
                   <div className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }}></div>
                   {cat.name}
@@ -703,6 +871,10 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                       // Clear price data when asset changes
                       setCurrentPriceData(null);
                       setLastEditedField(null);
+                      // Reset native price and currency - will be set by useEffect
+                      setNativePrice(null);
+                      setNativeCurrency(null);
+                      setIsPriceManual(false); // Reset manual mode when selecting new asset
                     } else {
                       setFormData({
                         ...formData,
@@ -713,6 +885,9 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                         assetType: 'STOCK'
                       });
                       setCurrentPriceData(null);
+                      setNativePrice(null);
+                      setNativeCurrency(null);
+                      setIsPriceManual(false);
                     }
                   }}
                   allowManual={true}
@@ -934,6 +1109,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                   onChange={e => {
                     setFormData({ ...formData, purchaseDate: e.target.value, purchasePrice: '' });
                     setLastEditedField('purchaseDate');
+                    setIsPriceManual(false); // Reset manual mode when date changes (allow auto-fetch)
                   }}
                   max={new Date().toISOString().split('T')[0]}
                 />
@@ -977,8 +1153,23 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                     className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-600 text-slate-900 dark:text-slate-100 font-mono pr-12"
                     value={formData.purchasePrice || ''}
                     onChange={e => {
-                      setFormData({ ...formData, purchasePrice: e.target.value });
+                      const newPrice = e.target.value;
+                      const priceNum = Number(newPrice);
+                      
+                      setFormData({ ...formData, purchasePrice: newPrice });
                       setLastEditedField('purchasePrice');
+                      
+                      // If user enters a valid price manually, store it as native price in current currency
+                      // This allows currency conversion to work even in manual mode
+                      if (priceNum > 0 && !isNaN(priceNum)) {
+                        // Store the manually entered price as native price in the selected currency
+                        // This way, currency conversion will work from this base
+                        setNativePrice(priceNum);
+                        if (!nativeCurrency) {
+                          setNativeCurrency(formData.currency);
+                        }
+                        setIsPriceManual(true); // Still mark as manual to prevent auto-fetch
+                      }
                     }}
                     placeholder="נשלף אוטומטית"
                   />

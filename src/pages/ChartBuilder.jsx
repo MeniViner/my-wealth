@@ -10,7 +10,11 @@ import { successAlert, errorAlert, confirmAlert, successToast } from '../utils/a
 import CustomSelect from '../components/CustomSelect';
 import { generatePortfolioContext } from '../utils/aiContext';
 import { callGeminiAI, parseAndValidateChartSuggestions, parseAndValidateSingleChart } from '../services/gemini';
-import { Save, BarChart3, Filter, X, Eye, PieChart, BarChart, BarChart2, Radar, Gauge, LayoutGrid, Plus, Trash2, ArrowUp, ArrowDown, Monitor, Smartphone, Edit2, Check, AreaChart, LineChart, TrendingUp, Grid, Settings, Sparkles, Loader2, ChevronDown, ChevronUp, LucideBarChartHorizontal } from 'lucide-react';
+import { 
+  Save, BarChart3, Filter, X, Eye, PieChart, BarChart, BarChart2, Radar, Gauge, LayoutGrid, 
+  Plus, Trash2, ArrowUp, ArrowDown, Monitor, Smartphone, Edit2, Check, AreaChart, LineChart, 
+  TrendingUp, Grid, Settings, Sparkles, Loader2, ChevronDown, ChevronUp, LucideBarChartHorizontal 
+} from 'lucide-react';
 
 const ChartBuilder = () => {
   const { user } = useAuth();
@@ -888,7 +892,7 @@ ${portfolioContext}
                     onClick={() => setConfig({ ...config, chartType: type.value })}
                     className={`px-3 py-2.5 text-xs font-medium rounded-lg transition border flex flex-col items-center gap-1 ${
                       config.chartType === type.value
-                        ? 'bg-slate-800 dark:bg-slate-700 text-white border-slate-800 dark:border-slate-600'
+                        ? 'bg-emerald-600 dark:bg-emerald-500 text-white border-emerald-600 dark:border-emerald-500'
                         : 'bg-slate-50 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 hover:border-slate-300 dark:hover:border-slate-500'
                     }`}
                   >
@@ -946,7 +950,7 @@ ${portfolioContext}
                   onClick={() => setConfig({ ...config, dataKey: group.value })}
                   className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${
                     config.dataKey === group.value
-                      ? 'bg-slate-800 dark:bg-slate-700 text-white'
+                      ? 'bg-emerald-600 dark:bg-emerald-500 text-white'
                       : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600'
                   }`}
                 >
@@ -1123,7 +1127,7 @@ ${portfolioContext}
                 <button
                   onClick={handleSave}
                   disabled={saving || !config.title.trim()}
-                  className="hidden md:flex px-4 py-2 bg-slate-800 dark:bg-slate-700 text-white rounded-lg text-sm font-medium hover:bg-slate-900 dark:hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed transition items-center gap-2 shadow-sm"
+                  className="hidden md:flex px-4 py-2 bg-emerald-600 dark:bg-emerald-500 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 dark:hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition items-center gap-2 shadow-sm"
                 >
                   <Save size={14} />
                   {saving ? 'שומר...' : editingChartId ? 'עדכן גרף' : 'שמור גרף'}
@@ -1238,7 +1242,7 @@ ${portfolioContext}
                       onClick={() => setConfig({ ...config, chartType: type.value })}
                       className={`px-3 py-2.5 text-xs font-medium rounded-lg transition border flex flex-col items-center gap-1 ${
                         config.chartType === type.value
-                          ? 'bg-slate-800 dark:bg-slate-700 text-white border-slate-800 dark:border-slate-600'
+                          ? 'bg-emerald-600 dark:bg-emerald-500 text-white border-emerald-600 dark:border-emerald-500'
                           : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 hover:border-slate-300 dark:hover:border-slate-500'
                       }`}
                     >
@@ -1296,7 +1300,7 @@ ${portfolioContext}
                     onClick={() => setConfig({ ...config, dataKey: group.value })}
                     className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${
                       config.dataKey === group.value
-                        ? 'bg-slate-800 dark:bg-slate-700 text-white'
+                        ? 'bg-emerald-600 dark:bg-emerald-500 text-white'
                         : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600'
                     }`}
                   >

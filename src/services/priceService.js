@@ -641,6 +641,74 @@ export const fetchPriceHistory = async (symbol, source, days = 30) => {
   }
 };
 
+// ==================== CURRENCY CONVERSION ====================
+
+/**
+ * Exchange rate cache
+ */
+const exchangeRateCache = {
+  rate: null,
+  timestamp: null,
+  CACHE_DURATION: 60 * 60 * 1000 // 1 hour
+};
+
+/**
+ * Get USD to ILS exchange rate
+ * Uses cached rate if available and fresh
+ * @returns {Promise<number>} Exchange rate (USD to ILS)
+ */
+export const getExchangeRate = async () => {
+  const now = Date.now();
+  
+  // Return cached rate if still valid
+  if (exchangeRateCache.rate && exchangeRateCache.timestamp && 
+      (now - exchangeRateCache.timestamp) < exchangeRateCache.CACHE_DURATION) {
+    return exchangeRateCache.rate;
+  }
+  
+  try {
+    // Import dynamically to avoid circular dependencies
+    const { fetchExchangeRate } = await import('./currency');
+    const data = await fetchExchangeRate();
+    
+    if (data && data.rate) {
+      exchangeRateCache.rate = data.rate;
+      exchangeRateCache.timestamp = now;
+      return data.rate;
+    }
+    
+    // Fallback to default rate if API fails
+    console.warn('Failed to fetch exchange rate, using default 3.2');
+    return 3.2;
+  } catch (error) {
+    console.error('Error fetching exchange rate:', error);
+    // Return cached rate even if expired, or default
+    return exchangeRateCache.rate || 3.2;
+  }
+};
+
+/**
+ * Convert price from one currency to another
+ * @param {number} price - Price to convert
+ * @param {string} fromCurrency - Source currency ('USD' | 'ILS')
+ * @param {string} toCurrency - Target currency ('USD' | 'ILS')
+ * @returns {Promise<number>} Converted price
+ */
+export const convertCurrency = async (price, fromCurrency, toCurrency) => {
+  if (!price || price <= 0) return price;
+  if (fromCurrency === toCurrency) return price;
+  
+  const rate = await getExchangeRate();
+  
+  if (fromCurrency === 'USD' && toCurrency === 'ILS') {
+    return price * rate;
+  } else if (fromCurrency === 'ILS' && toCurrency === 'USD') {
+    return price / rate;
+  }
+  
+  return price;
+};
+
 // ==================== CACHE MANAGEMENT ====================
 
 /**

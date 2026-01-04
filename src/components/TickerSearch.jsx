@@ -363,7 +363,7 @@ const TickerSearch = ({
               setSelectedAsset(null);
               onSelect(null);
             }}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"
           >
             <X size={16} />
           </button>

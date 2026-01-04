@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
   RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar,
@@ -157,6 +158,7 @@ const rtlAxisProps = {
     fontSize: 11, 
     fontFamily: HEBREW_FONT,
     fill: '#64748b',
+    style: { zIndex: 1000, pointerEvents: 'none' }
   },
   axisLine: { stroke: '#e2e8f0' },
   tickLine: { stroke: '#e2e8f0' },
@@ -237,10 +239,72 @@ const renderPieLabel = ({ name, value, cx, cy, midAngle, outerRadius, totalValue
  * @param {number} totalValue - Total value for percentage calculations
  */
 const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
+  // Mobile detection
+  const [isMobile, setIsMobile] = useState(false);
+  
+  // Dark mode detection
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  useEffect(() => {
+    const checkDarkMode = () => {
+      setIsDarkMode(document.documentElement.classList.contains('dark'));
+    };
+    checkDarkMode();
+    // Listen for dark mode changes
+    const observer = new MutationObserver(checkDarkMode);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+    return () => observer.disconnect();
+  }, []);
+
   // Handle empty data state
   if (!chartData || chartData.length === 0) {
     return <NoDataMessage />;
   }
+  
+  // Get axis props with dark mode support
+  const getAxisProps = () => {
+    const baseTick = {
+      fontSize: 11,
+      fontFamily: HEBREW_FONT,
+      fill: '#64748b',
+      style: { zIndex: 1000, pointerEvents: 'none' }
+    };
+    
+    // Add stroke/outline in dark mode for better visibility
+    if (isDarkMode) {
+      return {
+        tick: {
+          ...baseTick,
+          fill: '#e2e8f0',
+          stroke: '#1e293b',
+          strokeWidth: 0.5,
+          paintOrder: 'stroke fill'
+        },
+        axisLine: { stroke: '#475569' },
+        tickLine: { stroke: '#475569' },
+      };
+    }
+    
+    return {
+      tick: baseTick,
+      axisLine: { stroke: '#e2e8f0' },
+      tickLine: { stroke: '#e2e8f0' },
+    };
+  };
+  
+  const rtlAxisPropsWithDarkMode = getAxisProps();
 
   // Get minimum height based on chart type
   const getMinHeight = (chartType) => {
@@ -269,7 +333,7 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
 
   // Common responsive container wrapper with dynamic min-height
   const ResponsiveWrapper = ({ children, chartType }) => (
-    <div style={{ width: '100%', height: '100%', minHeight: getMinHeight(chartType), overflow: 'visible' }}>
+    <div style={{ width: '100%', height: '100%', minHeight: getMinHeight(chartType), overflow: 'visible', position: 'relative' }}>
       <ResponsiveContainer width="100%" height="100%">
         {children}
       </ResponsiveContainer>
@@ -277,6 +341,12 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
   );
 
   switch (config.chartType) {
+    /**
+     * PieChart - גרף עוגה
+     * גרף מעגלי שמציג חלוקה יחסית של נתונים
+     * כל פרוסה מייצגת חלק מהשלם, והגודל שלה מייצג את הערך היחסי
+     * שימוש: להצגת חלוקה לפי קטגוריות, פלטפורמות, מטבעות וכו'
+     */
     case 'PieChart':
       return (
         <ResponsiveWrapper chartType="PieChart">
@@ -317,16 +387,22 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
         </ResponsiveWrapper>
       );
 
+    /**
+     * BarChart - גרף עמודות
+     * גרף שמציג נתונים כעמודות אנכיות
+     * כל עמודה מייצגת ערך, והגובה שלה מייצגת את הערך הכמותי
+     * שימוש: להשוואה בין קטגוריות שונות, נכסים, פלטפורמות וכו'
+     */
     case 'BarChart':
       return (
         <ResponsiveWrapper chartType="BarChart">
           <BarChart 
             data={chartData} 
-            margin={{ top: 10, right: 10, left: 5, bottom: 5 }}
+            margin={isMobile ? { top: 10, right: 20, left: -35, bottom: -5 } : { top: 10, right: 0, left: -35, bottom: 5 }}
           >
             {showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
             <YAxis 
-              {...rtlAxisProps}
+              {...rtlAxisPropsWithDarkMode}
               tickFormatter={formatAxisTick}
               width={45}
             />
@@ -345,22 +421,29 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
             </Bar>
             <XAxis 
               dataKey="name" 
-              {...rtlAxisProps}
+              {...rtlAxisPropsWithDarkMode}
               tick={{
-                ...rtlAxisProps.tick,
+                ...rtlAxisPropsWithDarkMode.tick,
                 style: { zIndex: 1000, pointerEvents: 'none' }
               }}
-              tickFormatter={formatAxisTickTruncated}
+              tickFormatter={ formatAxisTickTruncated  }
               interval={0}
               angle={-35}
               textAnchor="end"
               height={60}
               dy={5}
+              dx={isMobile ? -15 : -15}
             />
           </BarChart>
         </ResponsiveWrapper>
       );
 
+    /**
+     * StackedBarChart - גרף עמודות מוערמות
+     * גרף עמודות שבו כל עמודה מחולקת לחלקים מוערמים
+     * כל חלק מייצג קטגוריה שונה, והגובה הכולל מייצג את הסכום
+     * שימוש: להצגת חלוקה פנימית בתוך כל קטגוריה והשוואה בין קטגוריות
+     */
     case 'StackedBarChart':
       return (
         <ResponsiveWrapper chartType="StackedBarChart">
@@ -370,7 +453,7 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
           >
             {showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
             <YAxis 
-              {...rtlAxisProps}
+              {...rtlAxisPropsWithDarkMode}
               tickFormatter={formatAxisTick}
               width={45}
             />
@@ -389,9 +472,9 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
             </Bar>
             <XAxis 
               dataKey="name" 
-              {...rtlAxisProps}
+              {...rtlAxisPropsWithDarkMode}
               tick={{
-                ...rtlAxisProps.tick,
+                ...rtlAxisPropsWithDarkMode.tick,
                 style: { zIndex: 1000, pointerEvents: 'none' }
               }}
               tickFormatter={formatAxisTickTruncated}
@@ -405,31 +488,42 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
         </ResponsiveWrapper>
       );
 
+    /**
+     * HorizontalBarChart - גרף עמודות אופקי
+     * גרף עמודות שבו העמודות מוצגות אופקית במקום אנכית
+     * כל עמודה מייצגת ערך, והאורך שלה מייצג את הערך הכמותי
+     * שימוש: כאשר יש שמות ארוכים או כשיש הרבה קטגוריות - יותר נוח לקרוא אופקית
+     */
     case 'HorizontalBarChart':
       return (
         <ResponsiveWrapper chartType="HorizontalBarChart">
           <BarChart 
             data={chartData} 
             layout="vertical" 
-            margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
+            margin={isMobile ? { top: 5, right: -50, left: -10, bottom: 5 } : { top: 5, right: -80, left: 5, bottom: 5 }}
           >
             {showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
             <XAxis 
               type="number" 
-              {...rtlAxisProps}
+              {...rtlAxisPropsWithDarkMode}
               tickFormatter={formatAxisTick}
             />
             <YAxis 
               dataKey="name" 
               type="category" 
               tick={{ 
-                fontSize: 11, 
+                fontSize: isMobile ? 10 : 11, 
                 fontFamily: HEBREW_FONT,
-                fill: '#64748b',
+                fill: isDarkMode ? '#e2e8f0' : '#64748b',
+                stroke: isDarkMode ? '#1e293b' : 'none',
+                strokeWidth: isDarkMode ? 0.5 : 0,
+                paintOrder: isDarkMode ? 'stroke fill' : 'fill',
+                ...rtlAxisPropsWithDarkMode.tick,
+                style: { zIndex: 1000, pointerEvents: 'none' }
               }}
-              axisLine={{ stroke: '#e2e8f0' }}
-              tickLine={{ stroke: '#e2e8f0' }}
-              width={100}
+              axisLine={rtlAxisPropsWithDarkMode.axisLine}
+              tickLine={rtlAxisPropsWithDarkMode.tickLine}
+              width={isMobile ? 60 : 100}
               orientation="right"
             />
             <Tooltip 
@@ -437,7 +531,7 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
               cursor={{ fill: 'rgba(0, 0, 0, 0.05)' }}
               wrapperStyle={{ zIndex: 1000 }}
             />
-            <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={50}>
+            <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={isMobile ? 40 : 50}>
               {chartData.map((entry, index) => (
                 <Cell 
                   key={`cell-${index}`} 
@@ -449,6 +543,12 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
         </ResponsiveWrapper>
       );
 
+    /**
+     * RadarChart - גרף רדאר
+     * גרף מעגלי שמציג נתונים על צירים רדיאליים (מהמרכז החוצה)
+     * כל ציר מייצג קטגוריה, והנקודה על הציר מייצגת את הערך
+     * שימוש: להשוואה בין כמה קטגוריות שונות, ניתוח פרופיל או חוזקות/חולשות
+     */
     case 'RadarChart':
       return (
         <ResponsiveWrapper chartType="RadarChart">
@@ -488,6 +588,12 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
         </ResponsiveWrapper>
       );
 
+    /**
+     * RadialBar - גרף רדיאלי
+     * גרף מעגלי שמציג נתונים כקשתות רדיאליות (מהמרכז החוצה)
+     * כל קשת מייצגת קטגוריה, והאורך שלה מייצג את הערך
+     * שימוש: להצגת נתונים בצורה מעגלית, דומה לגרף עוגה אבל עם קשתות במקום פרוסות
+     */
     case 'RadialBar':
       return (
         <ResponsiveWrapper chartType="RadialBar">
@@ -537,6 +643,12 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
         </ResponsiveWrapper>
       );
 
+    /**
+     * AreaChart - גרף אזור
+     * גרף שמציג נתונים כקו עם מילוי מתחתיו (אזור צבוע)
+     * הקו מייצג את הערכים, והאזור הצבוע מדגיש את המגמה
+     * שימוש: להצגת מגמות לאורך זמן, שינויים מצטברים, או הדגשת נפח נתונים
+     */
     case 'AreaChart':
       return (
         <ResponsiveWrapper chartType="AreaChart">
@@ -551,19 +663,6 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
               </linearGradient>
             </defs>
             {showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
-            <XAxis 
-              dataKey="name" 
-              {...rtlAxisProps}
-              tickFormatter={formatAxisTickTruncated}
-              angle={-35}
-              textAnchor="end"
-              height={55}
-              dy={5}
-            />
-            <YAxis 
-              {...rtlAxisProps}
-              tickFormatter={formatAxisTick}
-            />
             <Tooltip 
               content={<CustomTooltip totalValue={totalValue} showPercentage />}
               wrapperStyle={{ zIndex: 1000 }}
@@ -576,31 +675,38 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
               fillOpacity={1}
               fill="url(#areaGradient)"
             />
+            <XAxis 
+              dataKey="name" 
+              {...rtlAxisPropsWithDarkMode}
+              tickFormatter={ formatAxisTick }
+              angle={isMobile ? -35 : 0}
+              textAnchor="end"
+              height={55}
+              dy={5}
+              dx={isMobile ? -15 : -15}
+            />
+            <YAxis 
+              {...rtlAxisPropsWithDarkMode}
+              tickFormatter={formatAxisTick}
+            />
           </AreaChart>
         </ResponsiveWrapper>
       );
 
+    /**
+     * LineChart - גרף קו
+     * גרף שמציג נתונים כקו רציף בין נקודות
+     * כל נקודה מייצגת ערך, והקו מחבר ביניהן
+     * שימוש: להצגת מגמות לאורך זמן, שינויים רציפים, או השוואה בין כמה סדרות נתונים
+     */
     case 'LineChart':
       return (
         <ResponsiveWrapper chartType="LineChart">
           <LineChart 
             data={chartData} 
-            margin={{ top: 10, right: 15, left: 5, bottom: 5 }}
+            margin={isMobile ? { top: 10, right: 20, left: -35, bottom: -35 } : { top: 10, right: 0, left: -35, bottom: 5 }}
           >
             {showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
-            <XAxis 
-              dataKey="name" 
-              {...rtlAxisProps}
-              tickFormatter={formatAxisTickTruncated}
-              angle={-35}
-              textAnchor="end"
-              height={55}
-              dy={5}
-            />
-            <YAxis 
-              {...rtlAxisProps}
-              tickFormatter={formatAxisTick}
-            />
             <Tooltip 
               content={<CustomTooltip totalValue={totalValue} showPercentage />}
               wrapperStyle={{ zIndex: 1000 }}
@@ -613,32 +719,38 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
               dot={{ fill: '#3b82f6', r: 5, strokeWidth: 2, stroke: '#fff' }}
               activeDot={{ r: 7, fill: '#3b82f6', stroke: '#fff', strokeWidth: 2 }}
             />
+            <XAxis 
+              dataKey="name" 
+              {...rtlAxisPropsWithDarkMode}
+              tickFormatter={formatAxisTick }
+              angle={isMobile ? -35 : 0}
+              textAnchor="end"
+              height={55}
+              dy={5}
+              dx={isMobile ? -15 : -15}
+            />
+            <YAxis 
+              {...rtlAxisPropsWithDarkMode}
+              tickFormatter={formatAxisTick}
+            />
           </LineChart>
         </ResponsiveWrapper>
       );
 
+    /**
+     * ComposedChart - גרף משולב
+     * גרף שמשלב כמה סוגי גרפים יחד באותו גרף
+     * בדרך כלל משלב עמודות (Bar) וקו (Line) כדי להציג שני סוגי נתונים או מדדים שונים
+     * שימוש: להשוואה בין נתונים כמותיים (עמודות) לבין מגמה או שינוי לאורך זמן (קו)
+     */
     case 'ComposedChart':
       return (
         <ResponsiveWrapper chartType="ComposedChart">
           <ComposedChart 
             data={chartData} 
-            margin={{ top: 10, right: 10, left: 5, bottom: 5 }}
+            margin={isMobile ? { top: 10, right: 20, left: -35, bottom: -35 } : { top: 10, right: 0, left: -35, bottom: 5 }}
           >
             {showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />}
-            <XAxis 
-              dataKey="name" 
-              {...rtlAxisProps}
-              tickFormatter={formatAxisTickTruncated}
-              angle={-35}
-              textAnchor="end"
-              height={60}
-              dy={5}
-            />
-            <YAxis 
-              {...rtlAxisProps}
-              tickFormatter={formatAxisTick}
-              width={45}
-            />
             <Tooltip 
               content={<CustomTooltip totalValue={totalValue} showPercentage />}
               wrapperStyle={{ zIndex: 1000 }}
@@ -658,10 +770,32 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
               strokeWidth={2}
               dot={false}
             />
+            <XAxis 
+              dataKey="name" 
+              {...rtlAxisPropsWithDarkMode}
+              tickFormatter={isMobile ? formatAxisTickTruncated : formatAxisTick }
+              angle={isMobile ? -35 : 0}
+              textAnchor="end"
+              height={60}
+              dy={5}
+              dx={isMobile ? -15 : -15}
+            />
+            <YAxis 
+              {...rtlAxisPropsWithDarkMode}
+              tickFormatter={formatAxisTick}
+              width={45}
+            />
           </ComposedChart>
         </ResponsiveWrapper>
       );
 
+    /**
+     * Treemap - מפת עץ
+     * גרף שמציג נתונים כמלבנים מקוננים (nested rectangles)
+     * כל מלבן מייצג קטגוריה, והגודל שלו מייצג את הערך
+     * המלבנים מסודרים כך שגדולים יותר תופסים יותר מקום
+     * שימוש: להצגת חלוקה היררכית, השוואה בין קטגוריות רבות, או הדגשת הפרופורציות
+     */
     case 'Treemap':
       const treemapData = chartData.map(item => ({
         name: item.name,

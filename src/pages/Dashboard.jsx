@@ -1,11 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
-import {
-  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
-  AreaChart, Area, CartesianGrid, LineChart, Line
-} from 'recharts';
 import { Cloud, Eye, EyeOff, Wallet, Calendar, TrendingUp, ChevronDown, ChevronUp, XCircle } from 'lucide-react';
-import CustomTooltip from '../components/CustomTooltip';
 import TreemapChart from '../components/TreemapChart';
+import ChartRenderer from '../components/ChartRenderer';
 import SummaryCard from '../components/SummaryCard';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { useDemoData } from '../contexts/DemoDataContext';
@@ -718,81 +714,16 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                     <p className="text-sm text-slate-500 dark:text-slate-400">אין נתונים להצגה</p>
                   </div>
                 ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart
-                      data={portfolioHistory}
-                      margin={{ top: 10, right: 10, left: 10, bottom: 20 }}
-                    >
-                    <defs>
-                      <linearGradient id="balanceGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis
-                      dataKey="date"
-                      tick={{
-                        fontSize: 11,
-                        fontFamily: HEBREW_FONT,
-                        fill: '#64748b',
-                      }}
-                      axisLine={{ stroke: '#e2e8f0' }}
-                      tickLine={{ stroke: '#e2e8f0' }}
-                      tickFormatter={(value) => {
-                        const point = portfolioHistory.find(p => p.date === value);
-                        if (!point) return value;
-                        return formatDateForAxis(new Date(point.timestamp), timeRange);
-                      }}
-                      angle={timeRange === '1D' ? 0 : -35}
-                      textAnchor={timeRange === '1D' ? 'middle' : 'end'}
-                      height={timeRange === '1D' ? 30 : 55}
-                      dy={timeRange === '1D' ? 5 : 5}
-                    />
-                    <YAxis
-                      tick={{
-                        fontSize: 11,
-                        fontFamily: HEBREW_FONT,
-                        fill: '#64748b',
-                      }}
-                      axisLine={{ stroke: '#e2e8f0' }}
-                      tickLine={{ stroke: '#e2e8f0' }}
-                      tickFormatter={formatAxisTick}
-                    />
-                    <Tooltip
-                      content={({ active, payload }) => {
-                        if (!active || !payload || !payload[0]) return null;
-                        const data = payload[0].payload;
-                        const date = new Date(data.timestamp);
-                        const dateStr = date.toLocaleDateString('he-IL', {
-                          year: 'numeric',
-                          month: 'long',
-                          day: 'numeric',
-                          ...(timeRange === '1D' && { hour: '2-digit', minute: '2-digit' })
-                        });
-                        return (
-                          <div className="bg-white dark:bg-slate-800 p-3 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700">
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">{dateStr}</p>
-                            <p className="text-sm font-bold text-slate-800 dark:text-white">
-                              {formatCurrency(data.value)}
-                            </p>
-                          </div>
-                        );
-                      }}
-                      wrapperStyle={{ zIndex: 1000 }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="value"
-                      stroke="#3b82f6"
-                      strokeWidth={2}
-                      fillOpacity={1}
-                      fill="url(#balanceGradient)"
-                      dot={false}
-                      activeDot={{ r: 4, fill: '#3b82f6', stroke: '#fff', strokeWidth: 2 }}
-                    />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  <ChartRenderer
+                    config={{
+                      chartType: 'AreaChart',
+                      dataKey: 'date',
+                      showGrid: true
+                    }}
+                    chartData={portfolioHistory}
+                    systemData={displaySystemData}
+                    totalValue={totalWealth}
+                  />
                 )}
               </div>
             </ErrorBoundary>
@@ -815,61 +746,16 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
               <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-visible">
                 <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">פיזור לפי קטגוריות</h3>
                 <div className="h-64 md:h-80 min-h-[250px] overflow-visible">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                    <Pie
-                      data={pieDataByCategory}
-                      cx="40%"
-                      cy="50%"
-                      labelLine={{ stroke: '#64748b', strokeWidth: 1 }}
-                      label={({ name, percentage, cx, cy, midAngle, outerRadius }) => {
-                        if (parseFloat(percentage) < 5) return null;
-                        const RADIAN = Math.PI / 180;
-                        const radius = outerRadius * 1.2;
-                        const x = cx + radius * Math.cos(-midAngle * RADIAN);
-                        const y = cy + radius * Math.sin(-midAngle * RADIAN);
-                        const textColor = isDarkMode ? '#ffffff' : '#1e293b';
-                        return (
-                          <text
-                            x={x}
-                            y={y}
-                            fill={textColor}
-                            textAnchor={x > cx ? 'start' : 'end'}
-                            dominantBaseline="central"
-                            style={{
-                              fontSize: '12px',
-                              fontWeight: 600,
-                              fontFamily: HEBREW_FONT,
-                            }}
-                          >
-                            {name}
-                          </text>
-                        );
-                      }}
-                      outerRadius="65%"
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {pieDataByCategory.map((entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={displaySystemData.categories.find(c => c.name === entry.name)?.color || '#3b82f6'}
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      content={<CustomTooltip totalValue={totalWealth} showPercentage />}
-                      wrapperStyle={{ zIndex: 1000 }}
-                    />
-                    <Legend
-                      content={<RTLLegendWithPercentage totalValue={totalWealth} />}
-                      layout="vertical"
-                      align="right"
-                      verticalAlign="middle"
-                      wrapperStyle={{ paddingRight: '10px' }}
-                    />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  <ChartRenderer
+                    config={{
+                      chartType: 'PieChart',
+                      dataKey: 'category',
+                      showGrid: false
+                    }}
+                    chartData={pieDataByCategory}
+                    systemData={displaySystemData}
+                    totalValue={totalWealth}
+                  />
                 </div>
               </div>
             </ErrorBoundary>
@@ -882,42 +768,16 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
               <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
                 <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">איזון תיק לפי קטגוריות</h3>
                 <div className="h-72 md:h-80 min-h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={areaDataByCategory} margin={{ top: 10, right: 50, left: -50, bottom: -30 }}>
-                    <defs>
-                      <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8} />
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.1} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis
-                      dataKey="name"
-                      {...rtlAxisProps}
-                      tickFormatter={formatAxisTickTruncated}
-                      angle={-35}
-                      textAnchor="end"
-                      height={55}
-                      dy={5}
-                    />
-                    <YAxis
-                      {...rtlAxisProps}
-                      tickFormatter={formatAxisTick}
-                    />
-                    <Tooltip
-                      content={<CustomTooltip totalValue={totalWealth} showPercentage />}
-                      wrapperStyle={{ zIndex: 1000 }}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="value"
-                      stroke="#3b82f6"
-                      strokeWidth={2}
-                      fillOpacity={1}
-                      fill="url(#areaGradient)"
-                    />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  <ChartRenderer
+                    config={{
+                      chartType: 'AreaChart',
+                      dataKey: 'category',
+                      showGrid: true
+                    }}
+                    chartData={areaDataByCategory}
+                    systemData={displaySystemData}
+                    totalValue={totalWealth}
+                  />
                 </div>
               </div>
             </ErrorBoundary>
@@ -944,47 +804,16 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
               <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
                 <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">הקצאה לפי נכס</h3>
                 <div className="h-72 md:h-80 min-h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={dataBySymbol} margin={{ top: 10, right: 10, left: 5, bottom: 5 }}>
-                    <YAxis
-                      {...rtlAxisProps}
-                      tickFormatter={formatAxisTick}
-                      hide
-                    />
-                    <Tooltip
-                      content={<CustomTooltip totalValue={totalWealth} showPercentage />}
-                      cursor={{ fill: 'rgba(0, 0, 0, 0.05)' }}
-                      wrapperStyle={{ zIndex: 1000 }}
-                    />
-                    <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={50}>
-                      {dataBySymbol.map((entry, index) => {
-                        const symbol = displaySystemData.symbols?.find(s => {
-                          const symbolName = typeof s === 'string' ? s : s.name;
-                          return symbolName === entry.name;
-                        });
-                        const color = symbol ? (typeof symbol === 'string' ? '#94a3b8' : symbol.color) :
-                          ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#6366f1', '#ec4899', '#14b8a6'][index % 8];
-                        return (
-                          <Cell key={`cell-${index}`} fill={color} />
-                        );
-                      })}
-                    </Bar>
-                    <XAxis
-                      dataKey="name"
-                      {...rtlAxisProps}
-                      tick={{
-                        ...rtlAxisProps.tick,
-                        style: { zIndex: 1000, pointerEvents: 'none' }
-                      }}
-                      tickFormatter={formatAxisTickTruncated}
-                      interval={0}
-                      angle={-35}
-                      textAnchor="end"
-                      height={55}
-                      dy={5}
-                    />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <ChartRenderer
+                    config={{
+                      chartType: 'BarChart',
+                      dataKey: 'symbol',
+                      showGrid: false
+                    }}
+                    chartData={dataBySymbol}
+                    systemData={displaySystemData}
+                    totalValue={totalWealth}
+                  />
                 </div>
               </div>
             </ErrorBoundary>
@@ -1015,38 +844,16 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
               <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
                 <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">במה מושקע הכסף?</h3>
                 <div className="h-72 md:h-80 min-h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={dataByInstrument} margin={{ top: 10, right: 10, left: 5, bottom: 5 }}>
-                    <YAxis {...rtlAxisProps} tickFormatter={formatAxisTick} hide />
-                    <Tooltip
-                      content={<CustomTooltip totalValue={totalWealth} showPercentage />}
-                      cursor={{ fill: 'rgba(0, 0, 0, 0.05)' }}
-                      wrapperStyle={{ zIndex: 1000 }}
-                    />
-                    <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={50}>
-                      {dataByInstrument.map((entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={displaySystemData.instruments.find(i => i.name === entry.name)?.color || '#3b82f6'}
-                        />
-                      ))}
-                    </Bar>
-                    <XAxis
-                      dataKey="name"
-                      {...rtlAxisProps}
-                      tick={{
-                        ...rtlAxisProps.tick,
-                        style: { zIndex: 1000, pointerEvents: 'none' }
-                      }}
-                      tickFormatter={formatAxisTickTruncated}
-                      interval={0}
-                      angle={-35}
-                      textAnchor="end"
-                      height={55}
-                      dy={5}
-                    />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <ChartRenderer
+                    config={{
+                      chartType: 'BarChart',
+                      dataKey: 'instrument',
+                      showGrid: false
+                    }}
+                    chartData={dataByInstrument}
+                    systemData={displaySystemData}
+                    totalValue={totalWealth}
+                  />
                 </div>
               </div>
             </ErrorBoundary>
@@ -1059,62 +866,16 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
               <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-visible">
                 <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">פיזור לפי מטבעות</h3>
                 <div className="h-56 md:h-64 min-h-[220px] overflow-visible">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                    <Pie
-                      data={dataByCurrency}
-                      cx="40%"
-                      cy="50%"
-                      labelLine={{ stroke: '#64748b', strokeWidth: 1 }}
-                      label={({ name, value, cx, cy, midAngle, outerRadius }) => {
-                        const pct = totalWealth > 0 ? ((value / totalWealth) * 100).toFixed(1) : 0;
-                        if (parseFloat(pct) < 5) return null;
-                        const RADIAN = Math.PI / 180;
-                        const radius = outerRadius * 1.2;
-                        const x = cx + radius * Math.cos(-midAngle * RADIAN);
-                        const y = cy + radius * Math.sin(-midAngle * RADIAN);
-                        const textColor = isDarkMode ? '#ffffff' : '#1e293b';
-                        return (
-                          <text
-                            x={x}
-                            y={y}
-                            fill={textColor}
-                            textAnchor={x > cx ? 'start' : 'end'}
-                            dominantBaseline="central"
-                            style={{
-                              fontSize: '11px',
-                              fontWeight: 600,
-                              fontFamily: HEBREW_FONT,
-                            }}
-                          >
-                            {name}
-                          </text>
-                        );
-                      }}
-                      outerRadius="60%"
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {dataByCurrency.map((entry, index) => {
-                        const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
-                        return (
-                          <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
-                        );
-                      })}
-                    </Pie>
-                    <Tooltip
-                      content={<CustomTooltip totalValue={totalWealth} showPercentage />}
-                      wrapperStyle={{ zIndex: 1000 }}
-                    />
-                    <Legend
-                      content={<RTLLegendWithPercentage totalValue={totalWealth} />}
-                      layout="vertical"
-                      align="right"
-                      verticalAlign="middle"
-                      wrapperStyle={{ paddingRight: '10px' }}
-                    />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  <ChartRenderer
+                    config={{
+                      chartType: 'PieChart',
+                      dataKey: 'currency',
+                      showGrid: false
+                    }}
+                    chartData={dataByCurrency}
+                    systemData={displaySystemData}
+                    totalValue={totalWealth}
+                  />
                 </div>
               </div>
             </ErrorBoundary>
@@ -1128,42 +889,16 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
             <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 mt-6">
               <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">פיזור לפי פלטפורמות</h3>
               <div className="h-64 md:h-80 min-h-[280px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dataByPlatform} layout="vertical" margin={{ top: 5, right: -85, left: 5, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis
-                    type="number"
-                    {...rtlAxisProps}
-                    tickFormatter={formatAxisTick}
-                  />
-                  <YAxis
-                    dataKey="name"
-                    type="category"
-                    tick={{
-                      fontSize: 11,
-                      fontFamily: HEBREW_FONT,
-                      fill: '#64748b',
-                    }}
-                    axisLine={{ stroke: '#e2e8f0' }}
-                    tickLine={{ stroke: '#e2e8f0' }}
-                    width={100}
-                    orientation="right"
-                  />
-                  <Tooltip
-                    content={<CustomTooltip totalValue={totalWealth} showPercentage />}
-                    cursor={{ fill: 'rgba(0, 0, 0, 0.05)' }}
-                    wrapperStyle={{ zIndex: 1000 }}
-                  />
-                  <Bar dataKey="value" radius={[0, 4, 4, 0]} maxBarSize={50}>
-                    {dataByPlatform.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={displaySystemData.platforms.find(p => p.name === entry.name)?.color || '#3b82f6'}
-                      />
-                    ))}
-                  </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                <ChartRenderer
+                  config={{
+                    chartType: 'HorizontalBarChart',
+                    dataKey: 'platform',
+                    showGrid: true
+                  }}
+                  chartData={dataByPlatform}
+                  systemData={displaySystemData}
+                  totalValue={totalWealth}
+                />
               </div>
             </div>
           </ErrorBoundary>
@@ -1178,41 +913,16 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
               <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
                 <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">10 הנכסים הגדולים ביותר</h3>
                 <div className="h-72 md:h-80 min-h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={topAssets} margin={{ top: 10, right: 10, left: 5, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <YAxis
-                      {...rtlAxisProps}
-                      tickFormatter={formatAxisTick}
-                    />
-                    <Tooltip
-                      content={<CustomTooltip totalValue={totalWealth} showPercentage />}
-                      cursor={{ fill: 'rgba(0, 0, 0, 0.05)' }}
-                      wrapperStyle={{ zIndex: 1000 }}
-                    />
-                    <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={40}>
-                      {topAssets.map((entry, index) => {
-                        const categoryColor = displaySystemData.categories.find(c => c.name === entry.category)?.color || '#3b82f6';
-                        return (
-                          <Cell key={`cell-${index}`} fill={categoryColor} />
-                        );
-                      })}
-                    </Bar>
-                    <XAxis
-                      dataKey="name"
-                      {...rtlAxisProps}
-                      tick={{
-                        ...rtlAxisProps.tick,
-                        style: { zIndex: 1000, pointerEvents: 'none' }
-                      }}
-                      tickFormatter={formatAxisTickTruncated}
-                      angle={-35}
-                      textAnchor="end"
-                      height={55}
-                      dy={5}
-                    />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <ChartRenderer
+                    config={{
+                      chartType: 'BarChart',
+                      dataKey: 'symbol',
+                      showGrid: true
+                    }}
+                    chartData={topAssets}
+                    systemData={displaySystemData}
+                    totalValue={totalWealth}
+                  />
                 </div>
               </div>
             </ErrorBoundary>
@@ -1225,36 +935,16 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
               <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
                 <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">השוואת קטגוריות</h3>
                 <div className="h-72 md:h-80 min-h-[280px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={areaDataByCategory} margin={{ top: 10, right: 15, left: 5, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis
-                      dataKey="name"
-                      {...rtlAxisProps}
-                      tickFormatter={formatAxisTickTruncated}
-                      angle={-35}
-                      textAnchor="end"
-                      height={55}
-                      dy={5}
-                    />
-                    <YAxis
-                      {...rtlAxisProps}
-                      tickFormatter={formatAxisTick}
-                    />
-                    <Tooltip
-                      content={<CustomTooltip totalValue={totalWealth} showPercentage />}
-                      wrapperStyle={{ zIndex: 1000 }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="value"
-                      stroke="#3b82f6"
-                      strokeWidth={3}
-                      dot={{ fill: '#3b82f6', r: 5, strokeWidth: 2, stroke: '#fff' }}
-                      activeDot={{ r: 7, fill: '#3b82f6', stroke: '#fff', strokeWidth: 2 }}
-                    />
-                    </LineChart>
-                  </ResponsiveContainer>
+                  <ChartRenderer
+                    config={{
+                      chartType: 'LineChart',
+                      dataKey: 'category',
+                      showGrid: true
+                    }}
+                    chartData={areaDataByCategory}
+                    systemData={displaySystemData}
+                    totalValue={totalWealth}
+                  />
                 </div>
               </div>
             </ErrorBoundary>

@@ -270,7 +270,7 @@ const DynamicDashboard = () => {
                     onClick={() => setMainChartConfig(prev => ({ ...prev, dataKey: group.value }))}
                     className={`px-3 py-1.5 text-xs font-medium rounded transition ${
                       mainChartConfig.dataKey === group.value
-                        ? 'bg-slate-800 dark:bg-slate-700 text-white'
+                        ? 'bg-emerald-600 dark:bg-emerald-500 text-white'
                         : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
                     }`}
                   >
@@ -406,9 +406,9 @@ const DynamicDashboard = () => {
               
               // Height based on size - larger for bar charts
               const heightClasses = {
-                small: 'h-96',
-                medium: 'h-[450px]',
-                large: 'h-[640px]'
+                small: 'h-[420px]',
+                medium: 'h-[520px]',
+                large: 'h-[720px]'
               };
 
               return (
