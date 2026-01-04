@@ -40,6 +40,7 @@ const COACHMARKS = [
     targetSelector: 'main',
     spotlightSize: 'extra-large',
     position: 'center',
+    placement: 'bottom',
     openMobileMenu: false,
   },
   {
@@ -51,6 +52,7 @@ const COACHMARKS = [
     targetSelector: '[data-coachmark="wealth-card"]',
     fallbackSelector: '.text-2xl.font-black',
     spotlightSize: 'large',
+    placement: 'bottom',
     openMobileMenu: false,
   },
   {
@@ -61,7 +63,8 @@ const COACHMARKS = [
     route: '/',
     targetSelector: '.grid.grid-cols-1.lg\\:grid-cols-2',
     spotlightSize: 'extra-large',
-    position: 'center',
+    position: 'top',
+    placement: 'top',
     openMobileMenu: false,
   },
   {
@@ -73,6 +76,7 @@ const COACHMARKS = [
     targetSelector: 'main',
     spotlightSize: 'extra-large',
     position: 'center',
+    placement: 'bottom',
     openMobileMenu: false,
   },
   {
@@ -83,19 +87,34 @@ const COACHMARKS = [
     route: '/assets',
     targetSelector: '[data-coachmark="add-asset"]',
     spotlightSize: 'medium',
+    placement: 'bottom',
     openMobileMenu: false,
   },
   {
     id: 'asset-distribution-platforms',
-    title: 'פלטפורמות',
-    description: 'כאן תראה את הנכסים שלך מקובצים לפי חשבונות וארנקים - איפה הכסף שלך נמצא.',
+    title: 'מקורות הכסף',
+    description: 'כאן ניתן להוסיף מקורות כספיים חדשים.',
     icon: Building2,
     route: '/assets',
     targetSelector: '[data-coachmark="sources-tab"]',
     spotlightSize: 'medium',
+    placement: 'bottom',
+    position: 'bottom',
     openMobileMenu: false,
     waitForTab: 'sources',
   },
+  // {
+  //   id: 'asset-distribution-platforms',
+  //   title: 'פלטפורמות',
+  //   description: 'כאן תראה את הנכסים שלך מקובצים לפי חשבונות וארנקים - איפה הכסף שלך נמצא.',
+  //   icon: Building2,
+  //   route: '/assets',
+  //   targetSelector: '[data-coachmark="sources-tab"]',
+  //   spotlightSize: 'medium',
+  //   placement: 'bottom',
+  //   openMobileMenu: false,
+  //   waitForTab: 'sources',
+  // },
   {
     id: 'asset-distribution-categories',
     title: 'קטגוריות',
@@ -104,6 +123,7 @@ const COACHMARKS = [
     route: '/assets',
     targetSelector: '[data-coachmark="asset-distribution-categories"]',
     spotlightSize: 'medium',
+    placement: 'top',
     openMobileMenu: false,
     waitForTab: 'sources',
   },
@@ -115,6 +135,7 @@ const COACHMARKS = [
     route: '/assets',
     targetSelector: '[data-coachmark="asset-distribution-symbols"]',
     spotlightSize: 'medium',
+    placement: 'top',
     openMobileMenu: false,
     waitForTab: 'sources',
   },
@@ -126,6 +147,7 @@ const COACHMARKS = [
     route: '/assets',
     targetSelector: '[data-coachmark="asset-search"]',
     spotlightSize: 'medium',
+    placement: 'bottom',
     openMobileMenu: false,
   },
   {
@@ -136,6 +158,7 @@ const COACHMARKS = [
     route: '/assets',
     targetSelector: '[data-coachmark="asset-grouping"]',
     spotlightSize: 'medium',
+    placement: 'bottom',
     openMobileMenu: false,
   },
   {
@@ -147,6 +170,7 @@ const COACHMARKS = [
     targetSelector: 'main',
     spotlightSize: 'extra-large',
     position: 'center',
+    placement: 'bottom',
     openMobileMenu: false,
   },
   {
@@ -158,6 +182,7 @@ const COACHMARKS = [
     targetSelector: 'main',
     spotlightSize: 'extra-large',
     position: 'center',
+    placement: 'bottom',
     openMobileMenu: false,
   },
   {
@@ -168,6 +193,7 @@ const COACHMARKS = [
     route: '/rebalancing',
     targetSelector: '[data-coachmark="rebalancing-targets"]',
     spotlightSize: 'medium',
+    placement: 'top',
     openMobileMenu: false,
     waitForHash: '#rebalancing',
   },
@@ -179,6 +205,7 @@ const COACHMARKS = [
     route: '/rebalancing',
     targetSelector: '[data-coachmark="rebalancing-status"]',
     spotlightSize: 'medium',
+    placement: 'top',
     openMobileMenu: false,
     waitForHash: '#analysis',
   },
@@ -190,6 +217,7 @@ const COACHMARKS = [
     route: '/rebalancing',
     targetSelector: '[data-coachmark="reports"]',
     spotlightSize: 'medium',
+    placement: 'top',
     openMobileMenu: false,
     waitForHash: '#reports',
   },
@@ -202,6 +230,7 @@ const COACHMARKS = [
     targetSelector: 'main',
     spotlightSize: 'extra-large',
     position: 'center',
+    placement: 'bottom',
     openMobileMenu: false,
   },
   {
@@ -213,6 +242,7 @@ const COACHMARKS = [
     targetSelector: 'main',
     spotlightSize: 'extra-large',
     position: 'center',
+    placement: 'bottom',
     openMobileMenu: false,
   },
   {
@@ -224,6 +254,7 @@ const COACHMARKS = [
     targetSelector: null,
     spotlightSize: 'none',
     position: 'center',
+    placement: 'center',
     openMobileMenu: false,
     isFinal: true,
   },
@@ -609,59 +640,58 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
   const currentCoachmark = COACHMARKS[currentIndex];
   const Icon = currentCoachmark.icon;
 
-  // Calculate tooltip position
+  // Calculate tooltip position based on placement
   const getTooltipPosition = () => {
     const { x, y, width, height, hidden } = spotlightPosition;
-    const tooltipWidth = isMobile ? window.innerWidth - 32 : 360;
-    const tooltipHeight = 280;
+    const tooltipWidth = isMobile ? Math.min(window.innerWidth * 0.85, window.innerWidth - 32) : 360;
+    const tooltipHeight = isMobile ? 200 : 280;
+    const placement = currentCoachmark.placement || 'bottom';
     
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CoachmarkTour.jsx:566',message:'getTooltipPosition entry',data:{spotlightX:x,spotlightY:y,spotlightW:width,spotlightH:height,hidden,isMobile,tooltipW:tooltipWidth,tooltipH:tooltipHeight},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
-    
-    if (hidden || currentCoachmark.position === 'center') {
-      const pos = {
+    // Center position for final step or center position
+    if (hidden || currentCoachmark.position === 'center' || placement === 'center') {
+      return {
         left: isMobile ? 16 : '50%',
         right: isMobile ? 16 : 'auto',
         top: '50%',
         transform: isMobile ? 'translateY(-50%)' : 'translate(-50%, -50%)',
       };
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CoachmarkTour.jsx:571',message:'tooltip position center',data:pos,timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
-      return pos;
     }
     
+    // Mobile positioning - use placement to avoid covering target
     if (isMobile) {
-      const tooltipTop = Math.min(y + height + 20, window.innerHeight - tooltipHeight - 80);
-      const pos = {
+      let tooltipTop;
+      if (placement === 'top') {
+        // Place above target
+        tooltipTop = Math.max(16, y - tooltipHeight - 20);
+      } else {
+        // Place below target (default)
+        tooltipTop = Math.min(y + height + 20, window.innerHeight - tooltipHeight - 80);
+      }
+      
+      return {
         left: 16,
         right: 16,
         top: tooltipTop,
         transform: 'none',
       };
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CoachmarkTour.jsx:580',message:'tooltip position mobile',data:{...pos,targetY:y,targetH:height,overlaps:tooltipTop<y+height},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
-      return pos;
     }
     
-    // Desktop positioning - try to avoid covering target
-    // Check if target is in top half of screen -> place tooltip below
-    // Check if target is in bottom half -> place tooltip above
-    const targetCenterY = y + height / 2;
-    const viewportCenterY = window.innerHeight / 2;
-    const targetInTopHalf = targetCenterY < viewportCenterY;
-    
+    // Desktop positioning - use placement explicitly
     let tooltipX = x - tooltipWidth - 30;
     let tooltipY;
     
-    if (targetInTopHalf) {
-      // Target in top half - place tooltip below
+    if (placement === 'top') {
+      // Place tooltip above target
+      tooltipY = y - tooltipHeight - 20;
+    } else if (placement === 'bottom') {
+      // Place tooltip below target
       tooltipY = y + height + 20;
     } else {
-      // Target in bottom half - place tooltip above
-      tooltipY = y - tooltipHeight - 20;
+      // Fallback: use smart positioning
+      const targetCenterY = y + height / 2;
+      const viewportCenterY = window.innerHeight / 2;
+      const targetInTopHalf = targetCenterY < viewportCenterY;
+      tooltipY = targetInTopHalf ? y + height + 20 : y - tooltipHeight - 20;
     }
     
     // Try left side first
@@ -673,7 +703,6 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
     // If right side also doesn't fit, center above/below
     if (tooltipX + tooltipWidth > window.innerWidth - 20) {
       tooltipX = Math.max(20, x + width / 2 - tooltipWidth / 2);
-      // If still doesn't fit, use the side that fits better
       if (tooltipX < 20) tooltipX = 20;
       if (tooltipX + tooltipWidth > window.innerWidth - 20) {
         tooltipX = window.innerWidth - tooltipWidth - 20;
@@ -683,22 +712,6 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
     // Clamp to viewport
     tooltipY = Math.max(20, Math.min(tooltipY, window.innerHeight - tooltipHeight - 20));
     tooltipX = Math.max(20, Math.min(tooltipX, window.innerWidth - tooltipWidth - 20));
-    
-    // Check for overlap with target
-    const tooltipLeft = tooltipX;
-    const tooltipRight = tooltipX + tooltipWidth;
-    const tooltipTop = tooltipY;
-    const tooltipBottom = tooltipY + tooltipHeight;
-    const targetLeft = x;
-    const targetRight = x + width;
-    const targetTop = y;
-    const targetBottom = y + height;
-    
-    const overlaps = !(tooltipRight < targetLeft || tooltipLeft > targetRight || tooltipBottom < targetTop || tooltipTop > targetBottom);
-    
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CoachmarkTour.jsx:625',message:'tooltip position desktop final',data:{tooltipX,tooltipY,targetX:x,targetY:y,targetW:width,targetH:height,overlaps,targetInTopHalf,strategy:targetInTopHalf?'below':'above'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
     
     return {
       left: tooltipX,
@@ -733,17 +746,7 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
           </motion.div>
         )}
 
-        {/* Large Close Button at Top Right */}
-        <motion.button
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.8 }}
-          onClick={handleSkip}
-          className="fixed top-6 left-6 z-[101] w-12 h-12 bg-slate-800/90 hover:bg-slate-700/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-2xl border-2 border-slate-600/50 hover:border-red-500/50 transition-all group"
-          aria-label="סגור מדריך"
-        >
-          <X className="w-6 h-6 text-slate-300 group-hover:text-red-400 transition-colors" />
-        </motion.button>
+        {/* Global close button removed - user controls via tooltip only */}
 
         {/* Dark overlay with spotlight cutout */}
         {!spotlightPosition.hidden && (
@@ -775,7 +778,7 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
               y="0"
               width="100%"
               height="100%"
-              fill="rgba(0, 0, 0, 0.88)"
+              fill="rgba(0, 0, 0, 0.4)"
               mask="url(#spotlight-mask)"
             />
           </svg>
@@ -783,7 +786,7 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
 
         {/* Full overlay for final step */}
         {spotlightPosition.hidden && (
-          <div className="absolute inset-0 bg-black/90" />
+          <div className="absolute inset-0 bg-black/40" />
         )}
 
         {/* Spotlight ring effect */}
@@ -828,12 +831,11 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
             transition={{ duration: 0.3, delay: 0.1 }}
             className={`absolute bg-gradient-to-b from-slate-800 to-slate-900 rounded-lg md:rounded-2xl shadow-2xl border border-slate-700/50 ${
               isMobile 
-                ? 'left-1.5 right-1.5 p-2' 
+                ? 'left-1.5 right-1.5 p-3' 
                 : 'w-[360px] p-6'
             }`}
             style={{
               ...tooltipPos,
-              backdropFilter: 'blur(20px)',
             }}
           >
             {/* Close button inside tooltip */}
@@ -866,8 +868,8 @@ const CoachmarkTour = ({ isActive, onComplete }) => {
             </div>
 
             {/* Content */}
-            <h3 className={`${isMobile ? 'text-xs font-semibold mb-1' : 'text-xl font-bold mb-3'} text-white`}>{currentCoachmark.title}</h3>
-            <p className={`${isMobile ? 'text-[10px] leading-tight mb-2' : 'text-base leading-relaxed mb-6'} text-slate-300`}>{currentCoachmark.description}</p>
+            <h3 className={`${isMobile ? 'text-sm font-semibold mb-1' : 'text-xl font-bold mb-3'} text-white`}>{currentCoachmark.title}</h3>
+            <p className={`${isMobile ? 'text-xs leading-tight mb-2' : 'text-base leading-relaxed mb-6'} text-slate-300`}>{currentCoachmark.description}</p>
 
             {/* Navigation buttons */}
             <div className="flex items-center gap-1.5 md:gap-3">

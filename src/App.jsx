@@ -24,6 +24,8 @@ import UserManagement from './pages/UserManagement';
 import Rebalancing from './pages/Rebalancing';
 import Profile from './pages/Profile';
 import NotFound from './pages/NotFound';
+import TermsOfService from './pages/legal/TermsOfService';
+import PrivacyPolicy from './pages/legal/PrivacyPolicy';
 import OnboardingWizard from './components/OnboardingWizard';
 import CoachmarkTour from './components/CoachmarkTour';
 import { DEFAULT_SYSTEM_DATA } from './constants/defaults';
@@ -499,6 +501,14 @@ const AppWithDemo = ({
                   />
                 </ErrorBoundary>
               } 
+            />
+            <Route 
+              path="/legal/terms" 
+              element={<TermsOfService />} 
+            />
+            <Route 
+              path="/legal/privacy" 
+              element={<PrivacyPolicy />} 
             />
             <Route path="*" element={<NotFound />} />
           </Routes>

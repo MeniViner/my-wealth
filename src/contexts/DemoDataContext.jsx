@@ -225,16 +225,10 @@ export const DemoDataProvider = ({ children }) => {
 
   // Save to localStorage whenever demo data changes
   useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DemoDataContext.jsx:183',message:'localStorage save effect triggered',data:{isActive,demoAssetsLength:demoAssets.length,hasSystemData:!!demoSystemData,hasContext:!!demoPortfolioContext},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
     if (isActive) {
       localStorage.setItem(DEMO_MODE_KEY, 'true');
       if (demoAssets.length > 0) {
         localStorage.setItem(DEMO_ASSETS_KEY, JSON.stringify(demoAssets));
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DemoDataContext.jsx:187',message:'localStorage assets saved',data:{assetsCount:demoAssets.length,firstAssetId:demoAssets[0]?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
-        // #endregion
       }
       if (demoSystemData) {
         localStorage.setItem(DEMO_SYSTEM_DATA_KEY, JSON.stringify(demoSystemData));
@@ -252,19 +246,11 @@ export const DemoDataProvider = ({ children }) => {
     if (!isActive || demoAssets.length === 0) return;
 
     const interval = setInterval(() => {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DemoDataContext.jsx:210',message:'animation interval triggered',data:{baseValuesCount:Object.keys(baseValuesRef.current).length,demoAssetsCount:demoAssets.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-      // #endregion
       setDemoAssets(prev => {
         const currencyRate = 3.65;
         const currentBaseValues = baseValuesRef.current;
         const updated = prev.map(asset => {
           const baseValue = currentBaseValues[asset.id] || 0;
-          // #region agent log
-          if (asset.id === prev[0]?.id) {
-            fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DemoDataContext.jsx:217',message:'animation calculating for asset',data:{assetId:asset.id,baseValue,currentValue:asset.value,baseValueExists:!!currentBaseValues[asset.id]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'F'})}).catch(()=>{});
-          }
-          // #endregion
           // Random variation between -2% and +2% for more noticeable changes
           const variation = (Math.random() - 0.5) * 0.04; // -2% to +2%
           const newValue = baseValue * (1 + variation);
@@ -331,13 +317,7 @@ export const DemoDataProvider = ({ children }) => {
 
   // Add demo asset (only to localStorage, never to Firebase)
   const addDemoAsset = useCallback((assetData) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DemoDataContext.jsx:273',message:'addDemoAsset called',data:{isActive,assetDataName:assetData.name,assetDataCurrency:assetData.currency,assetDataOriginalValue:assetData.originalValue},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     if (!isActive) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DemoDataContext.jsx:275',message:'addDemoAsset early return - not active',data:{isActive},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       return;
     }
     
@@ -353,9 +333,6 @@ export const DemoDataProvider = ({ children }) => {
     
     setDemoAssets(prev => {
       const updated = [...prev, newAsset];
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DemoDataContext.jsx:312',message:'addDemoAsset inside setDemoAssets',data:{newId,newAssetValue:newAsset.value,prevCount:prev.length,updatedCount:updated.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
       // Update base values
       setBaseValues(prevValues => {
         const newBaseValues = {
@@ -363,30 +340,18 @@ export const DemoDataProvider = ({ children }) => {
           [newId]: newAsset.value
         };
         baseValuesRef.current = newBaseValues;
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DemoDataContext.jsx:318',message:'addDemoAsset setBaseValues',data:{newId,newAssetValue:newAsset.value,baseValueSet:newBaseValues[newId]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         return newBaseValues;
       });
       // Update portfolio context
       const newContext = generatePortfolioContext(updated);
       setDemoPortfolioContext(newContext);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DemoDataContext.jsx:329',message:'addDemoAsset portfolio context updated',data:{newContextLength:newContext.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
       return updated;
     });
   }, [isActive]);
 
   // Update demo asset (only in localStorage, never in Firebase)
   const updateDemoAsset = useCallback((assetId, assetData) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DemoDataContext.jsx:301',message:'updateDemoAsset called',data:{isActive,assetId,assetDataName:assetData.name,assetDataOriginalValue:assetData.originalValue},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     if (!isActive) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DemoDataContext.jsx:303',message:'updateDemoAsset early return - not active',data:{isActive},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       return;
     }
     
@@ -400,10 +365,6 @@ export const DemoDataProvider = ({ children }) => {
     };
     
     setDemoAssets(prev => {
-      const assetExists = prev.find(a => a.id === assetId);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DemoDataContext.jsx:365',message:'updateDemoAsset inside setDemoAssets',data:{assetId,updatedAssetValue:updatedAsset.value,assetExists:!!assetExists,oldValue:assetExists?.value},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-      // #endregion
       const updated = prev.map(asset => 
         asset.id === assetId ? updatedAsset : asset
       );
@@ -414,9 +375,6 @@ export const DemoDataProvider = ({ children }) => {
           [assetId]: updatedAsset.value
         };
         baseValuesRef.current = newBaseValues;
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DemoDataContext.jsx:372',message:'updateDemoAsset setBaseValues',data:{assetId,updatedAssetValue:updatedAsset.value,baseValueSet:newBaseValues[assetId],oldBaseValue:prevValues[assetId]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
         return newBaseValues;
       });
       // Update portfolio context
@@ -428,31 +386,17 @@ export const DemoDataProvider = ({ children }) => {
 
   // Delete demo asset (only from localStorage, never from Firebase)
   const deleteDemoAsset = useCallback((assetId) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DemoDataContext.jsx:330',message:'deleteDemoAsset called',data:{isActive,assetId,currentBaseValue:baseValues[assetId]},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
     if (!isActive) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DemoDataContext.jsx:332',message:'deleteDemoAsset early return - not active',data:{isActive},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
       return;
     }
     
     setDemoAssets(prev => {
-      const assetExists = prev.find(a => a.id === assetId);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DemoDataContext.jsx:393',message:'deleteDemoAsset inside setDemoAssets',data:{assetId,assetExists:!!assetExists,prevCount:prev.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
       const updated = prev.filter(asset => asset.id !== assetId);
       // Update base values
       setBaseValues(prevValues => {
         const newValues = { ...prevValues };
-        const hadBaseValue = assetId in prevValues;
         delete newValues[assetId];
         baseValuesRef.current = newValues;
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/9e3f52cf-4e90-43db-844e-250150499d52',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DemoDataContext.jsx:400',message:'deleteDemoAsset setBaseValues',data:{assetId,wasDeleted:!(assetId in newValues),hadBaseValue,oldBaseValue:prevValues[assetId],updatedCount:updated.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
         return newValues;
       });
       // Update portfolio context

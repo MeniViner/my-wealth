@@ -13,7 +13,8 @@ import {
   Landmark,
   CreditCard,
   Check,
-  ArrowRight
+  ArrowRight,
+  FileText
 } from 'lucide-react';
 
 // Confetti animation component
@@ -142,8 +143,9 @@ const OnboardingWizard = ({
   const [assetName, setAssetName] = useState('');
   const [showConfetti, setShowConfetti] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
+  const [legalConsent, setLegalConsent] = useState(false);
 
-  const totalSteps = 6; // 3 value props + currency + first asset + completion
+  const totalSteps = 7; // 3 value props + currency + first asset + legal consent + completion
 
   const handleNext = () => {
     if (currentStep < totalSteps - 1) {
@@ -160,7 +162,7 @@ const OnboardingWizard = ({
   };
 
   const handleComplete = async () => {
-    if (isCompleting) return;
+    if (isCompleting || !legalConsent) return;
     setIsCompleting(true);
     
     // Show confetti
@@ -638,6 +640,107 @@ const OnboardingWizard = ({
     );
   };
 
+  // Render Legal Consent step
+  const renderLegalConsentStep = () => {
+    return (
+      <div className="h-[100svh] md:h-screen flex flex-col bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950">
+        <div className="flex-1 flex flex-col items-center justify-center px-8 py-12 overflow-y-auto">
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ type: 'spring', duration: 0.6 }}
+            className="w-20 h-20 bg-gradient-to-br from-blue-400 to-blue-600 rounded-2xl flex items-center justify-center mb-8 shadow-xl"
+          >
+            <FileText className="w-10 h-10 text-white" />
+          </motion.div>
+
+          <motion.h1
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="text-2xl md:text-3xl font-bold text-white text-center mb-3"
+          >
+            תנאי שימוש ופרטיות
+          </motion.h1>
+
+          <motion.p
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="text-slate-400 text-center mb-8 max-w-md"
+          >
+            לפני שמתחילים, יש לאשר שקראת והסכמת לתנאי השימוש ומדיניות הפרטיות שלנו.
+          </motion.p>
+
+          {/* Consent Checkbox */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="bg-slate-800/50 rounded-2xl p-6 w-full max-w-md border border-slate-700"
+          >
+            <label className="flex items-start gap-3 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={legalConsent}
+                onChange={(e) => setLegalConsent(e.target.checked)}
+                className="mt-1 w-5 h-5 rounded border-2 border-slate-600 bg-slate-800 text-emerald-500 focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 focus:ring-offset-slate-900 cursor-pointer"
+              />
+              <span className="flex-1 text-slate-300 text-sm leading-relaxed group-hover:text-white transition-colors">
+                קראתי ואני מסכים ל
+                <a
+                  href="/legal/terms"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-emerald-400 hover:text-emerald-300 underline mx-1"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  תנאי השימוש
+                </a>
+                ול
+                <a
+                  href="/legal/privacy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-emerald-400 hover:text-emerald-300 underline mr-1"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  מדיניות הפרטיות
+                </a>
+                .
+              </span>
+            </label>
+          </motion.div>
+        </div>
+
+        {/* Navigation - Sticky Footer */}
+        <div className="px-8 pt-4 pb-safe flex-shrink-0" style={{ paddingBottom: 'max(2rem, env(safe-area-inset-bottom))' }}>
+          <ProgressDots currentStep={currentStep} totalSteps={totalSteps} />
+          
+          <motion.button
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+            onClick={handleNext}
+            disabled={!legalConsent}
+            className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-700 disabled:cursor-not-allowed text-white text-lg font-bold rounded-2xl shadow-lg shadow-emerald-500/30 transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            סיום והתחלה
+            <ArrowRight className="w-5 h-5 rotate-180" />
+          </motion.button>
+
+          <button
+            onClick={handleBack}
+            className="w-full py-3 text-slate-400 hover:text-white transition-colors mt-3 flex items-center justify-center gap-2"
+          >
+            <ChevronRight className="w-4 h-4" />
+            חזור
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   // Render current step
   const renderStep = () => {
     if (currentStep < 3) {
@@ -646,6 +749,8 @@ const OnboardingWizard = ({
       return renderCurrencyStep();
     } else if (currentStep === 4) {
       return renderFirstAssetStep();
+    } else if (currentStep === 5) {
+      return renderLegalConsentStep();
     } else {
       return renderCompletionStep();
     }

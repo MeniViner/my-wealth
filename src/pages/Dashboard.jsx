@@ -591,7 +591,7 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-10" dir="rtl">
 
-      <header className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mr-12 md:mr-0">
+      <header className="mb-6 flex flex md:flex-row justify-between items-start md:items-end gap-4 mr-12 md:mr-0">
         <div>
           <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">דשבורד ראשי</h2>
         </div>
