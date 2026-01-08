@@ -208,6 +208,9 @@ export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ) {
+  // Ensure JSON content-type for all responses
+  res.setHeader('Content-Type', 'application/json');
+  
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -251,9 +254,11 @@ export default async function handler(
     return res.status(200).json(result);
   } catch (error: any) {
     console.error('History API error:', error);
+    const requestId = req.headers['x-vercel-id'] || req.headers['x-request-id'] || 'unknown';
     return res.status(500).json({
       error: 'Internal server error',
-      message: error.message,
+      details: error?.message || 'Unknown error',
+      requestId: String(requestId),
     });
   }
 }
