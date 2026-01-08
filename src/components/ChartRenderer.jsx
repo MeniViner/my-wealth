@@ -654,7 +654,9 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
         <ResponsiveWrapper chartType="AreaChart">
           <AreaChart 
             data={chartData} 
-            margin={{ top: 10, right: 50, left: -50, bottom: -30 }}
+            // margin={{ top: 10, right: 50, left: -50, bottom: -30 }}
+            margin={isMobile ? { top: 10, right: 0, left: -45, bottom: -25 } : { top: 10, right: 0, left: -35, bottom: 5 }}
+
           >
             <defs>
               <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
@@ -679,7 +681,6 @@ const ChartRenderer = ({ config, chartData, systemData, totalValue }) => {
               dataKey="name" 
               {...rtlAxisPropsWithDarkMode}
               tickFormatter={ formatAxisTick }
-              angle={isMobile ? -35 : 0}
               textAnchor="end"
               height={55}
               dy={5}

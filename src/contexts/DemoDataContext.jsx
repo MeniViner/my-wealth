@@ -179,7 +179,7 @@ export const DemoDataProvider = ({ children }) => {
 
   // Update refresh interval
   const updateRefreshInterval = useCallback((seconds) => {
-    const clampedValue = Math.max(5, Math.min(60, seconds)); // Between 5 and 60 seconds
+    const clampedValue = Math.max(3, Math.min(60, seconds)); // Between 3 and 60 seconds
     setRefreshInterval(clampedValue);
     localStorage.setItem(DEMO_REFRESH_INTERVAL_KEY, clampedValue.toString());
   }, []);

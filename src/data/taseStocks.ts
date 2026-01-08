@@ -798,9 +798,39 @@ export interface TASEStock {
     {
       nameHe: "אורמת",
       nameEn: "Ormat Technologies",
-      symbol: "ORA.TA",
-      securityId: "1110944",
+      symbol: "ORMT.TA",
+      securityId: "1118654",
       sector: "Energy"
+    },
+  
+    // ========== קרנות חוץ / מדדים (Foreign ETFs / Indices) ==========
+    {
+      nameHe: "אינווסקו נאסד\"ק 100",
+      nameEn: "Invesco Nasdaq-100 (ILS)",
+      symbol: "1186063.TA",
+      securityId: "1186063",
+      sector: "Indices"
+    },
+    {
+      nameHe: "אינווסקו S&P 500",
+      nameEn: "Invesco S&P 500 (ILS)",
+      symbol: "1183441.TA",
+      securityId: "1183441",
+      sector: "Indices"
+    },
+    {
+      nameHe: "איי-שארס S&P 500",
+      nameEn: "iShares S&P 500 (ILS)",
+      symbol: "1159250.TA",
+      securityId: "1159250",
+      sector: "Indices"
+    },
+    {
+      nameHe: "איי-שארס MSCI World",
+      nameEn: "iShares MSCI World (ILS)",
+      symbol: "1185164.TA",
+      securityId: "1185164",
+      sector: "Indices"
     },
     {
       nameHe: "קסטרו",

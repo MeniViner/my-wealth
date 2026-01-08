@@ -1,8 +1,9 @@
 /**
  * Service for fetching currency exchange rates
+ * Now uses backend API (Vercel Functions) to avoid CORS issues
  */
 
-const EXCHANGE_RATE_API_URL = 'https://api.exchangerate-api.com/v4/latest/USD';
+import { getFx } from './backendApi';
 
 /**
  * Fetches the current USD to ILS exchange rate
@@ -10,14 +11,14 @@ const EXCHANGE_RATE_API_URL = 'https://api.exchangerate-api.com/v4/latest/USD';
  */
 export const fetchExchangeRate = async () => {
   try {
-    const res = await fetch(EXCHANGE_RATE_API_URL);
-    if (!res.ok) {
-      throw new Error(`Exchange rate API error: ${res.status}`);
+    const fxData = await getFx('USD', 'ILS');
+    if (!fxData || !fxData.rate) {
+      return null;
     }
-    const data = await res.json();
+    
     return { 
-      rate: data.rates.ILS, 
-      date: data.date || new Date().toISOString().split('T')[0]
+      rate: fxData.rate, 
+      date: new Date(fxData.timestamp).toISOString().split('T')[0]
     };
   } catch (error) {
     console.error("Failed to fetch exchange rates", error);

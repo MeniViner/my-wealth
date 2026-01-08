@@ -46,9 +46,9 @@ const CustomTooltip = ({ active, payload, label, totalValue, showPercentage = fa
   if (!name || name === 'value' || name === 'size') {
     name = data.name && data.name !== 'value' && data.name !== 'size' ? data.name : '';
   }
-  // Final fallback
-  if (!name) {
-    name = data.dataKey || '';
+  // Final fallback - use Hebrew default instead of "value"
+  if (!name || name === 'value' || name === 'size') {
+    name = 'שווי';
   }
   
   // Try multiple ways to get the color

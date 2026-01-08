@@ -152,13 +152,17 @@ const NoDataMessage = () => (
 );
 
 const Dashboard = ({ assets, systemData, currencyRate }) => {
-  const { demoAssets, isActive: isDemoActive, demoSystemData, clearDemoAssets } = useDemoData();
+  const { demoAssets, isActive: isDemoActive, demoSystemData, clearDemoAssets, refreshInterval } = useDemoData();
 
   // Use demo assets if tour is active, otherwise use real assets
-  const displayAssets = isDemoActive && demoAssets.length > 0 ? demoAssets : assets;
+  const displayAssets = useMemo(() => {
+    return isDemoActive && demoAssets.length > 0 ? demoAssets : assets;
+  }, [isDemoActive, demoAssets, assets]);
 
   // Use demo systemData if available, otherwise use real systemData
-  const displaySystemData = isDemoActive && demoSystemData ? demoSystemData : systemData;
+  const displaySystemData = useMemo(() => {
+    return isDemoActive && demoSystemData ? demoSystemData : systemData;
+  }, [isDemoActive, demoSystemData, systemData]);
 
   // Check if dark mode is active
   const isDarkMode = typeof window !== 'undefined' && document.documentElement.classList.contains('dark');
@@ -461,19 +465,48 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
         );
 
         if (trackableAssets.length === 0) {
-          // If no trackable assets, create a simple flat line with current value
+          // If no trackable assets, create history data
           const currentValue = totalWealth;
           const dataPoints = [];
           const now = new Date();
 
-          for (let i = days; i >= 0; i--) {
-            const date = new Date(now);
-            date.setDate(date.getDate() - i);
-            dataPoints.push({
-              date: date.toISOString().split('T')[0],
-              value: currentValue,
-              timestamp: date.getTime()
-            });
+          // In demo mode, create animated history with variations
+          if (isDemoActive) {
+            // Create demo history with realistic variations
+            let baseValue = currentValue * 0.85; // Start from 85% of current value
+            const variationRange = currentValue * 0.15; // 15% variation range
+            
+            for (let i = days; i >= 0; i--) {
+              const date = new Date(now);
+              date.setDate(date.getDate() - i);
+              
+              // Create smooth variation using sine wave with some randomness
+              const progress = (days - i) / days; // 0 to 1
+              const sineWave = Math.sin(progress * Math.PI * 4); // Multiple cycles
+              const randomFactor = (Math.random() - 0.5) * 0.3; // Small random variation
+              const variation = sineWave * 0.5 + randomFactor;
+              
+              // Gradually increase towards current value with variations
+              const trend = baseValue + (currentValue - baseValue) * progress;
+              const value = trend + variation * variationRange * 0.3;
+              
+              dataPoints.push({
+                date: date.toISOString().split('T')[0],
+                value: Math.max(value, currentValue * 0.7), // Don't go below 70% of current
+                timestamp: date.getTime()
+              });
+            }
+          } else {
+            // In real mode, create a simple flat line with current value
+            for (let i = days; i >= 0; i--) {
+              const date = new Date(now);
+              date.setDate(date.getDate() - i);
+              dataPoints.push({
+                date: date.toISOString().split('T')[0],
+                value: currentValue,
+                timestamp: date.getTime()
+              });
+            }
           }
 
           setPortfolioHistory(dataPoints);
@@ -515,19 +548,48 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
         const validHistories = assetHistories.filter(h => h !== null && h.length > 0);
 
         if (validHistories.length === 0) {
-          // Fallback: create flat line
+          // Fallback: create history data
           const currentValue = totalWealth;
           const dataPoints = [];
           const now = new Date();
 
-          for (let i = days; i >= 0; i--) {
-            const date = new Date(now);
-            date.setDate(date.getDate() - i);
-            dataPoints.push({
-              date: date.toISOString().split('T')[0],
-              value: currentValue,
-              timestamp: date.getTime()
-            });
+          // In demo mode, create animated history with variations
+          if (isDemoActive) {
+            // Create demo history with realistic variations
+            let baseValue = currentValue * 0.85; // Start from 85% of current value
+            const variationRange = currentValue * 0.15; // 15% variation range
+            
+            for (let i = days; i >= 0; i--) {
+              const date = new Date(now);
+              date.setDate(date.getDate() - i);
+              
+              // Create smooth variation using sine wave with some randomness
+              const progress = (days - i) / days; // 0 to 1
+              const sineWave = Math.sin(progress * Math.PI * 4); // Multiple cycles
+              const randomFactor = (Math.random() - 0.5) * 0.3; // Small random variation
+              const variation = sineWave * 0.5 + randomFactor;
+              
+              // Gradually increase towards current value with variations
+              const trend = baseValue + (currentValue - baseValue) * progress;
+              const value = trend + variation * variationRange * 0.3;
+              
+              dataPoints.push({
+                date: date.toISOString().split('T')[0],
+                value: Math.max(value, currentValue * 0.7), // Don't go below 70% of current
+                timestamp: date.getTime()
+              });
+            }
+          } else {
+            // In real mode, create a simple flat line with current value
+            for (let i = days; i >= 0; i--) {
+              const date = new Date(now);
+              date.setDate(date.getDate() - i);
+              dataPoints.push({
+                date: date.toISOString().split('T')[0],
+                value: currentValue,
+                timestamp: date.getTime()
+              });
+            }
           }
 
           setPortfolioHistory(dataPoints);
@@ -582,7 +644,46 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
     };
 
     calculatePortfolioHistory();
-  }, [displayAssets, timeRange, currencyRate, totalWealth, hasData]);
+  }, [displayAssets, timeRange, currencyRate, totalWealth, hasData, isDemoActive]);
+
+  // Update history in real-time for demo mode
+  useEffect(() => {
+    if (!isDemoActive || !hasData || portfolioHistory.length === 0) return;
+
+    const interval = setInterval(() => {
+      setPortfolioHistory(prev => {
+        if (prev.length === 0) return prev;
+
+        // Update the last point with current totalWealth
+        const updated = [...prev];
+        const lastIndex = updated.length - 1;
+        
+        // Update last point to current value
+        updated[lastIndex] = {
+          ...updated[lastIndex],
+          value: totalWealth,
+          timestamp: new Date().getTime()
+        };
+
+        // Also update recent points slightly to create smooth animation
+        const recentPoints = Math.min(10, updated.length);
+        for (let i = Math.max(0, lastIndex - recentPoints); i < lastIndex; i++) {
+          const progress = (i - (lastIndex - recentPoints)) / recentPoints;
+          const oldValue = updated[i].value;
+          const targetValue = totalWealth;
+          // Smooth transition towards current value
+          updated[i] = {
+            ...updated[i],
+            value: oldValue + (targetValue - oldValue) * 0.15 * (1 - progress) // More aggressive update
+          };
+        }
+
+        return updated;
+      });
+    }, refreshInterval * 1000); // Use refreshInterval from DemoDataContext (convert seconds to milliseconds)
+
+    return () => clearInterval(interval);
+  }, [isDemoActive, hasData, totalWealth, portfolioHistory.length, refreshInterval]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-10" dir="rtl">

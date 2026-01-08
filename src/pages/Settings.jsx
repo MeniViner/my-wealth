@@ -8,7 +8,7 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
   const [activeSection, setActiveSection] = useState('appearance');
   const [isRefreshingCurrency, setIsRefreshingCurrency] = useState(false);
   const { isDarkMode, toggleDarkMode } = useDarkMode();
-  const { isActive: isDemoActive, refreshInterval, updateRefreshInterval } = useDemoData();
+  const { isActive: isDemoActive, refreshInterval, updateRefreshInterval, toggleDemoMode } = useDemoData();
 
   // Read hash from URL to set active section
   useEffect(() => {
@@ -126,18 +126,16 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
         >
           מראה
         </button>
-        {isDemoActive && (
-          <button
-            onClick={() => setActiveSection('demo')}
-            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
-              activeSection === 'demo'
-                ? 'border-amber-600 dark:border-amber-400 text-amber-600 dark:text-amber-400'
-                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
-            }`}
-          >
-            מצב דמו
-          </button>
-        )}
+        <button
+          onClick={() => setActiveSection('demo')}
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
+            activeSection === 'demo'
+              ? 'border-amber-600 dark:border-amber-400 text-amber-600 dark:text-amber-400'
+              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+          }`}
+        >
+          מצב דמו
+        </button>
         <button
           onClick={() => setActiveSection('onboarding')}
           className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
@@ -195,7 +193,7 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
       )}
 
       {/* Demo Mode Section */}
-      {activeSection === 'demo' && isDemoActive && (
+      {activeSection === 'demo' && (
         <div className="space-y-4">
           <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
             <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50">
@@ -205,8 +203,58 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
               </div>
             </div>
             <div className="p-6 space-y-6">
-              {/* Refresh Interval Control */}
-              <div className="space-y-4">
+              {/* Toggle Demo Mode */}
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 p-4 md:p-5 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 dark:from-slate-700/50 dark:to-slate-800/50 border border-amber-200 dark:border-amber-800">
+                <div className="flex items-center gap-3 md:gap-4 flex-1">
+                  <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0 ${
+                    isDemoActive 
+                      ? 'bg-gradient-to-br from-amber-400 to-amber-600 shadow-amber-500/20' 
+                      : 'bg-gradient-to-br from-slate-400 to-slate-600 shadow-slate-500/20'
+                  }`}>
+                    <TestTube size={20} className="md:w-6 md:h-6 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-base font-semibold text-slate-800 dark:text-white mb-1">
+                      מצב דמו
+                    </h4>
+                    <p className="text-sm text-slate-600 dark:text-slate-300">
+                      {isDemoActive 
+                        ? 'מצב דמו פעיל - נתוני דמו מוצגים במקום הנתונים האמיתיים'
+                        : 'הפעל מצב דמו כדי לראות נתוני דמו במקום הנתונים האמיתיים'
+                      }
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-end md:justify-start md:flex-shrink-0">
+                  <button
+                    onClick={async () => {
+                      toggleDemoMode();
+                      await successToast(
+                        isDemoActive
+                          ? 'מצב דמו כובה'
+                          : 'מצב דמו הופעל - נתוני דמו מוצגים',
+                        2000
+                      );
+                    }}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 ${
+                      isDemoActive ? 'bg-amber-600' : 'bg-slate-300'
+                    }`}
+                    role="switch"
+                    aria-checked={isDemoActive}
+                    aria-label="מצב דמו"
+                  >
+                    <span
+                      className={`absolute h-4 w-4 rounded-full bg-white transition-all ${
+                        isDemoActive ? 'left-1' : 'right-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {/* Refresh Interval Control - Only show when demo is active */}
+              {isDemoActive && (
+                <div className="space-y-4">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
                     <Clock size={20} className="text-amber-600 dark:text-amber-400" />
@@ -228,12 +276,12 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
                     </label>
                     <input
                       type="number"
-                      min="5"
+                      min="3"
                       max="60"
                       value={refreshInterval}
                       onChange={(e) => {
                         const value = parseInt(e.target.value, 10);
-                        if (!isNaN(value) && value >= 5 && value <= 60) {
+                        if (!isNaN(value) && value >= 3 && value <= 60) {
                           updateRefreshInterval(value);
                         }
                       }}
@@ -247,7 +295,7 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
                   <div className="mt-4">
                     <input
                       type="range"
-                      min="5"
+                      min="3"
                       max="60"
                       step="1"
                       value={refreshInterval}
@@ -255,7 +303,7 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
                       className="w-full h-2 bg-slate-200 dark:bg-slate-600 rounded-lg appearance-none cursor-pointer accent-amber-500"
                     />
                     <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400 mt-2">
-                      <span>5 שניות</span>
+                      <span>3 שניות</span>
                       <span>60 שניות (דקה)</span>
                     </div>
                   </div>
@@ -266,7 +314,8 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
                     </p>
                   </div>
                 </div>
-              </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -276,96 +325,100 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
       {activeSection === 'onboarding' && (
         <div className="space-y-4">
           <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
-            <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50">
+            <div className="px-4 md:px-5 py-3 border-b border-slate-200 dark:border-slate-700">
               <div className="flex items-center gap-2.5">
                 <GraduationCap size={18} className="text-emerald-600 dark:text-emerald-400" />
                 <h3 className="text-base font-semibold text-slate-700 dark:text-slate-100">הדרכה והכרת המערכת</h3>
               </div>
             </div>
-            <div className="p-6 space-y-6">
+            <div className="p-4 md:p-6 space-y-4">
               {/* Reset Onboarding */}
-              <div className="flex items-center justify-between p-5 rounded-xl bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-700/50 dark:to-slate-800/50 border border-slate-200 dark:border-slate-600">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-                    <Rocket size={24} className="text-white" />
+              <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+                <div className="p-4 md:p-5 bg-slate-50 dark:bg-slate-900/50">
+                  <div className="flex items-start gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0">
+                      <Rocket size={20} className="text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-base font-semibold text-slate-800 dark:text-white mb-1">
+                        הפעל תהליך Onboarding מחדש
+                      </h4>
+                      <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                        תהליך ההתחלה המלא - בחירת מטבע, הוספת נכס ראשון, והכרת המערכת
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="text-base font-semibold text-slate-800 dark:text-white mb-1">
-                      הפעל תהליך Onboarding מחדש
-                    </h4>
-                    <p className="text-sm text-slate-600 dark:text-slate-300">
-                      תהליך ההתחלה המלא - בחירת מטבע, הוספת נכס ראשון, והכרת המערכת
-                    </p>
-                  </div>
+                  <button
+                    onClick={async () => {
+                      const confirmed = await confirmAlert(
+                        'איפוס תהליך ההתחלה',
+                        'האם אתה בטוח שברצונך להפעיל מחדש את תהליך ההתחלה? זה יסתיר את כל הדפים ויציג את תהליך ההתחלה המלא.',
+                        'question'
+                      );
+                      if (confirmed && onResetOnboarding) {
+                        await onResetOnboarding();
+                        await successToast('תהליך ההתחלה יופעל מחדש', 2000);
+                        // Reload page to show onboarding
+                        setTimeout(() => {
+                          window.location.reload();
+                        }, 500);
+                      }
+                    }}
+                    className="w-full md:w-auto px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Rocket size={16} />
+                    הפעל מחדש
+                  </button>
                 </div>
-                <button
-                  onClick={async () => {
-                    const confirmed = await confirmAlert(
-                      'איפוס תהליך ההתחלה',
-                      'האם אתה בטוח שברצונך להפעיל מחדש את תהליך ההתחלה? זה יסתיר את כל הדפים ויציג את תהליך ההתחלה המלא.',
-                      'question'
-                    );
-                    if (confirmed && onResetOnboarding) {
-                      await onResetOnboarding();
-                      await successToast('תהליך ההתחלה יופעל מחדש', 2000);
-                      // Reload page to show onboarding
-                      setTimeout(() => {
-                        window.location.reload();
-                      }, 500);
-                    }
-                  }}
-                  className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white rounded-xl font-medium transition-all shadow-lg shadow-emerald-500/30 hover:shadow-xl hover:shadow-emerald-500/40 flex items-center gap-2"
-                >
-                  <Rocket size={18} />
-                  הפעל מחדש
-                </button>
               </div>
 
               {/* Start Coachmarks Tour */}
-              <div className="flex items-center justify-between p-5 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-700/50 dark:to-slate-800/50 border border-slate-200 dark:border-slate-600">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-400 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
-                    <GraduationCap size={24} className="text-white" />
+              <div className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+                <div className="p-4 md:p-5 bg-slate-50 dark:bg-slate-900/50">
+                  <div className="flex items-start gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
+                      <GraduationCap size={20} className="text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-base font-semibold text-slate-800 dark:text-white mb-1">
+                        הפעל מדריך מערכת
+                      </h4>
+                      <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                        מדריך מודרך בין כל הדפים והפיצ'רים של המערכת - ללא איפוס נתונים
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="text-base font-semibold text-slate-800 dark:text-white mb-1">
-                      הפעל מדריך מערכת
-                    </h4>
-                    <p className="text-sm text-slate-600 dark:text-slate-300">
-                      מדריך מודרך בין כל הדפים והפיצ'רים של המערכת - ללא איפוס נתונים
-                    </p>
-                  </div>
+                  <button
+                    onClick={async () => {
+                      if (onStartCoachmarks) {
+                        onStartCoachmarks();
+                        await successToast('המדריך הופעל', 1500);
+                      }
+                    }}
+                    className="w-full md:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+                  >
+                    <GraduationCap size={16} />
+                    התחל מדריך
+                  </button>
                 </div>
-                <button
-                  onClick={async () => {
-                    if (onStartCoachmarks) {
-                      onStartCoachmarks();
-                      await successToast('המדריך הופעל', 1500);
-                    }
-                  }}
-                  className="px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-400 hover:to-indigo-500 text-white rounded-xl font-medium transition-all shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 flex items-center gap-2"
-                >
-                  <GraduationCap size={18} />
-                  התחל מדריך
-                </button>
               </div>
 
               {/* Info Box */}
-              <div className="mt-6 p-4 rounded-xl bg-slate-50 dark:bg-slate-700/30 border border-slate-200 dark:border-slate-600">
+              <div className="p-4 rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700">
                 <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <span className="text-emerald-600 dark:text-emerald-400 text-sm font-bold">ℹ</span>
+                  <div className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span className="text-slate-600 dark:text-slate-400 text-xs font-medium">ℹ</span>
                   </div>
-                  <div className="text-sm text-slate-600 dark:text-slate-300 space-y-2">
-                    <p className="font-medium text-slate-700 dark:text-slate-200">מה ההבדל?</p>
-                    <ul className="list-disc list-inside space-y-1 pr-4">
-                      <li>
-                        <strong>תהליך Onboarding מחדש:</strong> מפעיל את כל תהליך ההתחלה מההתחלה - בחירת מטבע, הוספת נכס ראשון, וכו'. מתאים למשתמשים חדשים או למי שרוצה להתחיל מחדש.
-                      </li>
-                      <li>
-                        <strong>מדריך מערכת:</strong> מדריך מודרך בין כל הדפים והפיצ'רים של המערכת. לא משנה נתונים, רק מסביר איך להשתמש במערכת.
-                      </li>
-                    </ul>
+                  <div className="text-sm text-slate-600 dark:text-slate-400 space-y-2 flex-1">
+                    <p className="font-medium text-slate-700 dark:text-slate-300">מה ההבדל?</p>
+                    <div className="space-y-2 pr-2">
+                      <div>
+                        <strong className="text-slate-700 dark:text-slate-200">תהליך Onboarding מחדש:</strong> מפעיל את כל תהליך ההתחלה מההתחלה - בחירת מטבע, הוספת נכס ראשון, וכו'. מתאים למשתמשים חדשים או למי שרוצה להתחיל מחדש.
+                      </div>
+                      <div>
+                        <strong className="text-slate-700 dark:text-slate-200">מדריך מערכת:</strong> מדריך מודרך בין כל הדפים והפיצ'רים של המערכת. לא משנה נתונים, רק מסביר איך להשתמש במערכת.
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
