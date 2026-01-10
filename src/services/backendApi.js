@@ -9,6 +9,36 @@ import { getCache, setCache, getCacheKey, getTTL } from '../utils/indexedDbCache
 const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 /**
+ * Normalize response to array
+ * Handles both single object and array responses from backend
+ * @param {any} x - Response data (can be array, object, null, undefined)
+ * @returns {Array} Always returns an array
+ */
+function normalizeToArray(x) {
+  if (Array.isArray(x)) {
+    return x;
+  }
+  if (x === null || x === undefined) {
+    return [];
+  }
+  if (typeof x === 'object') {
+    // Handle nested data structures (e.g., { data: [...] } or { quotes: [...] })
+    if (Array.isArray(x.data)) {
+      return x.data;
+    }
+    if (Array.isArray(x.quotes)) {
+      return x.quotes;
+    }
+    if (Array.isArray(x.results)) {
+      return x.results;
+    }
+    // Single object - wrap in array
+    return [x];
+  }
+  return [];
+}
+
+/**
  * Fetch with cache-first strategy
  */
 async function fetchWithCache(url, options = {}, cacheKey, cacheType) {
@@ -146,6 +176,13 @@ export async function getQuotes(ids) {
         const useGet = getUrl.length < 2000;
         
         const url = useGet ? getUrl : `${API_BASE}/quote`;
+        
+        // Debug: Log POST payload in development
+        const DEBUG_PRICES = import.meta.env.DEV;
+        if (DEBUG_PRICES && !useGet) {
+          console.log('[BACKEND API DEBUG] POST /api/quote payload:', { ids: uncachedIds });
+        }
+        
         const response = await fetch(url, {
           method: useGet ? 'GET' : 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -155,37 +192,47 @@ export async function getQuotes(ids) {
         if (response.ok) {
           const data = await response.json();
           
-          // Ensure data is an array
-          if (!Array.isArray(data)) {
-            console.warn('Quote API returned non-array response:', data);
-            // If it's a single object, wrap it in array; otherwise use empty array
-            const quotes = data ? [data] : [];
-            
-            // Cache each result
-            for (const quote of quotes) {
-              if (quote && quote.id) {
-                const cacheKey = getCacheKey('quote', quote.id);
-                const ttl = getTTL('quote');
-                await setCache(cacheKey, quote, ttl);
-              }
-            }
-            
-            allResults.push(...quotes);
-          } else {
-            // Cache each result
-            for (const quote of data) {
-              if (quote && quote.id) {
-                const cacheKey = getCacheKey('quote', quote.id);
-                const ttl = getTTL('quote');
-                await setCache(cacheKey, quote, ttl);
-              }
-            }
-            
-            allResults.push(...data);
+          // Normalize to array (handles both single object and array responses)
+          const quotes = normalizeToArray(data);
+          
+          // Debug: Log first few returned quote IDs in development
+          const DEBUG_PRICES = import.meta.env.DEV;
+          if (DEBUG_PRICES && quotes.length > 0) {
+            const quoteIds = quotes.slice(0, 3).map(q => q?.id).filter(Boolean);
+            console.log('[BACKEND API DEBUG] First few returned quote.id values:', quoteIds);
           }
+          
+          // Cache each result (only if valid quote with id)
+          for (const quote of quotes) {
+            if (quote && quote.id) {
+              const cacheKey = getCacheKey('quote', quote.id);
+              const ttl = getTTL('quote');
+              await setCache(cacheKey, quote, ttl);
+            }
+          }
+          
+          allResults.push(...quotes);
+        } else {
+          // Log diagnostic info for failed requests
+          const requestId = response.headers.get('x-vercel-id') || response.headers.get('x-request-id') || 'unknown';
+          const bodyText = await response.text().catch(() => '');
+          const bodyPreview = bodyText.length > 200 ? bodyText.substring(0, 200) : bodyText;
+          
+          console.error('Quote API error:', {
+            url,
+            status: response.status,
+            statusText: response.statusText,
+            requestId,
+            bodyPreview: bodyPreview
+          });
         }
       } catch (error) {
-        console.error('Error fetching quotes:', error);
+        // Log diagnostic info for network errors
+        console.error('Error fetching quotes:', {
+          url,
+          error: error.message,
+          stack: error.stack
+        });
       }
     }
 
@@ -201,7 +248,7 @@ export async function getQuotes(ids) {
  * @param {string} id - Internal asset ID
  * @param {string} range - Time range (1d, 5d, 1mo, 3mo, 6mo, 1y, 5y)
  * @param {string} interval - Data interval (1d, 1h, etc.)
- * @returns {Promise<Object>} History result with points array
+ * @returns {Promise<Object|null>} History result with points array, or null if error/no data
  */
 export async function getHistory(id, range = '1mo', interval = '1d') {
   if (!id) {
@@ -211,28 +258,83 @@ export async function getHistory(id, range = '1mo', interval = '1d') {
   const cacheKey = getCacheKey('history', id, range, interval);
   const url = `${API_BASE}/history?id=${encodeURIComponent(id)}&range=${range}&interval=${interval}`;
   
-  const result = await fetchWithCache(url, {
-    method: 'GET',
-    headers: { 'Content-Type': 'application/json' },
-  }, cacheKey, 'history');
+  try {
+    const result = await fetchWithCache(url, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    }, cacheKey, 'history');
 
-  return result.data || null;
+    const history = result.data;
+    
+    // Handle error responses - return null instead of crashing
+    if (history && (history.error || !Array.isArray(history.points))) {
+      // "History data not found" is a normal case, not an error - use debug level
+      if (history.error === 'History data not found') {
+        console.debug(`History data not found for ${id} (this is normal)`);
+      } else {
+        // Real errors should be logged as warnings
+        console.warn(`History error for ${id}:`, history.error || 'Invalid points array');
+      }
+      return null;
+    }
+
+    return history || null;
+  } catch (error) {
+    console.error('Error fetching history:', {
+      url,
+      id,
+      error: error.message
+    });
+    return null;
+  }
 }
 
 /**
  * Get exchange rate
  * @param {string} base - Base currency (default: USD)
  * @param {string} quote - Quote currency (default: ILS)
- * @returns {Promise<Object>} FX result with rate
+ * @returns {Promise<Object|null>} FX result with rate, or null if error
  */
 export async function getFx(base = 'USD', quote = 'ILS') {
   const cacheKey = getCacheKey('fx', base, quote);
   const url = `${API_BASE}/fx?base=${base}&quote=${quote}`;
   
-  const result = await fetchWithCache(url, {
-    method: 'GET',
-    headers: { 'Content-Type': 'application/json' },
-  }, cacheKey, 'fx');
+  try {
+    const result = await fetchWithCache(url, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    }, cacheKey, 'fx');
 
-  return result.data || null;
+    return result.data || null;
+  } catch (error) {
+    console.error('Error fetching FX:', {
+      url,
+      error: error.message
+    });
+    return null;
+  }
+}
+
+/**
+ * Check API health (lightweight check)
+ * @returns {Promise<boolean>} True if API is reachable
+ */
+export async function checkApiHealth() {
+  try {
+    const response = await fetch(`${API_BASE}/health`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+      // Short timeout for health check
+      signal: AbortSignal.timeout(5000)
+    });
+    
+    if (response.ok) {
+      return true;
+    }
+    return false;
+  } catch (error) {
+    // Network error or timeout
+    console.warn('API health check failed:', error.message);
+    return false;
+  }
 }

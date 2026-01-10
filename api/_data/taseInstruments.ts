@@ -1055,7 +1055,7 @@ export const TASE_INSTRUMENTS: TASEInstrument[] = [
     securityId: "1183441",
     nameHe: "אינווסקו S&P 500",
     nameEn: "Invesco S&P 500 (ILS)",
-    yahooSymbol: "1183441.TA",
+    yahooSymbol: "IN-FF1.TA",
     currency: "ILS",
     type: "etf",
     sector: "Indices"

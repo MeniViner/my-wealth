@@ -13,7 +13,7 @@ export default async function handler(
   try {
     // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     res.setHeader('Content-Type', 'application/json');
 
@@ -21,8 +21,16 @@ export default async function handler(
       return res.status(200).end();
     }
 
-    if (req.method !== 'GET') {
+    const isGet = req.method === 'GET';
+    const isHead = req.method === 'HEAD';
+
+    if (!isGet && !isHead) {
       return res.status(405).json({ error: 'Method not allowed' });
+    }
+
+    // HEAD requests: return headers only, no body
+    if (isHead) {
+      return res.status(200).end();
     }
 
     return res.status(200).json({ ok: true, timestamp: Date.now() });

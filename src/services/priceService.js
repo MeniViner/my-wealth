@@ -5,6 +5,10 @@
  */
 
 import { getQuotes, getHistory } from './backendApi';
+import { resolveInternalId } from './internalIds';
+
+// Debug flag for price fetching
+const DEBUG_PRICES = import.meta.env.DEV;
 
 // In-memory cache for price data (fallback, IndexedDB is primary)
 const priceCache = new Map();
@@ -50,17 +54,11 @@ const setCachedPrice = (key, data) => {
 // ==================== INTERNAL ID HELPERS ====================
 
 /**
- * Convert asset to internal ID format
+ * Convert asset to internal ID format (deprecated - use resolveInternalId directly)
+ * @deprecated Use resolveInternalId from internalIds.js instead
  */
 function getInternalId(asset) {
-  if (asset.marketDataSource === 'coingecko' && asset.apiId) {
-    return `cg:${asset.apiId}`;
-  } else if (asset.marketDataSource === 'tase-local' && asset.securityId) {
-    return `tase:${asset.securityId}`;
-  } else {
-    const symbol = asset.apiId || asset.symbol;
-    return symbol ? `yahoo:${symbol}` : null;
-  }
+  return resolveInternalId(asset);
 }
 
 // ==================== COINGECKO (CRYPTO) - DEPRECATED ====================
@@ -81,17 +79,34 @@ export const fetchCryptoPrice = async (coinId, vsCurrency = 'usd') => {
 
   try {
     const quotes = await getQuotes([`cg:${coinId}`]);
-    if (quotes.length === 0 || !quotes[0]) return null;
+    
+    // Filter valid quotes (no errors, valid price)
+    const validQuotes = quotes.filter(q => 
+      q && 
+      !q.error && 
+      typeof q.price === 'number' && 
+      !isNaN(q.price) && 
+      q.price > 0
+    );
+    
+    if (validQuotes.length === 0) {
+      const errorQuote = quotes.find(q => q && q.error);
+      if (errorQuote) {
+        console.warn(`Quote error for cg:${coinId}:`, errorQuote.error);
+      }
+      return null;
+    }
 
-    const quote = quotes[0];
+    const quote = validQuotes[0];
+
     const result = {
       symbol: coinId.toUpperCase(),
       name: coinId,
       currentPrice: quote.price,
-      currency: quote.currency,
+      currency: quote.currency || 'USD',
       change24h: quote.changePct || 0,
       changeAmount: (quote.price * (quote.changePct || 0)) / 100,
-      lastUpdated: new Date(quote.timestamp),
+      lastUpdated: new Date(quote.timestamp || Date.now()),
       source: 'coingecko',
       assetType: 'CRYPTO'
     };
@@ -123,16 +138,26 @@ export const fetchCryptoPricesBatch = async (coinIds, vsCurrency = 'usd') => {
     const quotes = await getQuotes(internalIds);
     const results = {};
 
-    quotes.forEach((quote) => {
+    // Filter valid quotes only
+    const validQuotes = quotes.filter(q => 
+      q && 
+      !q.error && 
+      typeof q.price === 'number' && 
+      !isNaN(q.price) && 
+      q.price > 0
+    );
+
+    validQuotes.forEach((quote) => {
+
       const coinId = quote.id.replace('cg:', '');
       results[coinId] = {
         symbol: coinId.toUpperCase(),
         name: coinId,
         currentPrice: quote.price,
-        currency: quote.currency,
+        currency: quote.currency || 'USD',
         change24h: quote.changePct || 0,
         changeAmount: (quote.price * (quote.changePct || 0)) / 100,
-        lastUpdated: new Date(quote.timestamp),
+        lastUpdated: new Date(quote.timestamp || Date.now()),
         source: 'coingecko',
         assetType: 'CRYPTO'
       };
@@ -162,9 +187,25 @@ export const fetchYahooPrice = async (symbol) => {
 
   try {
     const quotes = await getQuotes([`yahoo:${symbol}`]);
-    if (quotes.length === 0 || !quotes[0]) return null;
+    
+    // Filter valid quotes (no errors, valid price)
+    const validQuotes = quotes.filter(q => 
+      q && 
+      !q.error && 
+      typeof q.price === 'number' && 
+      !isNaN(q.price) && 
+      q.price > 0
+    );
+    
+    if (validQuotes.length === 0) {
+      const errorQuote = quotes.find(q => q && q.error);
+      if (errorQuote) {
+        console.warn(`Quote error for yahoo:${symbol}:`, errorQuote.error);
+      }
+      return null;
+    }
 
-    const quote = quotes[0];
+    const quote = validQuotes[0];
     
     // Determine asset type from symbol
     let assetType = 'STOCK';
@@ -176,10 +217,10 @@ export const fetchYahooPrice = async (symbol) => {
       symbol: symbol,
       name: symbol, // Name will be populated from search results
       currentPrice: quote.price,
-      currency: quote.currency,
+      currency: quote.currency || 'USD',
       change24h: quote.changePct || 0,
       changeAmount: (quote.price * (quote.changePct || 0)) / 100,
-      lastUpdated: new Date(quote.timestamp),
+      lastUpdated: new Date(quote.timestamp || Date.now()),
       source: 'yahoo',
       assetType: assetType,
     };
@@ -205,7 +246,17 @@ export const fetchYahooPricesBatch = async (symbols) => {
     const quotes = await getQuotes(internalIds);
     const results = {};
 
-    quotes.forEach((quote) => {
+    // Filter valid quotes only
+    const validQuotes = quotes.filter(q => 
+      q && 
+      !q.error && 
+      typeof q.price === 'number' && 
+      !isNaN(q.price) && 
+      q.price > 0
+    );
+
+    validQuotes.forEach((quote) => {
+
       const symbol = quote.id.replace('yahoo:', '');
       let assetType = 'STOCK';
       if (symbol.startsWith('^')) {
@@ -216,10 +267,10 @@ export const fetchYahooPricesBatch = async (symbols) => {
         symbol: symbol,
         name: symbol,
         currentPrice: quote.price,
-        currency: quote.currency,
+        currency: quote.currency || 'USD',
         change24h: quote.changePct || 0,
         changeAmount: (quote.price * (quote.changePct || 0)) / 100,
-        lastUpdated: new Date(quote.timestamp),
+        lastUpdated: new Date(quote.timestamp || Date.now()),
         source: 'yahoo',
         assetType: assetType,
       };
@@ -236,47 +287,85 @@ export const fetchYahooPricesBatch = async (symbols) => {
 
 /**
  * Fetch price for any asset type (auto-detects source)
+ * Uses resolveInternalId to ensure correct ID format
  * @param {Object} asset - Asset object with apiId, marketDataSource, symbol
  * @returns {Promise<UnifiedAssetPrice|null>}
  */
 export const fetchAssetPrice = async (asset) => {
   if (!asset) return null;
 
-  const { apiId, marketDataSource, symbol } = asset;
-
-  // CoinGecko for crypto
-  if (marketDataSource === 'coingecko' && apiId) {
-    return await fetchCryptoPrice(apiId);
-  }
-
-  // Yahoo for stocks/indices
-  if (marketDataSource === 'yahoo' || marketDataSource === 'finnhub' || marketDataSource === 'tase-local') {
-    const yahooSymbol = apiId || symbol;
-    if (yahooSymbol) {
-      return await fetchYahooPrice(yahooSymbol);
-    }
-  }
-
   // Manual entry - no live price
-  if (marketDataSource === 'manual') {
+  if (asset.marketDataSource === 'manual') {
     return null;
   }
 
-  // Try to guess based on symbol format
-  if (symbol) {
-    // Indices start with ^
-    if (symbol.startsWith('^')) {
-      return await fetchYahooPrice(symbol);
+  // Resolve internal ID using the unified helper
+  const internalId = resolveInternalId(asset);
+  if (!internalId) {
+    if (DEBUG_PRICES) {
+      console.warn('[PRICE DEBUG] Could not resolve internal ID for asset:', asset);
     }
-    // Israeli stocks end with .TA
-    if (symbol.endsWith('.TA')) {
-      return await fetchYahooPrice(symbol);
-    }
-    // Default to Yahoo for stock-like symbols
-    return await fetchYahooPrice(symbol);
+    return null;
   }
 
-  return null;
+  try {
+    // Use getQuotes directly for unified quote fetching
+    const quotes = await getQuotes([internalId]);
+    
+    // Debug: Log quote fetching
+    if (DEBUG_PRICES) {
+      console.log('[PRICE DEBUG] fetchAssetPrice requested:', internalId, 'got quotes:', quotes.length);
+    }
+    
+    // Filter valid quotes (no errors, valid price)
+    const validQuotes = quotes.filter(q => 
+      q && 
+      !q.error && 
+      typeof q.price === 'number' && 
+      !isNaN(q.price) && 
+      q.price > 0
+    );
+    
+    if (validQuotes.length === 0) {
+      const errorQuote = quotes.find(q => q && q.error);
+      if (errorQuote) {
+        if (DEBUG_PRICES) {
+          console.warn(`[PRICE DEBUG] Quote error for ${internalId}:`, errorQuote.error);
+        }
+      }
+      return null;
+    }
+
+    const quote = validQuotes[0];
+    
+    // Determine asset type
+    let assetType = 'STOCK';
+    const symbol = asset.symbol || asset.apiId || '';
+    if (symbol.startsWith('^') || internalId.startsWith('yahoo:^')) {
+      assetType = 'INDEX';
+    } else if (asset.assetType === 'CRYPTO' || internalId.startsWith('cg:')) {
+      assetType = 'CRYPTO';
+    } else if (asset.assetType === 'ETF' || asset.marketDataSource === 'tase-local') {
+      assetType = 'ETF';
+    }
+
+    const result = {
+      symbol: symbol,
+      name: asset.name || symbol,
+      currentPrice: quote.price,
+      currency: quote.currency || 'USD',
+      change24h: quote.changePct || 0,
+      changeAmount: (quote.price * (quote.changePct || 0)) / 100,
+      lastUpdated: new Date(quote.timestamp || Date.now()),
+      source: internalId.startsWith('cg:') ? 'coingecko' : 'yahoo',
+      assetType: assetType,
+    };
+
+    return result;
+  } catch (error) {
+    console.error('Error fetching asset price:', error);
+    return null;
+  }
 };
 
 /**
@@ -287,14 +376,14 @@ export const fetchAssetPrice = async (asset) => {
 export const fetchAssetPricesBatch = async (assets) => {
   if (!assets || assets.length === 0) return {};
 
-  // Convert assets to internal IDs
+  // Convert assets to internal IDs using resolveInternalId
   const internalIds = [];
   const idToAssetMap = new Map();
 
   assets.forEach(asset => {
     if (asset.marketDataSource === 'manual') return;
     
-    const internalId = getInternalId(asset);
+    const internalId = resolveInternalId(asset);
     if (internalId) {
       internalIds.push(internalId);
       idToAssetMap.set(internalId, asset);
@@ -303,16 +392,46 @@ export const fetchAssetPricesBatch = async (assets) => {
 
   if (internalIds.length === 0) return {};
 
+  // Debug: Log IDs being sent
+  if (DEBUG_PRICES) {
+    console.log('[PRICE DEBUG] POST /api/quote payload ids:', internalIds);
+  }
+
   try {
     // Fetch all quotes in one batch
     const quotes = await getQuotes(internalIds);
+    
+    // Debug: Log first few returned quotes
+    if (DEBUG_PRICES && quotes.length > 0) {
+      console.log('[PRICE DEBUG] First few returned quote.id values:', 
+        quotes.slice(0, 3).map(q => q?.id).filter(Boolean)
+      );
+    }
+    
     const results = {};
 
-    quotes.forEach((quote) => {
+    // Filter valid quotes only (skip entries with errors)
+    const validQuotes = quotes.filter(q => 
+      q && 
+      !q.error && 
+      typeof q.price === 'number' && 
+      !isNaN(q.price) && 
+      q.price > 0
+    );
+
+    // Log errors for debugging
+    quotes.forEach(q => {
+      if (q && q.error) {
+        console.warn(`[PRICE DEBUG] Quote error for ${q.id}:`, q.error);
+      }
+    });
+
+    validQuotes.forEach((quote) => {
       const asset = idToAssetMap.get(quote.id);
       if (!asset) return;
 
-      const priceKey = asset.apiId || asset.symbol;
+      // Use internalId as key for price lookup (more reliable than apiId/symbol)
+      const priceKey = resolveInternalId(asset) || asset.apiId || asset.symbol;
       if (!priceKey) return;
 
       let assetType = 'STOCK';
@@ -327,10 +446,10 @@ export const fetchAssetPricesBatch = async (assets) => {
         symbol: symbol,
         name: asset.name || symbol,
         currentPrice: quote.price,
-        currency: quote.currency,
+        currency: quote.currency || 'USD',
         change24h: quote.changePct || 0,
         changeAmount: (quote.price * (quote.changePct || 0)) / 100,
-        lastUpdated: new Date(quote.timestamp),
+        lastUpdated: new Date(quote.timestamp || Date.now()),
         source: quote.source === 'coingecko' ? 'coingecko' : 'yahoo',
         assetType: assetType,
       };
@@ -359,22 +478,41 @@ export const fetchCryptoHistoricalPrice = async (coinId, date) => {
   if (cached) return cached;
 
   try {
-    const response = await fetch(
-      `https://api.coingecko.com/api/v3/coins/${coinId}/history?date=${date}&localization=false`
-    );
-
-    if (!response.ok) {
-      throw new Error(`CoinGecko history API error: ${response.status}`);
+    // Use backend API instead of direct CoinGecko call
+    // Convert date to internal ID and fetch history
+    const internalId = `cg:${coinId}`;
+    
+    // Fetch 5d range to ensure we get the date
+    const history = await getHistory(internalId, '5d', '1d');
+    
+    if (!history || !history.points || history.points.length === 0) {
+      return null;
     }
 
-    const data = await response.json();
-    const price = data?.market_data?.current_price?.usd || null;
+    // Parse target date
+    const [day, month, year] = date.split('-').map(Number);
+    const targetDate = new Date(year, month - 1, day);
+    const targetTimestamp = targetDate.getTime();
 
-    if (price !== null) {
-      setCachedPrice(cacheKey, price);
+    // Find the closest point to the target date
+    let closestPoint = null;
+    let minDiff = Infinity;
+
+    for (const point of history.points) {
+      const diff = Math.abs(point.t - targetTimestamp);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestPoint = point;
+      }
     }
 
-    return price;
+    // If we found a point within 24 hours, use it
+    if (closestPoint && minDiff < 24 * 60 * 60 * 1000) {
+      setCachedPrice(cacheKey, closestPoint.v);
+      return closestPoint.v;
+    }
+
+    return null;
   } catch (error) {
     console.error('Error fetching crypto historical price:', error);
     return null;
@@ -383,58 +521,56 @@ export const fetchCryptoHistoricalPrice = async (coinId, date) => {
 
 /**
  * Fetch historical price for a stock on a specific date
- * @param {string} symbol - Stock symbol
+ * @param {Object|string} assetOrId - Asset object or ID string
  * @param {Date|string} date - Target date
  * @returns {Promise<number|null>}
  */
-export const fetchYahooHistoricalPrice = async (symbol, date) => {
-  if (!symbol || !date) return null;
+export const fetchYahooHistoricalPrice = async (assetOrId, date) => {
+  if (!assetOrId || !date) return null;
+
+  // Resolve internal ID
+  const internalId = typeof assetOrId === 'object'
+    ? resolveInternalId(assetOrId)
+    : resolveInternalId(assetOrId);
+  
+  if (!internalId) return null;
 
   const targetDate = new Date(date);
   const dateStr = targetDate.toISOString().split('T')[0];
-  const cacheKey = `yahoo-history:${symbol}:${dateStr}`;
+  const cacheKey = `yahoo-history:${internalId}:${dateStr}`;
   const cached = getCachedPrice(cacheKey);
   if (cached) return cached;
 
   try {
-    // Convert date to Unix timestamp
-    const period1 = Math.floor(targetDate.getTime() / 1000);
-    const period2 = period1 + 86400; // +1 day
-
-    const targetUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${period1}&period2=${period2}&interval=1d`;
-
-    const { response, proxyUsed, parseResponse } = await fetchWithProxy(targetUrl);
-
-    if (!response.ok) {
-      console.warn(`Yahoo Finance history API error for ${symbol}: ${response.status}`);
+    // Fetch history data from backend (5d range to ensure we get the date)
+    const history = await getHistory(internalId, '5d', '1d');
+    
+    if (!history || !history.points || history.points.length === 0) {
       return null;
     }
 
-    const data = await parseProxyResponse(response, parseResponse);
+    // Find the closest point to the target date
+    const targetTimestamp = targetDate.getTime();
+    let closestPoint = null;
+    let minDiff = Infinity;
 
-    // If parseProxyResponse returns null (HTML error page), return null safely
-    if (!data) {
-      console.warn(`Failed to parse Yahoo Finance historical response for ${symbol}`);
-      return null;
+    for (const point of history.points) {
+      const diff = Math.abs(point.t - targetTimestamp);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestPoint = point;
+      }
     }
 
-    const chartResult = data?.chart?.result?.[0];
-    if (!chartResult) {
-      console.warn(`No historical data found for ${symbol}`);
-      return null;
-    }
-
-    // Get close price
-    const closePrice = chartResult.indicators?.quote?.[0]?.close?.[0];
-
-    if (closePrice !== null && closePrice !== undefined) {
-      setCachedPrice(cacheKey, closePrice);
-      return closePrice;
+    // If we found a point within 24 hours, use it
+    if (closestPoint && minDiff < 24 * 60 * 60 * 1000) {
+      setCachedPrice(cacheKey, closestPoint.v);
+      return closestPoint.v;
     }
 
     return null;
   } catch (error) {
-    console.error(`Error fetching Yahoo historical price for ${symbol}:`, error);
+    console.error(`Error fetching historical price for ${internalId}:`, error);
     // Return null instead of throwing to prevent app crashes
     return null;
   }
@@ -449,57 +585,62 @@ export const fetchYahooHistoricalPrice = async (symbol, date) => {
 export const fetchAssetHistoricalPrice = async (asset, date) => {
   if (!asset || !date) return null;
 
-  const { apiId, marketDataSource, symbol } = asset;
+  const internalId = resolveInternalId(asset);
+  if (!internalId) return null;
 
-  if (marketDataSource === 'coingecko' && apiId) {
-    // CoinGecko expects DD-MM-YYYY format
+  // CoinGecko uses different date format
+  if (internalId.startsWith('cg:')) {
+    const coinId = internalId.replace('cg:', '');
     const targetDate = new Date(date);
     const dateStr = `${String(targetDate.getDate()).padStart(2, '0')}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${targetDate.getFullYear()}`;
-    return await fetchCryptoHistoricalPrice(apiId, dateStr);
+    return await fetchCryptoHistoricalPrice(coinId, dateStr);
   }
 
-  // Yahoo for everything else
-  const yahooSymbol = apiId || symbol;
-  if (yahooSymbol) {
-    return await fetchYahooHistoricalPrice(yahooSymbol, date);
-  }
-
-  return null;
+  // Yahoo and TASE use same backend endpoint
+  return await fetchYahooHistoricalPrice(asset, date);
 };
 
 // ==================== PRICE CHART DATA ====================
 
 /**
  * Fetch price history for chart (time series) - via backend API
- * @param {string} symbol - Asset symbol or apiId
- * @param {string} source - 'coingecko' | 'yahoo'
+ * @param {Object|string} assetOrId - Asset object or ID string
  * @param {number} days - Number of days of history
  * @returns {Promise<Array<{date: Date, price: number}>>}
  */
-export const fetchPriceHistory = async (symbol, source, days = 30) => {
-  if (!symbol) return [];
+export const fetchPriceHistory = async (assetOrId, days = 30) => {
+  if (!assetOrId) return [];
 
-  const cacheKey = `history:${source}:${symbol}:${days}`;
+  // Resolve internal ID from asset or string
+  const internalId = typeof assetOrId === 'object' 
+    ? resolveInternalId(assetOrId)
+    : resolveInternalId(assetOrId);
+  
+  if (!internalId) return [];
+
+  const cacheKey = `history:${internalId}:${days}`;
   const cached = priceCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < HISTORY_CACHE_DURATION) {
     return cached.data;
   }
 
   try {
-    // Convert to internal ID
-    let internalId;
-    if (source === 'coingecko') {
-      internalId = `cg:${symbol}`;
-    } else {
-      internalId = `yahoo:${symbol}`;
-    }
-
     // Convert days to range
     const range = days <= 7 ? '5d' : days <= 30 ? '1mo' : days <= 90 ? '3mo' : '1y';
 
     const history = await getHistory(internalId, range, '1d');
     
-    if (!history || !history.points || history.points.length === 0) {
+    // Handle error responses or missing data gracefully
+    if (!history || history.error || !Array.isArray(history.points) || history.points.length === 0) {
+      if (history && history.error) {
+        // "History data not found" is a normal case, not an error - use debug level
+        if (history.error === 'History data not found') {
+          console.debug(`History data not found for ${internalId} (this is normal)`);
+        } else {
+          // Real errors should be logged as warnings
+          console.warn(`History error for ${internalId}:`, history.error);
+        }
+      }
       return [];
     }
 
@@ -564,24 +705,16 @@ export const getExchangeRate = async () => {
 
 /**
  * Convert price from one currency to another
+ * @deprecated Use convertAmount from currency.js instead
  * @param {number} price - Price to convert
  * @param {string} fromCurrency - Source currency ('USD' | 'ILS')
  * @param {string} toCurrency - Target currency ('USD' | 'ILS')
  * @returns {Promise<number>} Converted price
  */
 export const convertCurrency = async (price, fromCurrency, toCurrency) => {
-  if (!price || price <= 0) return price;
-  if (fromCurrency === toCurrency) return price;
-
-  const rate = await getExchangeRate();
-
-  if (fromCurrency === 'USD' && toCurrency === 'ILS') {
-    return price * rate;
-  } else if (fromCurrency === 'ILS' && toCurrency === 'USD') {
-    return price / rate;
-  }
-
-  return price;
+  // Use the canonical conversion function
+  const { convertAmount } = await import('./currency');
+  return await convertAmount(price, fromCurrency, toCurrency);
 };
 
 // ==================== CACHE MANAGEMENT ====================

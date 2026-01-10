@@ -5,6 +5,7 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { fetchReliable, fetchJsonSafe, fetchWithCoalescing } from './_utils/http';
+import { getInstrumentBySecurityId } from './_data/taseInstruments';
 
 interface HistoryPoint {
   t: number; // timestamp (milliseconds)
@@ -20,6 +21,7 @@ interface HistoryResult {
 
 /**
  * Parse internal ID to extract provider and symbol
+ * For TASE, resolves yahooSymbol from dataset first
  */
 function parseId(id: string): { provider: string; symbol: string } {
   if (id.startsWith('cg:')) {
@@ -27,8 +29,11 @@ function parseId(id: string): { provider: string; symbol: string } {
   } else if (id.startsWith('yahoo:')) {
     return { provider: 'yahoo', symbol: id.substring(6) };
   } else if (id.startsWith('tase:')) {
+    // TASE securities: resolve yahooSymbol from dataset first
     const securityId = id.substring(5);
-    return { provider: 'yahoo', symbol: `${securityId}.TA` };
+    const inst = getInstrumentBySecurityId(securityId);
+    const symbol = inst?.yahooSymbol ?? `${securityId}.TA`;
+    return { provider: 'yahoo', symbol };
   }
   return { provider: 'yahoo', symbol: id };
 }
@@ -133,7 +138,8 @@ async function fetchCoinGeckoHistory(
 async function fetchYahooHistory(
   symbol: string,
   range: string,
-  interval: string = '1d'
+  interval: string = '1d',
+  originalId?: string
 ): Promise<HistoryResult | null> {
   try {
     const yahooRange = rangeToYahooRange(range);
@@ -143,10 +149,23 @@ async function fetchYahooHistory(
     const coalesceKey = `history:yahoo:${symbol}:${range}:${interval}`;
     
     const response = await fetchWithCoalescing(coalesceKey, () =>
-      fetchReliable(url, { timeoutMs: 10000, retries: 2 })
+      fetchReliable(url, {
+        timeoutMs: 10000,
+        retries: 2,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/json',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+      })
     );
     
+    // Handle upstream failures properly - don't hide auth failures as 404
     if (!response.ok) {
+      if (response.status === 401 || response.status === 403 || response.status >= 500) {
+        throw new Error(`Upstream Yahoo failure: HTTP ${response.status}`);
+      }
+      // For other errors (404, etc.), return null (will be handled as "History data not found")
       return null;
     }
 
@@ -169,9 +188,11 @@ async function fetchYahooHistory(
     const meta = chartResult.meta || {};
     const currency = meta.currency || (symbol.endsWith('.TA') ? 'ILS' : 'USD');
 
-    // Determine internal ID
+    // Use originalId if provided (for TASE), otherwise determine from symbol
     let internalId: string;
-    if (symbol.endsWith('.TA') && /^\d+\.TA$/.test(symbol)) {
+    if (originalId) {
+      internalId = originalId;
+    } else if (symbol.endsWith('.TA') && /^\d+\.TA$/.test(symbol)) {
       const securityId = symbol.replace('.TA', '');
       internalId = `tase:${securityId}`;
     } else {
@@ -200,7 +221,8 @@ async function fetchYahooHistory(
     };
   } catch (error) {
     console.error(`Yahoo history error for ${symbol}:`, error);
-    return null;
+    // Re-throw to be handled by caller (for proper 502 response on upstream failures)
+    throw error;
   }
 }
 
@@ -213,14 +235,17 @@ export default async function handler(
   
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  if (req.method !== 'GET') {
+  const isGet = req.method === 'GET';
+  const isHead = req.method === 'HEAD';
+
+  if (!isGet && !isHead) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
@@ -229,6 +254,10 @@ export default async function handler(
   const interval = (req.query.interval as string) || '1d';
 
   if (!id) {
+    if (isHead) {
+      res.status(400).end();
+      return;
+    }
     return res.status(400).json({ error: 'Query parameter "id" is required' });
   }
 
@@ -240,16 +269,59 @@ export default async function handler(
     if (provider === 'coingecko') {
       result = await fetchCoinGeckoHistory(symbol, range);
     } else {
-      result = await fetchYahooHistory(symbol, range, interval);
+      try {
+        result = await fetchYahooHistory(symbol, range, interval, id);
+      } catch (error: any) {
+        // Handle upstream failures (401/403/5xx) - return {id, error} with status 200 (consistent with quote)
+        if (error.message && error.message.includes('Upstream Yahoo failure')) {
+          const statusMatch = error.message.match(/HTTP (\d+)/);
+          const status = statusMatch ? parseInt(statusMatch[1]) : 502;
+          
+          // Set cache headers even for error responses
+          if (isGet || isHead) {
+            res.setHeader('Cache-Control', 'max-age=0, s-maxage=60, stale-while-revalidate=300');
+            res.setHeader('CDN-Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+          }
+          
+          if (isHead) {
+            return res.status(200).end();
+          }
+          
+          return res.status(200).json({
+            id,
+            error: `Upstream Yahoo failure: HTTP ${status}`,
+          });
+        }
+        // Re-throw other errors to be handled as 500
+        throw error;
+      }
     }
 
+    // Handle no result: return {id, error} with status 200 (consistent with quote behavior)
     if (!result) {
-      return res.status(404).json({ error: 'History data not found' });
+      // Set cache headers even for error responses
+      if (isGet || isHead) {
+        res.setHeader('Cache-Control', 'max-age=0, s-maxage=60, stale-while-revalidate=300');
+        res.setHeader('CDN-Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+      }
+      
+      if (isHead) {
+        return res.status(200).end();
+      }
+      
+      return res.status(200).json({ id, error: 'History data not found' });
     }
 
-    // Set cache headers for CDN caching (GET requests are cacheable)
-    res.setHeader('Cache-Control', 'max-age=0, s-maxage=3600, stale-while-revalidate=86400');
-    res.setHeader('CDN-Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400');
+    // Set cache headers for CDN caching (GET/HEAD requests are cacheable)
+    if (isGet || isHead) {
+      res.setHeader('Cache-Control', 'max-age=0, s-maxage=3600, stale-while-revalidate=86400');
+      res.setHeader('CDN-Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400');
+    }
+
+    // HEAD requests: return headers only, no body
+    if (isHead) {
+      return res.status(200).end();
+    }
 
     return res.status(200).json(result);
   } catch (error: any) {

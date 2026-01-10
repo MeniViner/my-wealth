@@ -245,20 +245,31 @@ export const searchIsraeliStocks = async (query) => {
         (r.symbol && r.symbol.endsWith('.TA'))
       )
       .map(result => {
-        // Map to our format
+        // Map to our format - preserve prefixed ID for TASE assets
         const mapped = {
+          // Keep the full prefixed ID (e.g., "tase:1183441") for TASE assets
           id: result.id.startsWith('tase:') 
-            ? result.extra?.securityNumber || result.symbol
-            : result.symbol,
+            ? result.id  // Keep full "tase:1183441" format
+            : result.id.startsWith('yahoo:') || result.id.startsWith('cg:')
+            ? result.id  // Keep prefixed format
+            : result.symbol,  // Fallback to symbol for non-prefixed IDs
           symbol: result.symbol,
           name: result.name,
+          nameHe: result.nameHe || result.name,
           image: result.extra?.image || null,
-          marketDataSource: result.provider === 'tase-local' ? 'tase-local' : 'yahoo'
+          marketDataSource: result.provider === 'tase-local' ? 'tase-local' : 'yahoo',
+          provider: result.provider,
+          exchange: result.exchange,
+          extra: result.extra
         };
 
         // Add TASE-specific fields if available
         if (result.provider === 'tase-local' && result.extra?.securityNumber) {
           mapped.securityId = result.extra.securityNumber;
+          // Ensure apiId is in correct format
+          if (!mapped.id.startsWith('tase:')) {
+            mapped.id = `tase:${result.extra.securityNumber}`;
+          }
         }
 
         return mapped;

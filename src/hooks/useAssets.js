@@ -3,6 +3,7 @@ import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, writeBatch, 
 import { db, appId } from '../services/firebase';
 import { INITIAL_ASSETS_SEED } from '../constants/defaults';
 import { fetchAssetPricesBatch } from '../services/priceService';
+import { normalizeAssetApiId, resolveInternalId } from '../services/internalIds';
 
 /**
  * Custom hook for managing assets with live price tracking
@@ -31,10 +32,29 @@ export const useAssets = (user, currencyRate) => {
       const items = [];
       snapshot.forEach((doc) => {
         const data = doc.data();
-        items.push({
+        // Normalize apiId for backward compatibility (migrate old assets)
+        const normalizedAsset = normalizeAssetApiId({
           id: doc.id,
           ...data
         });
+        items.push(normalizedAsset);
+        
+        // Optionally migrate asset if apiId was normalized (one-time migration)
+        // Only migrate if apiId actually changed to avoid infinite loops
+        if (normalizedAsset.apiId !== data.apiId && normalizedAsset.apiId) {
+          // Use a flag to prevent migration loops - only migrate once per asset
+          const migrationKey = `migrated_${doc.id}`;
+          if (!localStorage.getItem(migrationKey)) {
+            updateDoc(doc.ref, { apiId: normalizedAsset.apiId })
+              .then(() => {
+                localStorage.setItem(migrationKey, 'true');
+                console.log(`[MIGRATION] Updated asset ${doc.id} apiId to ${normalizedAsset.apiId}`);
+              })
+              .catch(err => {
+                console.warn(`[MIGRATION] Failed to update asset ${doc.id}:`, err);
+              });
+          }
+        }
       });
       setRawAssets(items);
     }, (error) => {
@@ -49,53 +69,84 @@ export const useAssets = (user, currencyRate) => {
   useEffect(() => {
     const rate = currencyRate || 3.65;
     
-    const calculatedAssets = rawAssets.map(asset => {
-      let value = 0;
-      let currentPrice = null;
-      let profitLoss = null;
-      let profitLossPercent = null;
+    // Import convertAmount once
+    import('../services/currency').then(({ convertAmount }) => {
+      // Calculate all assets in parallel
+      Promise.all(rawAssets.map(async (asset) => {
+        let value = 0;
+        let currentPrice = null;
+        let profitLoss = null;
+        let profitLossPercent = null;
 
-      // Check if we have live price for this asset
-      const priceKey = asset.apiId || asset.symbol;
-      const livePrice = priceKey ? livePrices[priceKey] : null;
+        // Check if we have live price for this asset
+        // Use resolveInternalId to get the correct key format
+        const priceKey = resolveInternalId(asset) || asset.apiId || asset.symbol;
+        const livePrice = priceKey ? livePrices[priceKey] : null;
 
-      if (asset.assetMode === 'QUANTITY' && asset.quantity) {
-        // QUANTITY mode: use live price if available, otherwise use purchase price
-        if (livePrice) {
-          currentPrice = livePrice.currentPrice;
-          // Convert price to ILS if needed
-          const priceInILS = livePrice.currency === 'ILS' ? currentPrice : currentPrice * rate;
-          value = asset.quantity * priceInILS;
-          
-          // Calculate P/L
-          const costBasis = asset.quantity * (asset.purchasePrice || 0);
-          const costBasisInILS = asset.currency === 'USD' ? costBasis * rate : costBasis;
-          profitLoss = value - costBasisInILS;
-          profitLossPercent = costBasisInILS > 0 ? (profitLoss / costBasisInILS) * 100 : 0;
+        if (asset.assetMode === 'QUANTITY' && asset.quantity) {
+          // QUANTITY mode: use live price if available, otherwise use purchase price
+          if (livePrice) {
+            const assetNativePrice = livePrice.currentPrice;
+            const assetNativeCurrency = livePrice.currency || 'USD';
+            
+            // Convert price to display currency (ILS) using canonical conversion
+            // If asset currency === display currency, no conversion needed
+            const priceInDisplayCurrency = await convertAmount(
+              assetNativePrice, 
+              assetNativeCurrency, 
+              'ILS', // Display currency is always ILS in this app
+              rate
+            );
+            
+            currentPrice = priceInDisplayCurrency;
+            value = asset.quantity * priceInDisplayCurrency;
+            
+            // Calculate P/L in display currency
+            const costBasis = asset.quantity * (asset.purchasePrice || 0);
+            const costBasisInDisplayCurrency = await convertAmount(
+              costBasis,
+              asset.currency || 'ILS',
+              'ILS',
+              rate
+            );
+            
+            profitLoss = value - costBasisInDisplayCurrency;
+            profitLossPercent = costBasisInDisplayCurrency > 0 
+              ? (profitLoss / costBasisInDisplayCurrency) * 100 
+              : 0;
+          } else {
+            // No live price - use purchase price as estimate
+            const costBasis = asset.quantity * (asset.purchasePrice || 0);
+            value = await convertAmount(
+              costBasis,
+              asset.currency || 'ILS',
+              'ILS',
+              rate
+            );
+          }
         } else {
-          // No live price - use purchase price as estimate
-          const costBasis = asset.quantity * (asset.purchasePrice || 0);
-          value = asset.currency === 'USD' ? costBasis * rate : costBasis;
+          // LEGACY mode or no quantity: use originalValue
+          value = await convertAmount(
+            asset.originalValue || asset.value || 0,
+            asset.currency || 'ILS',
+            'ILS',
+            rate
+          );
         }
-      } else {
-        // LEGACY mode or no quantity: use originalValue
-        value = asset.currency === 'USD' 
-          ? (asset.originalValue || 0) * rate
-          : (asset.originalValue || asset.value || 0);
-      }
 
-      return {
-        ...asset,
-        value,
-        currentPrice,
-        profitLoss,
-        profitLossPercent,
-        hasLivePrice: !!livePrice,
-        priceChange24h: livePrice?.change24h || null
-      };
+        return {
+          ...asset,
+          value,
+          currentPrice,
+          profitLoss,
+          profitLossPercent,
+          hasLivePrice: !!livePrice,
+          priceChange24h: livePrice?.change24h || null
+        };
+      })).then(calculatedAssets => {
+        setAssets(calculatedAssets);
+      });
     });
-
-    setAssets(calculatedAssets);
   }, [rawAssets, livePrices, currencyRate]);
 
   // Fetch live prices for all trackable assets

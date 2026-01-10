@@ -10,7 +10,9 @@
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
     "vercel:dev": "vercel dev --listen 3000",
     "smoke:local": "pwsh -File scripts/smoke-test.ps1 -BaseUrl http://localhost:3000",
-    "smoke:prod": "pwsh -File scripts/smoke-test.ps1 -BaseUrl http://localhost:3000 -ProdUrl $env:PROD_URL"
+    "smoke:prod": "pwsh -File scripts/smoke-test.ps1 -BaseUrl http://localhost:3000 -ProdUrl $env:PROD_URL",
+    "smoke:local:bash": "bash scripts/smoke-test.sh http://localhost:3000",
+    "smoke:prod:bash": "bash scripts/smoke-test.sh"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

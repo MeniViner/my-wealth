@@ -210,10 +210,17 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
       const priceData = await fetchAssetPrice({
         apiId: formData.apiId,
         marketDataSource: formData.marketDataSource,
-        symbol: formData.symbol
+        symbol: formData.symbol,
+        assetType: formData.assetType,
+        securityId: formData.securityId
       });
 
-      if (priceData) {
+      // Check if quote is valid: exists, no error, has valid price
+      if (priceData && 
+          !priceData.error && 
+          typeof priceData.currentPrice === 'number' && 
+          isFinite(priceData.currentPrice) && 
+          priceData.currentPrice > 0) {
         setCurrentPriceData(priceData);
         const assetNativeCurrency = priceData.currency || 'USD';
         const assetNativePrice = priceData.currentPrice;
@@ -223,19 +230,21 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         setNativeCurrency(assetNativeCurrency);
         setIsPriceManual(false); // Reset manual mode
         
-        // Get converted price for toast message
-        let displayPrice = assetNativePrice;
-        if (assetNativeCurrency !== formData.currency) {
-          displayPrice = await convertCurrency(assetNativePrice, assetNativeCurrency, formData.currency);
-        }
+        // Get converted price for toast message using canonical conversion
+        const { convertAmount } = await import('../services/currency');
+        const displayPrice = await convertAmount(assetNativePrice, assetNativeCurrency, formData.currency);
         
         await successToast(`מחיר נוכחי: ${displayPrice.toFixed(2)} ${formData.currency}`, 2000);
       } else {
-        await errorAlert('שגיאה', 'לא ניתן לשלוף מחיר. נסה שוב או הזן ידנית.');
+        // Invalid quote - show error with details
+        const errorMsg = priceData?.error 
+          ? `לא ניתן לשלוף מחיר: ${priceData.error}`
+          : 'לא ניתן לשלוף מחיר. נסה שוב או הזן ידנית.';
+        await errorAlert('שגיאה', errorMsg);
       }
     } catch (error) {
       console.error('Error fetching price:', error);
-      await errorAlert('שגיאה', 'שגיאה בשליפת מחיר');
+      await errorAlert('שגיאה', `שגיאה בשליפת מחיר: ${error.message || 'שגיאה לא ידועה'}`);
     }
     setPriceLoading(false);
   };
@@ -468,33 +477,20 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
       // Don't convert if:
       // 1. No native price
       // 2. No native currency
-      // 3. Currencies are the same
-      // 4. Currently loading
-      if (!nativePrice || !nativeCurrency || 
-          nativeCurrency === formData.currency || priceLoading) {
+      // 3. Currently loading
+      if (!nativePrice || !nativeCurrency || priceLoading) {
         return;
       }
 
-      // If price is manual but we have nativePrice, still convert when currency changes
-      // This allows currency toggle to work even in manual mode
-      // But we only convert if we have a valid nativePrice to convert from
-
+      // Use canonical conversion function (handles same-currency case)
       try {
-        let convertedPrice = nativePrice;
-        
-        // Convert if currencies differ
-        if (nativeCurrency !== formData.currency) {
-          if (exchangeRate) {
-            if (nativeCurrency === 'USD' && formData.currency === 'ILS') {
-              convertedPrice = nativePrice * exchangeRate;
-            } else if (nativeCurrency === 'ILS' && formData.currency === 'USD') {
-              convertedPrice = nativePrice / exchangeRate;
-            }
-          } else {
-            // Fallback: use convertCurrency function
-            convertedPrice = await convertCurrency(nativePrice, nativeCurrency, formData.currency);
-          }
-        }
+        const { convertAmount } = await import('../services/currency');
+        const convertedPrice = await convertAmount(
+          nativePrice, 
+          nativeCurrency, 
+          formData.currency,
+          exchangeRate
+        );
 
         // Update price field immediately (Excel-like reactivity)
         // Only update if the price actually changed (avoid unnecessary updates)
@@ -857,14 +853,34 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                       // Get the best display name (Hebrew if available)
                       const displayName = asset.nameHe || asset.name || asset.symbol;
 
+                      // Ensure apiId has correct prefix format
+                      let apiId = asset.id;
+                      if (asset.provider === 'tase-local' || asset.exchange === 'TASE') {
+                        // For TASE assets, ensure apiId is in "tase:..." format
+                        if (!apiId.startsWith('tase:')) {
+                          const securityNumber = asset.securityId || asset.extra?.securityNumber || apiId.replace(/^tase:/, '');
+                          apiId = `tase:${securityNumber}`;
+                        }
+                      } else if (asset.marketDataSource === 'coingecko') {
+                        // For crypto, ensure apiId is in "cg:..." format
+                        if (!apiId.startsWith('cg:')) {
+                          apiId = `cg:${apiId}`;
+                        }
+                      } else if (apiId && !apiId.includes(':')) {
+                        // For other assets, ensure apiId is in "yahoo:..." format
+                        apiId = `yahoo:${apiId}`;
+                      }
+
                       setFormData({
                         ...formData,
                         name: formData.name || displayName, // Use Hebrew name for display
                         displayName: displayName, // Store display name separately
                         symbol: asset.symbol, // Always store the ticker
-                        apiId: asset.id,
-                        marketDataSource: asset.marketDataSource || 'yahoo',
+                        apiId: apiId, // Store with correct prefix
+                        marketDataSource: asset.marketDataSource || (asset.provider === 'tase-local' ? 'tase-local' : 'yahoo'),
                         assetType: assetType,
+                        // Store securityId for TASE assets
+                        ...(asset.securityId && { securityId: asset.securityId }),
                         // Reset price when asset changes so it can be auto-fetched
                         purchasePrice: ''
                       });

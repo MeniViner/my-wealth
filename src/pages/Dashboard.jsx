@@ -6,6 +6,7 @@ import SummaryCard from '../components/SummaryCard';
 import ErrorBoundary from '../components/ErrorBoundary';
 import { useDemoData } from '../contexts/DemoDataContext';
 import { fetchPriceHistory } from '../services/priceService';
+import { resolveInternalId } from '../services/internalIds';
 import { confirmAlert } from '../utils/alerts';
 
 // Hebrew font stack
@@ -518,10 +519,8 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
         const assetHistories = await Promise.all(
           trackableAssets.map(async (asset) => {
             try {
-              const symbol = asset.apiId || asset.symbol;
-              const source = asset.marketDataSource === 'coingecko' ? 'coingecko' : 'yahoo';
-
-              const priceHistory = await fetchPriceHistory(symbol, source, days);
+              // Use resolveInternalId to get correct ID format
+              const priceHistory = await fetchPriceHistory(asset, days);
 
               if (!priceHistory || priceHistory.length === 0) {
                 return null;

@@ -94,7 +94,8 @@ async function fetchCoinGeckoQuotes(coinIds: string[]): Promise<Map<string, Quot
 }
 
 /**
- * Fetch stock/ETF/index prices from Yahoo Finance using v7 batch endpoint
+ * Fetch stock/ETF/index prices from Yahoo Finance using chart endpoint (v8)
+ * Since quote endpoint returns 401, we derive latest price from chart data
  */
 async function fetchYahooQuotes(
   symbols: string[],
@@ -104,138 +105,236 @@ async function fetchYahooQuotes(
 
   if (symbols.length === 0) return results;
 
-  // Chunk symbols for batch requests (Yahoo supports up to ~50 symbols per request)
-  const chunkSize = 50;
-  const chunks: string[][] = [];
-  
-  for (let i = 0; i < symbols.length; i += chunkSize) {
-    chunks.push(symbols.slice(i, i + chunkSize));
-  }
+  // Process each symbol individually (chart endpoint doesn't support batching)
+  // Use Promise.all for parallel requests with coalescing
+  const quotePromises = symbols.map(async (symbol) => {
+    const internalId = symbolToIdMap.get(symbol);
+    if (!internalId) {
+      // Fallback: infer ID from symbol format
+      if (symbol.endsWith('.TA') && /^\d+\.TA$/.test(symbol)) {
+        const securityId = symbol.replace('.TA', '');
+        return { symbol, internalId: `tase:${securityId}` };
+      }
+      return { symbol, internalId: `yahoo:${symbol}` };
+    }
+    return { symbol, internalId };
+  });
 
-  // Process each chunk
-  for (const chunk of chunks) {
+  const symbolIdPairs = await Promise.all(quotePromises);
+
+  // Process symbols in parallel with coalescing
+  const fetchPromises = symbolIdPairs.map(async ({ symbol, internalId }) => {
     try {
-      // Build batch URL
-      const symbolsList = chunk.map(s => encodeURIComponent(s)).join(',');
-      const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbolsList}`;
+      // Use coalescing per symbol to dedupe concurrent requests
+      // Try 1m interval with 1d range first (most recent data)
+      const coalesceKey1m = `yahoo_chart_quote:${symbol}:1d:1m`;
       
-      // Use coalescing to dedupe identical concurrent requests
-      const sortedChunk = [...chunk].sort();
-      const coalesceKey = `yahoo_quote:${sortedChunk.join(',')}`;
-      
-      const response = await fetchWithCoalescing(coalesceKey, () =>
-        fetchReliable(url, { timeoutMs: 8000, retries: 2 })
-      );
-
-      if (!response.ok) {
-        console.warn(`Yahoo batch quote error: ${response.status}`);
-        // Mark all symbols in this chunk as errors
-        for (const symbol of chunk) {
-          const internalId = symbolToIdMap.get(symbol);
-          if (internalId && !results.has(internalId)) {
-            results.set(internalId, {
-              id: internalId,
-              error: `Yahoo Finance API error: HTTP ${response.status}`,
-            });
-          }
-        }
-        continue;
-      }
-
-      const data = await fetchJsonSafe(response);
-      const quoteResults = data?.quoteResponse?.result || [];
-
-      // Track which symbols were found in response
-      const foundSymbols = new Set<string>();
-
-      // Process each quote result
-      for (const r of quoteResults) {
-        const symbol = r.symbol;
-        if (!symbol) continue;
-
-        foundSymbols.add(symbol);
-
-        let price = r.regularMarketPrice || 0;
-        const previousClose = r.regularMarketPreviousClose || r.previousClose || price;
-        let currency = r.currency || (symbol.endsWith('.TA') ? 'ILS' : 'USD');
-
-        // Normalize ILA -> ILS
-        if (currency === 'ILA') {
-          currency = 'ILS';
-        }
-
-        // TASE Special Handling: Convert Agorot to Shekels
-        // Apply ONLY to .TA non-index symbols with price > 500
-        if (symbol.endsWith('.TA') && !symbol.startsWith('^') && price > 500) {
-          price = price / 100;
-        }
-
-        // Calculate change percentage
-        let changePct = 0;
-        if (r.regularMarketChangePercent !== undefined && r.regularMarketChangePercent !== null) {
-          changePct = r.regularMarketChangePercent;
-        } else if (previousClose > 0) {
-          const adjustedPrevClose = symbol.endsWith('.TA') && !symbol.startsWith('^') && previousClose > 500
-            ? previousClose / 100
-            : previousClose;
-          const change = price - adjustedPrevClose;
-          changePct = (change / adjustedPrevClose) * 100;
-        }
-
-        // Map symbol back to internal ID
-        let internalId = symbolToIdMap.get(symbol);
+      let response = await fetchWithCoalescing(coalesceKey1m, () => {
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=1m`;
         
-        if (!internalId) {
-          // Fallback: infer ID from symbol format
-          if (symbol.endsWith('.TA') && /^\d+\.TA$/.test(symbol)) {
-            const securityId = symbol.replace('.TA', '');
-            internalId = `tase:${securityId}`;
-          } else {
-            internalId = `yahoo:${symbol}`;
-          }
-        }
-
-        const timestamp = r.regularMarketTime ? r.regularMarketTime * 1000 : Date.now();
-
-        results.set(internalId, {
-          id: internalId,
-          price,
-          currency,
-          changePct,
-          timestamp,
-          source: 'yahoo',
+        return fetchReliable(url, {
+          timeoutMs: 8000,
+          retries: 2,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json',
+            'Accept-Language': 'en-US,en;q=0.9',
+          },
         });
+      });
+
+      if (!response.ok || response.status >= 400) {
+        // Fallback 1: Try 5m interval with 5d range
+        const coalesceKey5m = `yahoo_chart_quote:${symbol}:5d:5m`;
+        response = await fetchWithCoalescing(coalesceKey5m, () => {
+          const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5d&interval=5m`;
+          
+          return fetchReliable(url, {
+            timeoutMs: 8000,
+            retries: 2,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Accept': 'application/json',
+              'Accept-Language': 'en-US,en;q=0.9',
+            },
+          });
+        });
+
+        if (!response.ok || response.status >= 400) {
+          // Fallback 2: Try 1d interval with 5d range
+          const coalesceKey1d = `yahoo_chart_quote:${symbol}:5d:1d`;
+          response = await fetchWithCoalescing(coalesceKey1d, () => {
+            const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5d&interval=1d`;
+            
+            return fetchReliable(url, {
+              timeoutMs: 8000,
+              retries: 2,
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'application/json',
+                'Accept-Language': 'en-US,en;q=0.9',
+              },
+            });
+          });
+
+          if (!response.ok || response.status >= 400) {
+            return {
+              internalId,
+              error: `Yahoo Finance API error: HTTP ${response.status}`,
+            };
+          }
+
+          return await parseChartResponse(response, symbol, internalId, true);
+        }
+
+        return await parseChartResponse(response, symbol, internalId, false);
       }
 
-      // Mark missing symbols as errors
-      for (const symbol of chunk) {
-        if (!foundSymbols.has(symbol)) {
-          const internalId = symbolToIdMap.get(symbol);
-          if (internalId) {
-            results.set(internalId, {
-              id: internalId,
-              error: `Symbol ${symbol} not found in Yahoo Finance response`,
-            });
-          }
-        }
-      }
+      return await parseChartResponse(response, symbol, internalId, false);
     } catch (error) {
-      console.error(`Yahoo batch quote error for chunk:`, error);
-      // Mark all symbols in this chunk as errors
-      for (const symbol of chunk) {
-        const internalId = symbolToIdMap.get(symbol);
-        if (internalId && !results.has(internalId)) {
-          results.set(internalId, {
-            id: internalId,
-            error: `Yahoo Finance API error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          });
-        }
-      }
-      // Continue with other chunks even if one fails
+      console.error(`Yahoo chart quote error for ${symbol}:`, error);
+      return {
+        internalId,
+        error: `Yahoo Finance API error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      };
+    }
+  });
+
+  const quoteResults = await Promise.all(fetchPromises);
+
+  // Add all results to map
+  for (const result of quoteResults) {
+    if (result.internalId) {
+      results.set(result.internalId, {
+        id: result.internalId,
+        price: result.price,
+        currency: result.currency,
+        changePct: result.changePct,
+        timestamp: result.timestamp,
+        source: 'yahoo',
+        error: result.error,
+      });
     }
   }
 
   return results;
+}
+
+/**
+ * Parse Yahoo chart response to extract latest price
+ */
+async function parseChartResponse(
+  response: Response,
+  symbol: string,
+  internalId: string,
+  isDailyFallback: boolean
+): Promise<Partial<QuoteResult> & { internalId: string }> {
+  try {
+    const data = await fetchJsonSafe(response);
+
+    // Defensive parsing: ensure chart structure exists
+    if (!data || !data.chart || !Array.isArray(data.chart.result) || data.chart.result.length === 0) {
+      return {
+        internalId,
+        error: `Invalid chart response structure for ${symbol}`,
+      };
+    }
+
+    const chartResult = data.chart.result[0];
+    if (!chartResult) {
+      return {
+        internalId,
+        error: `No chart data found for ${symbol}`,
+      };
+    }
+
+    const meta = chartResult.meta || {};
+    const timestamps = chartResult.timestamp || [];
+    const quoteIndicators = chartResult.indicators?.quote?.[0];
+    const closes = quoteIndicators?.close || [];
+
+    // Extract price according to priority:
+    // 1. meta.regularMarketPrice (preferred)
+    // 2. latest non-null value from indicators.quote[0].close array
+    // 3. meta.previousClose (fallback)
+    let price: number | null = null;
+    let timestamp: number = Date.now();
+
+    // Priority 1: Use meta.regularMarketPrice if present
+    if (meta.regularMarketPrice !== null && meta.regularMarketPrice !== undefined) {
+      price = meta.regularMarketPrice;
+      if (meta.regularMarketTime) {
+        timestamp = meta.regularMarketTime * 1000;
+      }
+    } else if (closes.length > 0) {
+      // Priority 2: Use latest non-null value from closes array
+      for (let i = closes.length - 1; i >= 0; i--) {
+        if (closes[i] !== null && closes[i] !== undefined) {
+          price = closes[i];
+          if (timestamps[i]) {
+            timestamp = timestamps[i] * 1000; // Convert to milliseconds
+          }
+          break;
+        }
+      }
+    }
+
+    // Priority 3: Fallback to previousClose if still no price
+    if (price === null || price === undefined) {
+      price = meta.previousClose || null;
+      if (meta.previousClose && meta.regularMarketTime) {
+        timestamp = meta.regularMarketTime * 1000;
+      }
+    }
+
+    if (price === null || price === undefined) {
+      return {
+        internalId,
+        error: `No price data found for ${symbol}`,
+      };
+    }
+
+    // Extract currency
+    let currency = meta.currency || (symbol.endsWith('.TA') ? 'ILS' : 'USD');
+    // Normalize ILA -> ILS
+    if (currency === 'ILA') {
+      currency = 'ILS';
+    }
+
+    // TASE Special Handling: Convert Agorot to Shekels
+    // Apply ONLY to .TA non-index symbols with price > 500
+    if (symbol.endsWith('.TA') && !symbol.startsWith('^') && price > 500) {
+      price = price / 100;
+    }
+
+    // Calculate change percentage
+    let changePct = 0;
+    const previousClose = meta.regularMarketPreviousClose || meta.previousClose;
+    
+    if (meta.regularMarketChangePercent !== undefined && meta.regularMarketChangePercent !== null) {
+      changePct = meta.regularMarketChangePercent;
+    } else if (previousClose && previousClose > 0) {
+      const adjustedPrevClose = symbol.endsWith('.TA') && !symbol.startsWith('^') && previousClose > 500
+        ? previousClose / 100
+        : previousClose;
+      const change = price - adjustedPrevClose;
+      changePct = (change / adjustedPrevClose) * 100;
+    }
+
+    return {
+      internalId,
+      price,
+      currency,
+      changePct,
+      timestamp,
+    };
+  } catch (error) {
+    console.error(`Error parsing chart response for ${symbol}:`, error);
+    return {
+      internalId,
+      error: `Failed to parse chart response: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    };
+  }
 }
 
 /**
@@ -268,7 +367,7 @@ export default async function handler(
   
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, HEAD');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
@@ -276,9 +375,10 @@ export default async function handler(
   }
 
   const isGet = req.method === 'GET';
+  const isHead = req.method === 'HEAD';
   const isPost = req.method === 'POST';
 
-  if (!isGet && !isPost) {
+  if (!isGet && !isHead && !isPost) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
@@ -286,10 +386,14 @@ export default async function handler(
     let internalIds: string[] = [];
     let symbols: string[] | undefined;
 
-    if (isGet) {
+    if (isGet || isHead) {
       // Parse from query string
       const queryIds = parseIdsFromQuery(req.query);
       if (queryIds.length === 0) {
+        if (isHead) {
+          res.status(400).end();
+          return;
+        }
         return res.status(400).json({ error: 'Query parameter "ids" is required (e.g., ?ids=yahoo:AAPL&ids=cg:bitcoin or ?ids=yahoo:AAPL,cg:bitcoin)' });
       }
       internalIds = queryIds;
@@ -360,13 +464,18 @@ export default async function handler(
       }
     });
 
-    // Set cache headers - only for GET requests (CDN caching)
-    if (isGet) {
+    // Set cache headers - only for GET/HEAD requests (CDN caching)
+    if (isGet || isHead) {
       res.setHeader('Cache-Control', 'max-age=0, s-maxage=60, stale-while-revalidate=300');
       res.setHeader('CDN-Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
     } else {
       // POST requests: minimal caching (browser only, no CDN)
       res.setHeader('Cache-Control', 'no-cache');
+    }
+
+    // HEAD requests: return headers only, no body
+    if (isHead) {
+      return res.status(200).end();
     }
 
     return res.status(200).json(allResults);

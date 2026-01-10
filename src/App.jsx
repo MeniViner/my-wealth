@@ -30,6 +30,7 @@ import OnboardingWizard from './components/OnboardingWizard';
 import CoachmarkTour from './components/CoachmarkTour';
 import { DEFAULT_SYSTEM_DATA } from './constants/defaults';
 import { confirmAlert, successAlert, errorAlert } from './utils/alerts';
+import { checkApiHealth } from './services/backendApi';
 
 function App() {
   const { user, loading: authLoading } = useAuth();
@@ -48,6 +49,26 @@ function App() {
   } = useOnboarding(user);
   
   // Get demo data context (must be inside DemoDataProvider, so we'll move this)
+
+  // API Health Check - run once on app startup
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const isHealthy = await checkApiHealth();
+        if (!isHealthy) {
+          console.warn('⚠️ API not reachable. Are you running Vercel dev? Expected: vercel dev --listen 3000');
+          console.warn('   If using npm run dev, API endpoints will not be available.');
+        }
+      } catch (error) {
+        // Silent fail - don't block app startup
+        console.debug('API health check failed (non-blocking):', error.message);
+      }
+    };
+    
+    // Run health check after a short delay to avoid blocking initial render
+    const timeoutId = setTimeout(checkHealth, 1000);
+    return () => clearTimeout(timeoutId);
+  }, []);
 
   // Expose reset function for testing - ONLY in development mode
   // SECURITY: This debug function is NOT included in production builds
