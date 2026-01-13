@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Sparkles, Loader2, Plus, ArrowRight, Calculator, RefreshCw, Calendar, Hash } from 'lucide-react';
+import { ArrowLeft, Sparkles, Loader2, Plus, ArrowRight, Calculator, RefreshCw, Calendar, Hash, X } from 'lucide-react';
 import { callGeminiAI } from '../services/gemini';
 import { infoAlert, successToast, errorAlert } from '../utils/alerts';
 import { generateRandomColor } from '../constants/defaults';
@@ -168,6 +168,73 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
       }
     }
   }, [formData.category]);
+
+  // Reset related fields when switching between מניות/קריפטו categories
+  const prevCategoryRef = useRef(formData.category);
+  useEffect(() => {
+    const prevCategory = prevCategoryRef.current;
+    const currentCategory = formData.category;
+    
+    // If switching between מניות and קריפטו, reset related fields
+    if ((prevCategory === 'מניות' && currentCategory === 'קריפטו') ||
+        (prevCategory === 'קריפטו' && currentCategory === 'מניות')) {
+      setFormData(prev => ({
+        ...prev,
+        name: '',
+        symbol: '',
+        displayName: '',
+        apiId: '',
+        marketDataSource: '',
+        purchasePrice: '',
+        totalCost: '',
+        quantity: ''
+      }));
+      setCurrentPriceData(null);
+      setNativePrice(null);
+      setNativeCurrency(null);
+      setIsPriceManual(false);
+      setLastEditedField(null);
+    }
+    
+    prevCategoryRef.current = currentCategory;
+  }, [formData.category]);
+
+  // Reset related fields when symbol/apiId is cleared (for מניות/קריפטו categories)
+  const prevSymbolRef = useRef(formData.symbol);
+  const prevApiIdRef = useRef(formData.apiId);
+  useEffect(() => {
+    // Only for מניות/קריפטו categories
+    if (formData.category !== 'מניות' && formData.category !== 'קריפטו') {
+      prevSymbolRef.current = formData.symbol;
+      prevApiIdRef.current = formData.apiId;
+      return;
+    }
+
+    const prevSymbol = prevSymbolRef.current;
+    const prevApiId = prevApiIdRef.current;
+    const currentSymbol = formData.symbol;
+    const currentApiId = formData.apiId;
+
+    // If symbol/apiId were cleared (had value before, now empty), reset related fields
+    if ((prevSymbol && !currentSymbol && !currentApiId) || 
+        (prevApiId && !currentApiId && !currentSymbol)) {
+      setFormData(prev => ({
+        ...prev,
+        name: '',
+        purchasePrice: '',
+        totalCost: '',
+        quantity: ''
+      }));
+      setCurrentPriceData(null);
+      setNativePrice(null);
+      setNativeCurrency(null);
+      setIsPriceManual(false);
+      setLastEditedField(null);
+    }
+
+    prevSymbolRef.current = currentSymbol;
+    prevApiIdRef.current = currentApiId;
+  }, [formData.symbol, formData.apiId, formData.category]);
 
   // Auto-switch to LEGACY mode for Cash category
   useEffect(() => {
@@ -609,6 +676,41 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
     setTagLoading(false);
   };
 
+  const handleClearForm = () => {
+    setFormData({
+      name: '',
+      symbol: '',
+      displayName: '',
+      apiId: '',
+      marketDataSource: '',
+      instrument: systemData.instruments[0]?.name || '',
+      platform: systemData.platforms[0]?.name || '',
+      category: systemData.categories[0]?.name || 'אחר',
+      currency: 'ILS',
+      originalValue: '',
+      tags: '',
+      assetType: 'STOCK',
+      assetMode: 'QUANTITY',
+      quantity: '',
+      purchasePrice: '',
+      purchaseDate: new Date().toISOString().split('T')[0],
+      totalCost: ''
+    });
+    // Reset all related state
+    setCurrentPriceData(null);
+    setNativePrice(null);
+    setNativeCurrency(null);
+    setExchangeRate(null);
+    setIsPriceManual(false);
+    setLastEditedField(null);
+    setShowNewSymbol(false);
+    setNewSymbolValue('');
+    setShowNewPlatform(false);
+    setNewPlatformValue('');
+    setShowNewInstrument(false);
+    setNewInstrumentValue('');
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -683,6 +785,16 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">
           {editAsset ? 'עריכת נכס' : 'הוספת נכס חדש'}
         </h2>
+        {!editAsset && (
+          <button
+            onClick={handleClearForm}
+            className="mr-auto px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition flex items-center gap-2"
+            title="נקה את כל השדות"
+          >
+            <X size={18} />
+            נקה
+          </button>
+        )}
       </header>
       <form onSubmit={handleSubmit} className="md:bg-white md:dark:bg-slate-800 p-2 md:p-8 md:rounded-2xl md:shadow-lg md:border md:border-slate-100 dark:border-slate-700 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -835,6 +947,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
               {(formData.category === 'מניות' || formData.category === 'קריפטו') ? (
                 // Smart Ticker Search with Category Selector
                 <TickerSearch
+                  key={`${formData.symbol || ''}-${formData.displayName || ''}-${formData.apiId || ''}`}
                   type={formData.category === 'קריפטו' ? 'crypto' : 'us-stock'} // Default type (will be overridden by selector)
                   value={formData.symbol || ''}
                   displayValue={formData.displayName || formData.name || ''} // Show Hebrew name
@@ -892,18 +1005,24 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                       setNativeCurrency(null);
                       setIsPriceManual(false); // Reset manual mode when selecting new asset
                     } else {
+                      // Clear all related fields when asset is cleared
                       setFormData({
                         ...formData,
+                        name: '',
                         symbol: '',
                         displayName: '',
                         apiId: '',
                         marketDataSource: '',
-                        assetType: 'STOCK'
+                        assetType: 'STOCK',
+                        purchasePrice: '',
+                        totalCost: '',
+                        quantity: ''
                       });
                       setCurrentPriceData(null);
                       setNativePrice(null);
                       setNativeCurrency(null);
                       setIsPriceManual(false);
+                      setLastEditedField(null);
                     }
                   }}
                   allowManual={true}
