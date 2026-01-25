@@ -425,145 +425,169 @@ export const fetchAssetPrice = async (asset) => {
 };
 
 /**
- * Fetch prices for multiple assets (optimized batch) - via backend API
+ * Fetch prices for multiple assets (STRICT SPLIT ROUTING)
+ * Israeli (TASE) assets → Browser only (CORS proxy)
+ * Global assets (US Stocks, Crypto) → Backend API only
  * @param {Array} assets - Array of asset objects
  * @returns {Promise<Object<string, UnifiedAssetPrice>>}
  */
 export const fetchAssetPricesBatch = async (assets) => {
   if (!assets || assets.length === 0) return {};
 
-  // Convert assets to internal IDs using resolveInternalId
-  const internalIds = [];
-  const idToAssetMap = new Map();
+  // ==================== STEP 1: SEPARATE INTO TWO BUCKETS ====================
+  const israelBucket = [];  // TASE assets → Browser fetch
+  const globalBucket = [];  // US Stocks, Crypto → Backend API
+  const assetMap = new Map(); // Map for result merging
 
   assets.forEach(asset => {
     if (asset.marketDataSource === 'manual') return;
 
     const internalId = resolveInternalId(asset);
-    if (internalId) {
-      internalIds.push(internalId);
-      idToAssetMap.set(internalId, asset);
+    if (!internalId) return;
+
+    // Store asset for later lookup
+    assetMap.set(internalId, asset);
+
+    // Routing logic: TASE assets go to Israel bucket, everything else to Global bucket
+    const isTaseAsset =
+      asset.marketDataSource === 'tase-local' ||
+      internalId.startsWith('tase:') ||
+      (asset.symbol && asset.symbol.endsWith('.TA'));
+
+    if (isTaseAsset) {
+      israelBucket.push({ asset, internalId });
+    } else {
+      globalBucket.push({ asset, internalId });
     }
   });
 
-  if (internalIds.length === 0) return {};
-
-  // Debug: Log IDs being sent
   if (DEBUG_PRICES) {
-    console.log('[PRICE DEBUG] POST /api/quote payload ids:', internalIds);
+    console.log(`[SPLIT ROUTING] Israel Bucket: ${israelBucket.length}, Global Bucket: ${globalBucket.length}`);
   }
 
-  try {
-    // Fetch all quotes in one batch
-    const quotes = await getQuotes(internalIds);
+  const results = {};
 
-    // Debug: Log first few returned quotes
-    if (DEBUG_PRICES && quotes.length > 0) {
-      console.log('[PRICE DEBUG] First few returned quote.id values:',
-        quotes.slice(0, 3).map(q => q?.id).filter(Boolean)
-      );
-    }
+  // ==================== STEP 2: PARALLEL EXECUTION ====================
 
-    const results = {};
+  // ========== BUCKET A: ISRAEL (Browser-only, no backend) ==========
+  const israelPromises = israelBucket.map(async ({ asset, internalId }) => {
+    try {
+      // Extract security ID from internal ID (e.g., "tase:5140454" → "5140454")
+      const securityId = internalId.startsWith('tase:')
+        ? internalId.substring(5)
+        : asset.apiId || asset.symbol;
 
-    // Filter valid quotes only (skip entries with errors)
-    const validQuotes = quotes.filter(q =>
-      q &&
-      !q.error &&
-      typeof q.price === 'number' &&
-      !isNaN(q.price) &&
-      q.price > 0
-    );
-
-    // Log errors for debugging
-    quotes.forEach(q => {
-      if (q && q.error) {
-        console.warn(`[PRICE DEBUG] Quote error for ${q.id}:`, q.error);
+      if (DEBUG_PRICES) {
+        console.log(`[ISRAEL BUCKET] Fetching ${securityId} from browser...`);
       }
-    });
 
-    // ==================== CLIENT-SIDE FALLBACK FOR FAILED TASE ASSETS ====================
-    // Identify quotes that failed (error or price === 0) and are TASE assets
-    const failedTaseQuotes = quotes.filter(q =>
-      q &&
-      q.id &&
-      q.id.startsWith('tase:') &&
-      (q.error || !q.price || q.price === 0)
-    );
+      const browserData = await fetchTasePriceFromBrowser(securityId);
 
-    // Attempt to fetch failed TASE prices from browser using CORS proxy
-    if (failedTaseQuotes.length > 0) {
-      console.log(`[BROWSER FALLBACK] Attempting to repair ${failedTaseQuotes.length} failed TASE quotes...`);
+      if (!browserData || !browserData.price) {
+        console.warn(`[ISRAEL BUCKET] Failed to fetch ${securityId}`);
+        return null;
+      }
 
-      const fallbackPromises = failedTaseQuotes.map(async (failedQuote) => {
-        const securityId = failedQuote.id.substring(5); // Remove 'tase:' prefix
-        const browserPrice = await fetchTasePriceFromBrowser(securityId);
-
-        if (browserPrice) {
-          // Successfully fetched from browser - repair the quote
-          failedQuote.price = browserPrice.price;
-          failedQuote.changePct = browserPrice.changePct;
-          failedQuote.currency = 'ILS';
-          failedQuote.timestamp = Date.now();
-          failedQuote.source = 'funder-browser';
-          delete failedQuote.error; // Remove error flag
-
-          console.log(`[BROWSER FALLBACK] ✅ Repaired ${failedQuote.id} with price ${browserPrice.price}`);
-        } else {
-          console.warn(`[BROWSER FALLBACK] ❌ Could not repair ${failedQuote.id}`);
-        }
-
-        return failedQuote;
-      });
-
-      // Wait for all fallback attempts to complete
-      await Promise.all(fallbackPromises);
-    }
-
-    // Re-filter valid quotes after fallback (some failed quotes may now be valid)
-    const validQuotesAfterFallback = quotes.filter(q =>
-      q &&
-      !q.error &&
-      typeof q.price === 'number' &&
-      !isNaN(q.price) &&
-      q.price > 0
-    );
-
-    validQuotesAfterFallback.forEach((quote) => {
-      const asset = idToAssetMap.get(quote.id);
-      if (!asset) return;
-
-      // Use internalId as key for price lookup (more reliable than apiId/symbol)
-      const priceKey = resolveInternalId(asset) || asset.apiId || asset.symbol;
-      if (!priceKey) return;
-
-      let assetType = 'STOCK';
+      // Normalize to match backend format
+      const priceKey = internalId;
       const symbol = asset.apiId || asset.symbol || '';
-      if (symbol.startsWith('^')) {
-        assetType = 'INDEX';
-      } else if (asset.assetType === 'ETF' || asset.marketDataSource === 'tase-local') {
-        assetType = 'ETF';
-      }
 
-      results[priceKey] = {
-        symbol: symbol,
-        name: asset.name || symbol,
-        currentPrice: quote.price,
-        currency: quote.currency || 'USD',
-        change24h: quote.changePct || 0,
-        changeAmount: (quote.price * (quote.changePct || 0)) / 100,
-        lastUpdated: new Date(quote.timestamp || Date.now()),
-        source: quote.source === 'coingecko' ? 'coingecko' :
-          quote.source === 'funder-browser' ? 'funder-browser' : 'yahoo',
-        assetType: assetType,
+      return {
+        key: priceKey,
+        data: {
+          symbol: symbol,
+          name: asset.name || symbol,
+          currentPrice: browserData.price,
+          currency: 'ILS',
+          change24h: browserData.changePct || 0,
+          changeAmount: (browserData.price * (browserData.changePct || 0)) / 100,
+          lastUpdated: new Date(),
+          source: 'funder-browser',
+          assetType: asset.assetType === 'ETF' ? 'ETF' : 'STOCK',
+        }
       };
-    });
+    } catch (error) {
+      console.error(`[ISRAEL BUCKET] Error fetching ${internalId}:`, error.message);
+      return null;
+    }
+  });
 
-    return results;
-  } catch (error) {
-    console.error('Error fetching asset prices batch:', error);
-    return {};
+  // ========== BUCKET B: GLOBAL (Backend API only) ==========
+  let globalQuotes = [];
+  if (globalBucket.length > 0) {
+    try {
+      const globalIds = globalBucket.map(item => item.internalId);
+      if (DEBUG_PRICES) {
+        console.log('[GLOBAL BUCKET] Sending to backend:', globalIds);
+      }
+      globalQuotes = await getQuotes(globalIds);
+    } catch (error) {
+      console.error('[GLOBAL BUCKET] Backend API error:', error);
+    }
   }
+
+  // ==================== STEP 3: MERGE & NORMALIZE ====================
+
+  // Wait for all Israel bucket fetches
+  const israelResults = await Promise.all(israelPromises);
+
+  // Add Israel bucket results to final output
+  israelResults.forEach(result => {
+    if (result && result.key && result.data) {
+      results[result.key] = result.data;
+    }
+  });
+
+  // Add Global bucket results (backend API)
+  const validGlobalQuotes = globalQuotes.filter(q =>
+    q &&
+    !q.error &&
+    typeof q.price === 'number' &&
+    !isNaN(q.price) &&
+    q.price > 0
+  );
+
+  // Log errors from backend
+  globalQuotes.forEach(q => {
+    if (q && q.error) {
+      console.warn(`[GLOBAL BUCKET] Backend error for ${q.id}:`, q.error);
+    }
+  });
+
+  validGlobalQuotes.forEach((quote) => {
+    const asset = assetMap.get(quote.id);
+    if (!asset) return;
+
+    const priceKey = quote.id;
+    const symbol = asset.apiId || asset.symbol || '';
+
+    let assetType = 'STOCK';
+    if (symbol.startsWith('^')) {
+      assetType = 'INDEX';
+    } else if (asset.assetType === 'CRYPTO' || quote.id.startsWith('cg:')) {
+      assetType = 'CRYPTO';
+    } else if (asset.assetType === 'ETF') {
+      assetType = 'ETF';
+    }
+
+    results[priceKey] = {
+      symbol: symbol,
+      name: asset.name || symbol,
+      currentPrice: quote.price,
+      currency: quote.currency || 'USD',
+      change24h: quote.changePct || 0,
+      changeAmount: (quote.price * (quote.changePct || 0)) / 100,
+      lastUpdated: new Date(quote.timestamp || Date.now()),
+      source: quote.source === 'coingecko' ? 'coingecko' : 'yahoo',
+      assetType: assetType,
+    };
+  });
+
+  if (DEBUG_PRICES) {
+    console.log(`[SPLIT ROUTING] Final results count: ${Object.keys(results).length}`);
+  }
+
+  return results;
 };
 
 // ==================== HISTORICAL PRICES ====================

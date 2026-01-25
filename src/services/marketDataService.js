@@ -54,7 +54,7 @@ export const searchCryptoAssets = async (query) => {
 
   try {
     const results = await backendSearchAssets(query);
-    
+
     // Filter for crypto only and map to our format
     const cryptoResults = results
       .filter(r => r.type === 'crypto')
@@ -217,9 +217,217 @@ export const searchStockAssets = async (query) => {
   return [];
 };
 
+// ==================== CLIENT-SIDE ISRAELI STOCK SEARCH ====================
+
 /**
- * Search Israeli stocks (TASE - Tel Aviv Stock Exchange) - via backend API
- * Filters for stocks with .TA suffix or TASE exchange
+ * Search Israeli stocks from browser using CORS proxy
+ * Fallback when backend API is unavailable (e.g., npm run dev)
+ * @param {string} query - Search query
+ * @returns {Promise<Array>} Array of Israeli stock results
+ */
+// async function searchIsraeliStocksFromBrowser(query) {
+//   if (!query || query.trim().length < 1) {
+//     return [];
+//   }
+
+//   try {
+//     // Funder.co.il search endpoint
+//     const searchUrl = `https://www.funder.co.il/api/search?q=${encodeURIComponent(query.trim())}`;
+//     const corsProxyUrl = `https://corsproxy.io/?${encodeURIComponent(searchUrl)}`;
+
+//     console.log(`[BROWSER SEARCH] Searching Israeli stocks for "${query}" via CORS proxy...`);
+
+//     const response = await fetch(corsProxyUrl, {
+//       method: 'GET',
+//       headers: {
+//         'Accept': 'application/json',
+//         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+//       }
+//     });
+
+//     if (!response.ok) {
+//       console.warn(`[BROWSER SEARCH] Failed to fetch: HTTP ${response.status}`);
+//       return [];
+//     }
+
+//     const text = await response.text();
+//     let data;
+
+//     // Try to parse JSON
+//     try {
+//       data = JSON.parse(text);
+//     } catch (parseError) {
+//       // If not JSON, try to extract from HTML
+//       console.warn('[BROWSER SEARCH] Response is not JSON, attempting HTML extraction');
+
+//       // Try to find JSON embedded in HTML (common pattern)
+//       const jsonMatch = text.match(/"results"\s*:\s*\[([^\]]+)\]/);
+//       if (jsonMatch) {
+//         try {
+//           data = JSON.parse(`{"results":[${jsonMatch[1]}]}`);
+//         } catch (e) {
+//           console.warn('[BROWSER SEARCH] Could not extract JSON from HTML');
+//           return [];
+//         }
+//       } else {
+//         return [];
+//       }
+//     }
+
+//     // Process results - handle different response formats
+//     let results = [];
+
+//     if (Array.isArray(data)) {
+//       results = data;
+//     } else if (data.results && Array.isArray(data.results)) {
+//       results = data.results;
+//     } else if (data.data && Array.isArray(data.data)) {
+//       results = data.data;
+//     } else if (data.securities && Array.isArray(data.securities)) {
+//       results = data.securities;
+//     }
+
+//     // Map to our format
+//     const mappedResults = results
+//       .filter(item => item && (item.securityNumber || item.id || item.symbol))
+//       .slice(0, 10) // Limit to 10 results
+//       .map(item => {
+//         const securityId = item.securityNumber || item.securityId || item.id;
+//         const symbol = item.symbol || item.ticker || `${securityId}.TA`;
+//         const nameHe = item.nameHe || item.hebrewName || item.name_he || item.name;
+//         const nameEn = item.nameEn || item.englishName || item.name_en || item.name;
+
+//         return {
+//           id: `tase:${securityId}`,
+//           symbol: symbol,
+//           name: nameEn || nameHe || symbol,
+//           nameHe: nameHe || nameEn || symbol,
+//           securityId: securityId,
+//           image: null,
+//           marketDataSource: 'tase-local',
+//           provider: 'tase-local',
+//           exchange: 'TASE',
+//           extra: {
+//             securityNumber: securityId,
+//             source: 'funder-browser'
+//           }
+//         };
+//       });
+
+//     console.log(`[BROWSER SEARCH] Found ${mappedResults.length} Israeli stocks`);
+//     return mappedResults;
+
+//   } catch (error) {
+//     console.error('[BROWSER SEARCH] Error searching Israeli stocks:', error.message);
+//     return [];
+//   }
+// };
+/**
+ * Search Israeli stocks from browser using CORS proxy
+ * IMPROVED: Supports direct ID lookup via scraping if API fails
+ */
+async function searchIsraeliStocksFromBrowser(query) {
+  if (!query || query.trim().length < 1) {
+    return [];
+  }
+
+  const cleanQuery = query.trim();
+  const isNumber = /^\d+$/.test(cleanQuery);
+  const results = [];
+
+  // --- STRATEGY 1: DIRECT PAGE SCRAPING (Best for Security IDs) ---
+  // אם החיפוש הוא מספר, ננסה לגשת ישירות לדף הקרן (כמו שעשינו במשיכת המחיר)
+  // זה עוקף את ה-API של החיפוש שנופל ב-404
+  if (isNumber) {
+    try {
+      console.log(`[BROWSER SEARCH] Attempting direct page lookup for ID: ${cleanQuery}`);
+      const funderUrl = `https://www.funder.co.il/fund/${cleanQuery}`;
+      const corsProxyUrl = `https://corsproxy.io/?${encodeURIComponent(funderUrl)}`;
+
+      const response = await fetch(corsProxyUrl);
+      
+      if (response.ok) {
+        const html = await response.text();
+        // בדיקה בסיסית אם זה דף תקין (מחפשים את השם בכותרת או במטא)
+        // בדרך כלל השם מופיע בתוך <h1 class="font-weight-bold">שם הקרן</h1> או ב-title
+        const nameMatch = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) || html.match(/<title>([\s\S]*?)<\/title>/i);
+        
+        if (nameMatch && nameMatch[1]) {
+          let cleanName = nameMatch[1].replace(/– Funder|– פאנדר|פאנדר/g, '').trim();
+          // ניקוי תגיות HTML אם נשארו
+          cleanName = cleanName.replace(/<[^>]*>/g, '').trim();
+
+          console.log(`[BROWSER SEARCH] ✅ Direct lookup success! Found: ${cleanName}`);
+          
+          results.push({
+            id: `tase:${cleanQuery}`,
+            symbol: cleanQuery,
+            name: cleanName,
+            nameHe: cleanName,
+            securityId: cleanQuery,
+            image: null,
+            marketDataSource: 'tase-local',
+            provider: 'tase-local',
+            exchange: 'TASE',
+            extra: { securityNumber: cleanQuery }
+          });
+          
+          // אם מצאנו בשיטה הישירה, אין טעם להמשיך ל-API
+          return results;
+        }
+      }
+    } catch (e) {
+      console.warn('[BROWSER SEARCH] Direct lookup failed:', e);
+    }
+  }
+
+  // --- STRATEGY 2: SEARCH API (Fallback for names/text) ---
+  try {
+    const searchUrl = `https://www.funder.co.il/api/search?q=${encodeURIComponent(cleanQuery)}`;
+    const corsProxyUrl = `https://corsproxy.io/?${encodeURIComponent(searchUrl)}`;
+
+    console.log(`[BROWSER SEARCH] Trying Search API for "${cleanQuery}"...`);
+
+    const response = await fetch(corsProxyUrl, {
+      method: 'GET',
+      headers: { 'User-Agent': 'Mozilla/5.0' }
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      let apiResults = [];
+
+      if (Array.isArray(data)) apiResults = data;
+      else if (data.results) apiResults = data.results;
+      else if (data.data) apiResults = data.data;
+
+      const mapped = apiResults
+        .filter(item => item && (item.securityNumber || item.id))
+        .map(item => {
+          const sid = item.securityNumber || item.id;
+          return {
+            id: `tase:${sid}`,
+            symbol: item.symbol || sid,
+            name: item.name || item.hebrewName || sid,
+            nameHe: item.nameHe || item.name,
+            securityId: sid,
+            marketDataSource: 'tase-local',
+            exchange: 'TASE'
+          };
+        });
+      
+      results.push(...mapped);
+    }
+  } catch (error) {
+    console.warn('[BROWSER SEARCH] Search API failed (expected for proxy):', error.message);
+  }
+
+  return results;
+}
+/**
+ * Search Israeli stocks (TASE - Tel Aviv Stock Exchange)
+ * Uses backend API when available (production/vercel:dev)
+ * Falls back to client-side browser search when backend unavailable (npm run dev)
  * @param {string} query - Search query
  * @returns {Promise<Array>} Array of asset objects
  */
@@ -234,25 +442,26 @@ export const searchIsraeliStocks = async (query) => {
     return cached;
   }
 
+  // Try backend first (works in production and with vercel:dev)
   try {
     const results = await backendSearchAssets(query);
-    
+
     // Filter for Israeli stocks (TASE-local or .TA symbols or IL country)
     const israeliResults = results
-      .filter(r => 
-        r.provider === 'tase-local' || 
-        r.country === 'IL' || 
+      .filter(r =>
+        r.provider === 'tase-local' ||
+        r.country === 'IL' ||
         (r.symbol && r.symbol.endsWith('.TA'))
       )
       .map(result => {
         // Map to our format - preserve prefixed ID for TASE assets
         const mapped = {
           // Keep the full prefixed ID (e.g., "tase:1183441") for TASE assets
-          id: result.id.startsWith('tase:') 
+          id: result.id.startsWith('tase:')
             ? result.id  // Keep full "tase:1183441" format
             : result.id.startsWith('yahoo:') || result.id.startsWith('cg:')
-            ? result.id  // Keep prefixed format
-            : result.symbol,  // Fallback to symbol for non-prefixed IDs
+              ? result.id  // Keep prefixed format
+              : result.symbol,  // Fallback to symbol for non-prefixed IDs
           symbol: result.symbol,
           name: result.name,
           nameHe: result.nameHe || result.name,
@@ -278,8 +487,21 @@ export const searchIsraeliStocks = async (query) => {
     setCachedResult(cacheKey, israeliResults);
     return israeliResults;
   } catch (error) {
-    console.error('Error searching Israeli stocks:', error);
-    return [];
+    // Backend failed - fallback to client-side browser search
+    console.log('[ISRAELI SEARCH] Backend unavailable, using browser fallback...');
+
+    try {
+      const browserResults = await searchIsraeliStocksFromBrowser(query);
+
+      if (browserResults.length > 0) {
+        setCachedResult(cacheKey, browserResults);
+      }
+
+      return browserResults;
+    } catch (browserError) {
+      console.error('[ISRAELI SEARCH] Browser fallback also failed:', browserError);
+      return [];
+    }
   }
 };
 
@@ -301,10 +523,10 @@ export const searchUSStocks = async (query) => {
 
   try {
     const results = await backendSearchAssets(query);
-    
+
     // Filter for US stocks (exclude Israeli, exclude indices unless they're US indices)
     const usResults = results
-      .filter(r => 
+      .filter(r =>
         (r.type === 'equity' || r.type === 'etf') &&
         r.country !== 'IL' &&
         !r.symbol?.endsWith('.TA')
@@ -403,7 +625,7 @@ export const searchIndices = async (query) => {
   // Fallback: Search backend API for indices
   try {
     const results = await backendSearchAssets(query);
-    
+
     // Filter for indices only
     const indexResults = results
       .filter(r => r.type === 'index')

@@ -1100,13 +1100,13 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getInstrumentBySecurityId } from './_data/taseInstruments';
 
-// --- הגדרות מקומיות ---
-const TIMEOUT_MS = 3500; // 3.5 שניות גג
+// הגדרות
+const TIMEOUT_MS = 3500;
 
+// פונקציית Fetch פשוטה
 async function quickFetch(url: string) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  
   try {
     const res = await fetch(url, { 
       signal: controller.signal,
@@ -1131,12 +1131,12 @@ function parseId(id: string): { provider: string; symbol: string } {
         const inst = getInstrumentBySecurityId(securityId);
         const symbol = inst?.yahooSymbol ?? `${securityId}.TA`;
         return { provider: 'yahoo', symbol };
-      } catch (e) {
+      } catch {
         return { provider: 'yahoo', symbol: `${securityId}.TA` };
       }
     }
     return { provider: 'yahoo', symbol: id };
-  } catch (e) {
+  } catch {
     return { provider: 'yahoo', symbol: id };
   }
 }
@@ -1145,23 +1145,14 @@ async function fetchYahooQuote(symbol: string, internalId: string): Promise<any>
   try {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=1d&interval=1m`;
     const response = await quickFetch(url);
-
-    if (!response.ok) {
-      return { id: internalId, error: `Yahoo HTTP ${response.status}` };
-    }
-
+    if (!response.ok) return { id: internalId, error: `Yahoo HTTP ${response.status}` };
     const data = await response.json();
     const result = data?.chart?.result?.[0];
     const meta = result?.meta;
-
     if (!meta) return { id: internalId, error: 'No Yahoo data' };
 
     let price = meta.regularMarketPrice ?? meta.previousClose;
-    
-    // המרת אגורות לשקלים
-    if (symbol.endsWith('.TA') && !symbol.startsWith('^') && price > 500) {
-      price = price / 100;
-    }
+    if (symbol.endsWith('.TA') && !symbol.startsWith('^') && price > 500) price = price / 100;
 
     return {
       id: internalId,
@@ -1171,8 +1162,7 @@ async function fetchYahooQuote(symbol: string, internalId: string): Promise<any>
       timestamp: (meta.regularMarketTime || Date.now() / 1000) * 1000,
       source: 'yahoo'
     };
-
-  } catch (error) {
+  } catch {
     return { id: internalId, error: 'Yahoo fetch failed' };
   }
 }
@@ -1183,9 +1173,7 @@ async function fetchCoinGeckoQuotes(coinIds: string[]): Promise<any[]> {
     const idsString = coinIds.join(',');
     const url = `https://api.coingecko.com/api/v3/simple/price?ids=${idsString}&vs_currencies=usd&include_24hr_change=true&include_last_updated_at=true`;
     const response = await quickFetch(url);
-    
     if (!response.ok) return [];
-    
     const data = await response.json();
     return coinIds.map(id => {
       const d = data[id];
@@ -1199,7 +1187,7 @@ async function fetchCoinGeckoQuotes(coinIds: string[]): Promise<any[]> {
         source: 'coingecko'
       };
     });
-  } catch (e) {
+  } catch {
     return [];
   }
 }
@@ -1212,8 +1200,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
-    // --- התיקון הקריטי כאן ---
-    // מטפל במצב שהפרמטר ids מופיע כמה פעמים ב-URL
+    // --- התיקון הקריטי: טיפול במערך או מחרוזת ---
     let queryIds: string[] = [];
     if (req.query.ids) {
       if (Array.isArray(req.query.ids)) {
@@ -1226,32 +1213,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const bodyIds = req.body && req.body.ids ? req.body.ids : [];
     const rawIds = [...new Set([...queryIds, ...bodyIds])];
 
-    if (rawIds.length === 0) {
-      return res.status(400).json({ error: 'No IDs' });
-    }
+    if (rawIds.length === 0) return res.status(400).json({ error: 'No IDs' });
 
     const tasks = rawIds.map(async (id) => {
-      try {
-        const { provider, symbol } = parseId(id);
-        
-        if (provider === 'coingecko') {
-          const res = await fetchCoinGeckoQuotes([symbol]);
-          return res[0] || { id, error: 'CG Failed' };
-        } else {
-          return await fetchYahooQuote(symbol, id);
-        }
-      } catch (e) {
-        return { id, error: 'Internal logic error' };
+      const { provider, symbol } = parseId(id);
+      if (provider === 'coingecko') {
+        const res = await fetchCoinGeckoQuotes([symbol]);
+        return res[0] || { id, error: 'CG Failed' };
       }
+      return await fetchYahooQuote(symbol, id);
     });
 
     const results = await Promise.all(tasks);
-    
-    // מחזיר 200 תמיד כדי לאפשר לקליינט להפעיל את הפרוקסי
     return res.status(200).json(results);
 
   } catch (criticalError: any) {
     console.error('[API CRASH]', criticalError);
-    return res.status(200).json([{ error: 'Server Crash Handled', details: criticalError.message }]);
+    return res.status(200).json([{ error: 'Server Crash Handled' }]);
   }
-} 
+}
