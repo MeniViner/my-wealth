@@ -7,6 +7,62 @@
 import { getQuotes, getHistory } from './backendApi';
 import { resolveInternalId } from './internalIds';
 
+// ==================== CLIENT-SIDE TASE FALLBACK ====================
+
+/**
+ * Fetch TASE price directly from browser using CORS proxy
+ * This is a fallback for when the backend API fails to get TASE prices
+ * @param {string} securityId - TASE security ID (e.g., "5140454")
+ * @returns {Promise<{price: number, changePct: number}|null>}
+ */
+async function fetchTasePriceFromBrowser(securityId) {
+  try {
+    const funderUrl = `https://www.funder.co.il/fund/${securityId}`;
+    const corsProxyUrl = `https://corsproxy.io/?${encodeURIComponent(funderUrl)}`;
+
+    console.log(`[BROWSER FALLBACK] Fetching TASE ${securityId} from browser via CORS proxy...`);
+
+    const response = await fetch(corsProxyUrl, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      }
+    });
+
+    if (!response.ok) {
+      console.warn(`[BROWSER FALLBACK] Failed to fetch ${securityId}: HTTP ${response.status}`);
+      return null;
+    }
+
+    const html = await response.text();
+
+    // Extract buyPrice using regex: "buyPrice": 123.45
+    const priceMatch = html.match(/"buyPrice"\s*:\s*([\d\.]+)/);
+
+    if (!priceMatch || !priceMatch[1]) {
+      console.warn(`[BROWSER FALLBACK] No buyPrice found in HTML for ${securityId}`);
+      return null;
+    }
+
+    const price = parseFloat(priceMatch[1]);
+    if (isNaN(price) || price <= 0) {
+      console.warn(`[BROWSER FALLBACK] Invalid price extracted for ${securityId}: ${priceMatch[1]}`);
+      return null;
+    }
+
+    // Extract 1-day change percentage: "1day": 0.71 or "1day": -1.23
+    const changeMatch = html.match(/"1day"\s*:\s*([-\d\.]+)/);
+    const changePct = (changeMatch && changeMatch[1]) ? parseFloat(changeMatch[1]) : 0;
+
+    console.log(`[BROWSER FALLBACK] ✅ Success! ${securityId} price: ${price}, change: ${changePct}%`);
+
+    return { price, changePct };
+  } catch (error) {
+    console.error(`[BROWSER FALLBACK] Error fetching ${securityId}:`, error.message);
+    return null;
+  }
+}
+
 // Debug flag for price fetching
 const DEBUG_PRICES = import.meta.env.DEV;
 
@@ -79,16 +135,16 @@ export const fetchCryptoPrice = async (coinId, vsCurrency = 'usd') => {
 
   try {
     const quotes = await getQuotes([`cg:${coinId}`]);
-    
+
     // Filter valid quotes (no errors, valid price)
-    const validQuotes = quotes.filter(q => 
-      q && 
-      !q.error && 
-      typeof q.price === 'number' && 
-      !isNaN(q.price) && 
+    const validQuotes = quotes.filter(q =>
+      q &&
+      !q.error &&
+      typeof q.price === 'number' &&
+      !isNaN(q.price) &&
       q.price > 0
     );
-    
+
     if (validQuotes.length === 0) {
       const errorQuote = quotes.find(q => q && q.error);
       if (errorQuote) {
@@ -139,11 +195,11 @@ export const fetchCryptoPricesBatch = async (coinIds, vsCurrency = 'usd') => {
     const results = {};
 
     // Filter valid quotes only
-    const validQuotes = quotes.filter(q => 
-      q && 
-      !q.error && 
-      typeof q.price === 'number' && 
-      !isNaN(q.price) && 
+    const validQuotes = quotes.filter(q =>
+      q &&
+      !q.error &&
+      typeof q.price === 'number' &&
+      !isNaN(q.price) &&
       q.price > 0
     );
 
@@ -187,16 +243,16 @@ export const fetchYahooPrice = async (symbol) => {
 
   try {
     const quotes = await getQuotes([`yahoo:${symbol}`]);
-    
+
     // Filter valid quotes (no errors, valid price)
-    const validQuotes = quotes.filter(q => 
-      q && 
-      !q.error && 
-      typeof q.price === 'number' && 
-      !isNaN(q.price) && 
+    const validQuotes = quotes.filter(q =>
+      q &&
+      !q.error &&
+      typeof q.price === 'number' &&
+      !isNaN(q.price) &&
       q.price > 0
     );
-    
+
     if (validQuotes.length === 0) {
       const errorQuote = quotes.find(q => q && q.error);
       if (errorQuote) {
@@ -206,7 +262,7 @@ export const fetchYahooPrice = async (symbol) => {
     }
 
     const quote = validQuotes[0];
-    
+
     // Determine asset type from symbol
     let assetType = 'STOCK';
     if (symbol.startsWith('^')) {
@@ -247,11 +303,11 @@ export const fetchYahooPricesBatch = async (symbols) => {
     const results = {};
 
     // Filter valid quotes only
-    const validQuotes = quotes.filter(q => 
-      q && 
-      !q.error && 
-      typeof q.price === 'number' && 
-      !isNaN(q.price) && 
+    const validQuotes = quotes.filter(q =>
+      q &&
+      !q.error &&
+      typeof q.price === 'number' &&
+      !isNaN(q.price) &&
       q.price > 0
     );
 
@@ -311,21 +367,21 @@ export const fetchAssetPrice = async (asset) => {
   try {
     // Use getQuotes directly for unified quote fetching
     const quotes = await getQuotes([internalId]);
-    
+
     // Debug: Log quote fetching
     if (DEBUG_PRICES) {
       console.log('[PRICE DEBUG] fetchAssetPrice requested:', internalId, 'got quotes:', quotes.length);
     }
-    
+
     // Filter valid quotes (no errors, valid price)
-    const validQuotes = quotes.filter(q => 
-      q && 
-      !q.error && 
-      typeof q.price === 'number' && 
-      !isNaN(q.price) && 
+    const validQuotes = quotes.filter(q =>
+      q &&
+      !q.error &&
+      typeof q.price === 'number' &&
+      !isNaN(q.price) &&
       q.price > 0
     );
-    
+
     if (validQuotes.length === 0) {
       const errorQuote = quotes.find(q => q && q.error);
       if (errorQuote) {
@@ -337,7 +393,7 @@ export const fetchAssetPrice = async (asset) => {
     }
 
     const quote = validQuotes[0];
-    
+
     // Determine asset type
     let assetType = 'STOCK';
     const symbol = asset.symbol || asset.apiId || '';
@@ -382,7 +438,7 @@ export const fetchAssetPricesBatch = async (assets) => {
 
   assets.forEach(asset => {
     if (asset.marketDataSource === 'manual') return;
-    
+
     const internalId = resolveInternalId(asset);
     if (internalId) {
       internalIds.push(internalId);
@@ -400,22 +456,22 @@ export const fetchAssetPricesBatch = async (assets) => {
   try {
     // Fetch all quotes in one batch
     const quotes = await getQuotes(internalIds);
-    
+
     // Debug: Log first few returned quotes
     if (DEBUG_PRICES && quotes.length > 0) {
-      console.log('[PRICE DEBUG] First few returned quote.id values:', 
+      console.log('[PRICE DEBUG] First few returned quote.id values:',
         quotes.slice(0, 3).map(q => q?.id).filter(Boolean)
       );
     }
-    
+
     const results = {};
 
     // Filter valid quotes only (skip entries with errors)
-    const validQuotes = quotes.filter(q => 
-      q && 
-      !q.error && 
-      typeof q.price === 'number' && 
-      !isNaN(q.price) && 
+    const validQuotes = quotes.filter(q =>
+      q &&
+      !q.error &&
+      typeof q.price === 'number' &&
+      !isNaN(q.price) &&
       q.price > 0
     );
 
@@ -426,7 +482,54 @@ export const fetchAssetPricesBatch = async (assets) => {
       }
     });
 
-    validQuotes.forEach((quote) => {
+    // ==================== CLIENT-SIDE FALLBACK FOR FAILED TASE ASSETS ====================
+    // Identify quotes that failed (error or price === 0) and are TASE assets
+    const failedTaseQuotes = quotes.filter(q =>
+      q &&
+      q.id &&
+      q.id.startsWith('tase:') &&
+      (q.error || !q.price || q.price === 0)
+    );
+
+    // Attempt to fetch failed TASE prices from browser using CORS proxy
+    if (failedTaseQuotes.length > 0) {
+      console.log(`[BROWSER FALLBACK] Attempting to repair ${failedTaseQuotes.length} failed TASE quotes...`);
+
+      const fallbackPromises = failedTaseQuotes.map(async (failedQuote) => {
+        const securityId = failedQuote.id.substring(5); // Remove 'tase:' prefix
+        const browserPrice = await fetchTasePriceFromBrowser(securityId);
+
+        if (browserPrice) {
+          // Successfully fetched from browser - repair the quote
+          failedQuote.price = browserPrice.price;
+          failedQuote.changePct = browserPrice.changePct;
+          failedQuote.currency = 'ILS';
+          failedQuote.timestamp = Date.now();
+          failedQuote.source = 'funder-browser';
+          delete failedQuote.error; // Remove error flag
+
+          console.log(`[BROWSER FALLBACK] ✅ Repaired ${failedQuote.id} with price ${browserPrice.price}`);
+        } else {
+          console.warn(`[BROWSER FALLBACK] ❌ Could not repair ${failedQuote.id}`);
+        }
+
+        return failedQuote;
+      });
+
+      // Wait for all fallback attempts to complete
+      await Promise.all(fallbackPromises);
+    }
+
+    // Re-filter valid quotes after fallback (some failed quotes may now be valid)
+    const validQuotesAfterFallback = quotes.filter(q =>
+      q &&
+      !q.error &&
+      typeof q.price === 'number' &&
+      !isNaN(q.price) &&
+      q.price > 0
+    );
+
+    validQuotesAfterFallback.forEach((quote) => {
       const asset = idToAssetMap.get(quote.id);
       if (!asset) return;
 
@@ -450,7 +553,8 @@ export const fetchAssetPricesBatch = async (assets) => {
         change24h: quote.changePct || 0,
         changeAmount: (quote.price * (quote.changePct || 0)) / 100,
         lastUpdated: new Date(quote.timestamp || Date.now()),
-        source: quote.source === 'coingecko' ? 'coingecko' : 'yahoo',
+        source: quote.source === 'coingecko' ? 'coingecko' :
+          quote.source === 'funder-browser' ? 'funder-browser' : 'yahoo',
         assetType: assetType,
       };
     });
@@ -481,10 +585,10 @@ export const fetchCryptoHistoricalPrice = async (coinId, date) => {
     // Use backend API instead of direct CoinGecko call
     // Convert date to internal ID and fetch history
     const internalId = `cg:${coinId}`;
-    
+
     // Fetch 5d range to ensure we get the date
     const history = await getHistory(internalId, '5d', '1d');
-    
+
     if (!history || !history.points || history.points.length === 0) {
       return null;
     }
@@ -532,7 +636,7 @@ export const fetchYahooHistoricalPrice = async (assetOrId, date) => {
   const internalId = typeof assetOrId === 'object'
     ? resolveInternalId(assetOrId)
     : resolveInternalId(assetOrId);
-  
+
   if (!internalId) return null;
 
   const targetDate = new Date(date);
@@ -544,7 +648,7 @@ export const fetchYahooHistoricalPrice = async (assetOrId, date) => {
   try {
     // Fetch history data from backend (5d range to ensure we get the date)
     const history = await getHistory(internalId, '5d', '1d');
-    
+
     if (!history || !history.points || history.points.length === 0) {
       return null;
     }
@@ -612,10 +716,10 @@ export const fetchPriceHistory = async (assetOrId, days = 30) => {
   if (!assetOrId) return [];
 
   // Resolve internal ID from asset or string
-  const internalId = typeof assetOrId === 'object' 
+  const internalId = typeof assetOrId === 'object'
     ? resolveInternalId(assetOrId)
     : resolveInternalId(assetOrId);
-  
+
   if (!internalId) return [];
 
   const cacheKey = `history:${internalId}:${days}`;
@@ -629,7 +733,7 @@ export const fetchPriceHistory = async (assetOrId, days = 30) => {
     const range = days <= 7 ? '5d' : days <= 30 ? '1mo' : days <= 90 ? '3mo' : '1y';
 
     const history = await getHistory(internalId, range, '1d');
-    
+
     // Handle error responses or missing data gracefully
     if (!history || history.error || !Array.isArray(history.points) || history.points.length === 0) {
       if (history && history.error) {

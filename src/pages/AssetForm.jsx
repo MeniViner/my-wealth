@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, Sparkles, Loader2, Plus, ArrowRight, Calculator, RefreshCw, Calendar, Hash, X } from 'lucide-react';
 import { callGeminiAI } from '../services/gemini';
 import { infoAlert, successToast, errorAlert } from '../utils/alerts';
@@ -11,6 +11,7 @@ import { fetchAssetPrice, fetchAssetHistoricalPrice, convertCurrency } from '../
 const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioContext = "" }) => {
   const navigate = useNavigate();
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const editAsset = id ? assets.find(a => a.id === id) : null;
 
   // Redirect if trying to edit non-existent asset
@@ -19,15 +20,21 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
       navigate('/assets');
     }
   }, [id, editAsset, assets.length, navigate]);
+
+  // Get initial values from query params (for "Add to this group" button)
+  const initialPlatform = searchParams.get('platform') || systemData.platforms[0]?.name || '';
+  const initialCategory = searchParams.get('category') || systemData.categories[0]?.name || 'אחר';
+  const initialInstrument = searchParams.get('instrument') || systemData.instruments[0]?.name || '';
+
   const [formData, setFormData] = useState({
     name: '',
     symbol: '',
     displayName: '', // Hebrew/display name for UI
     apiId: '', // API ID for price fetching (e.g., "bitcoin" for CoinGecko)
     marketDataSource: '', // "coingecko" | "yahoo" | "manual"
-    instrument: systemData.instruments[0]?.name || '',
-    platform: systemData.platforms[0]?.name || '',
-    category: systemData.categories[0]?.name || 'אחר',
+    instrument: initialInstrument,
+    platform: initialPlatform,
+    category: initialCategory,
     currency: 'ILS',
     originalValue: '',
     tags: '',
@@ -44,7 +51,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
   const [priceLoading, setPriceLoading] = useState(false);
   const [currentPriceData, setCurrentPriceData] = useState(null);
   const [lastEditedField, setLastEditedField] = useState(null); // Track which field was edited last
-  
+
   // Reactive currency conversion state
   const [nativePrice, setNativePrice] = useState(null); // Raw price from API in native currency
   const [nativeCurrency, setNativeCurrency] = useState(null); // Native currency of the asset (e.g., 'USD', 'ILS')
@@ -134,16 +141,17 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         purchaseDate: editAsset.purchaseDate || new Date().toISOString().split('T')[0],
         totalCost: editAsset.totalCost || ''
       });
-    } else {
-      // Reset form when not editing
-      setFormData({
+    } else if (!id) {
+      // Only reset on new asset (not edit), and preserve query params
+      setFormData(prev => ({
         name: '',
         symbol: '',
         apiId: '',
         marketDataSource: '',
-        instrument: systemData.instruments[0]?.name || '',
-        platform: systemData.platforms[0]?.name || '',
-        category: systemData.categories[0]?.name || 'אחר',
+        displayName: '',
+        instrument: initialInstrument,
+        platform: initialPlatform,
+        category: initialCategory,
         currency: 'ILS',
         originalValue: '',
         tags: '',
@@ -152,9 +160,9 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         quantity: '',
         purchasePrice: '',
         purchaseDate: new Date().toISOString().split('T')[0]
-      });
+      }));
     }
-  }, [editAsset, systemData]);
+  }, [editAsset, id, initialPlatform, initialCategory, initialInstrument]);
 
   // Reset API data when category changes to non-searchable type
   useEffect(() => {
@@ -174,10 +182,10 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
   useEffect(() => {
     const prevCategory = prevCategoryRef.current;
     const currentCategory = formData.category;
-    
+
     // If switching between מניות and קריפטו, reset related fields
     if ((prevCategory === 'מניות' && currentCategory === 'קריפטו') ||
-        (prevCategory === 'קריפטו' && currentCategory === 'מניות')) {
+      (prevCategory === 'קריפטו' && currentCategory === 'מניות')) {
       setFormData(prev => ({
         ...prev,
         name: '',
@@ -195,7 +203,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
       setIsPriceManual(false);
       setLastEditedField(null);
     }
-    
+
     prevCategoryRef.current = currentCategory;
   }, [formData.category]);
 
@@ -216,8 +224,8 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
     const currentApiId = formData.apiId;
 
     // If symbol/apiId were cleared (had value before, now empty), reset related fields
-    if ((prevSymbol && !currentSymbol && !currentApiId) || 
-        (prevApiId && !currentApiId && !currentSymbol)) {
+    if ((prevSymbol && !currentSymbol && !currentApiId) ||
+      (prevApiId && !currentApiId && !currentSymbol)) {
       setFormData(prev => ({
         ...prev,
         name: '',
@@ -283,28 +291,28 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
       });
 
       // Check if quote is valid: exists, no error, has valid price
-      if (priceData && 
-          !priceData.error && 
-          typeof priceData.currentPrice === 'number' && 
-          isFinite(priceData.currentPrice) && 
-          priceData.currentPrice > 0) {
+      if (priceData &&
+        !priceData.error &&
+        typeof priceData.currentPrice === 'number' &&
+        isFinite(priceData.currentPrice) &&
+        priceData.currentPrice > 0) {
         setCurrentPriceData(priceData);
         const assetNativeCurrency = priceData.currency || 'USD';
         const assetNativePrice = priceData.currentPrice;
-        
+
         // Update native price and currency (this will trigger Effect C to convert)
         setNativePrice(assetNativePrice);
         setNativeCurrency(assetNativeCurrency);
         setIsPriceManual(false); // Reset manual mode
-        
+
         // Get converted price for toast message using canonical conversion
         const { convertAmount } = await import('../services/currency');
         const displayPrice = await convertAmount(assetNativePrice, assetNativeCurrency, formData.currency);
-        
+
         await successToast(`מחיר נוכחי: ${displayPrice.toFixed(2)} ${formData.currency}`, 2000);
       } else {
         // Invalid quote - show error with details
-        const errorMsg = priceData?.error 
+        const errorMsg = priceData?.error
           ? `לא ניתן לשלוף מחיר: ${priceData.error}`
           : 'לא ניתן לשלוף מחיר. נסה שוב או הזן ידנית.';
         await errorAlert('שגיאה', errorMsg);
@@ -338,20 +346,20 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
       if (historicalPrice !== null) {
         // Get native currency (from current price data or default)
         const assetNativeCurrency = nativeCurrency || 'USD';
-        
+
         // Update native price (this will trigger Effect C to convert)
         setNativePrice(historicalPrice);
         if (!nativeCurrency) {
           setNativeCurrency(assetNativeCurrency);
         }
         setIsPriceManual(false); // Reset manual mode
-        
+
         // Get converted price for toast message
         let displayPrice = historicalPrice;
         if (assetNativeCurrency !== formData.currency) {
           displayPrice = await convertCurrency(historicalPrice, assetNativeCurrency, formData.currency);
         }
-        
+
         await successToast(`מחיר היסטורי: ${displayPrice.toFixed(2)} ${formData.currency}`, 2000);
       } else {
         await errorAlert('שגיאה', 'לא ניתן לשלוף מחיר היסטורי. נסה תאריך אחר או הזן ידנית.');
@@ -412,7 +420,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         }
       }
     }
-    
+
     // Also update totalCost when price changes (REACTIVE)
     if (lastEditedField !== 'totalCost' && quantity > 0 && price > 0) {
       const calculatedTotal = quantity * price;
@@ -451,7 +459,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         if (historicalPrice !== null && historicalPrice > 0) {
           // Get native currency from current price data or default to USD
           const assetNativeCurrency = nativeCurrency || 'USD';
-          
+
           // Update native price (this will trigger Effect C to convert)
           setNativePrice(historicalPrice);
           if (!nativeCurrency) {
@@ -471,7 +479,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
   }, [formData.purchaseDate, formData.apiId, formData.symbol, formData.marketDataSource, formData.assetMode, nativeCurrency, isPriceManual]);
 
   // ==================== REACTIVE CURRENCY CONVERSION SYSTEM ====================
-  
+
   // Effect A: Fetch native price when asset is selected
   useEffect(() => {
     const fetchNativePrice = async () => {
@@ -497,7 +505,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
           setCurrentPriceData(priceData);
           const assetNativeCurrency = priceData.currency || 'USD';
           const assetNativePrice = priceData.currentPrice;
-          
+
           // Update native price and currency
           setNativePrice(assetNativePrice);
           setNativeCurrency(assetNativeCurrency);
@@ -523,8 +531,8 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
       }
 
       // Only fetch if we need USD/ILS conversion
-      if ((nativeCurrency === 'USD' && formData.currency === 'ILS') || 
-          (nativeCurrency === 'ILS' && formData.currency === 'USD')) {
+      if ((nativeCurrency === 'USD' && formData.currency === 'ILS') ||
+        (nativeCurrency === 'ILS' && formData.currency === 'USD')) {
         try {
           const { getExchangeRate } = await import('../services/priceService');
           const rate = await getExchangeRate();
@@ -553,8 +561,8 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
       try {
         const { convertAmount } = await import('../services/currency');
         const convertedPrice = await convertAmount(
-          nativePrice, 
-          nativeCurrency, 
+          nativePrice,
+          nativeCurrency,
           formData.currency,
           exchangeRate
         );
@@ -563,7 +571,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         // Only update if the price actually changed (avoid unnecessary updates)
         const currentPrice = Number(formData.purchasePrice) || 0;
         const priceDiff = Math.abs(convertedPrice - currentPrice);
-        
+
         if (priceDiff > 0.01) { // Only update if difference is significant
           setFormData(prev => ({
             ...prev,
@@ -1150,8 +1158,8 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                   type="button"
                   onClick={() => setFormData({ ...formData, assetMode: 'QUANTITY' })}
                   className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${formData.assetMode === 'QUANTITY'
-                      ? 'bg-white dark:bg-slate-600 text-emerald-600 dark:text-emerald-400 shadow-sm'
-                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                    ? 'bg-white dark:bg-slate-600 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                     }`}
                 >
                   <Hash size={16} />
@@ -1161,8 +1169,8 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                   type="button"
                   onClick={() => setFormData({ ...formData, assetMode: 'LEGACY' })}
                   className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${formData.assetMode === 'LEGACY'
-                      ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
-                      : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                    ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                     }`}
                 >
                   <Calculator size={16} />
@@ -1186,8 +1194,8 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                   type="button"
                   onClick={() => setFormData({ ...formData, currency: 'ILS' })}
                   className={`flex-1 px-4 py-1 rounded-xl border-2 transition-all font-medium ${formData.currency === 'ILS'
-                      ? 'bg-emerald-600 dark:bg-emerald-500 text-white border-emerald-600 dark:border-emerald-500 shadow-md'
-                      : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:border-emerald-400 dark:hover:border-emerald-500'
+                    ? 'bg-emerald-600 dark:bg-emerald-500 text-white border-emerald-600 dark:border-emerald-500 shadow-md'
+                    : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:border-emerald-400 dark:hover:border-emerald-500'
                     }`}
                 >
                   <span className="text-2xl mb-1 block">₪</span>
@@ -1196,8 +1204,8 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                   type="button"
                   onClick={() => setFormData({ ...formData, currency: 'USD' })}
                   className={`flex-1 px-4 py-1 rounded-xl border-2 transition-all font-medium ${formData.currency === 'USD'
-                      ? 'bg-emerald-600 dark:bg-emerald-500 text-white border-emerald-600 dark:border-emerald-500 shadow-md'
-                      : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:border-emerald-400 dark:hover:border-emerald-500'
+                    ? 'bg-emerald-600 dark:bg-emerald-500 text-white border-emerald-600 dark:border-emerald-500 shadow-md'
+                    : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600 hover:border-emerald-400 dark:hover:border-emerald-500'
                     }`}
                 >
                   <span className="text-2xl mb-1 mt-1 block">$</span>
@@ -1290,10 +1298,10 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                     onChange={e => {
                       const newPrice = e.target.value;
                       const priceNum = Number(newPrice);
-                      
+
                       setFormData({ ...formData, purchasePrice: newPrice });
                       setLastEditedField('purchasePrice');
-                      
+
                       // If user enters a valid price manually, store it as native price in current currency
                       // This allows currency conversion to work even in manual mode
                       if (priceNum > 0 && !isNaN(priceNum)) {
@@ -1338,8 +1346,8 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                           type="number"
                           step="any"
                           className={`w-full p-3 border rounded-lg text-slate-900 dark:text-slate-100 font-mono pr-12 transition-all ${lastEditedField === 'totalCost'
-                              ? 'border-blue-400 dark:border-blue-500 bg-white dark:bg-slate-700 ring-2 ring-blue-200 dark:ring-blue-800'
-                              : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700'
+                            ? 'border-blue-400 dark:border-blue-500 bg-white dark:bg-slate-700 ring-2 ring-blue-200 dark:ring-blue-800'
+                            : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700'
                             }`}
                           value={formData.totalCost || ''}
                           onChange={e => {
@@ -1372,8 +1380,8 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                         type="number"
                         step="any"
                         className={`w-full p-3 border rounded-lg text-slate-900 dark:text-slate-100 font-mono transition-all ${lastEditedField === 'quantity'
-                            ? 'border-blue-400 dark:border-blue-500 bg-white dark:bg-slate-700 ring-2 ring-blue-200 dark:ring-blue-800'
-                            : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700'
+                          ? 'border-blue-400 dark:border-blue-500 bg-white dark:bg-slate-700 ring-2 ring-blue-200 dark:ring-blue-800'
+                          : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700'
                           }`}
                         value={formData.quantity || ''}
                         onChange={e => {
@@ -1396,7 +1404,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
               {/* Summary Display */}
               <div className="md:col-span-2 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 p-4 rounded-xl border border-emerald-200 dark:border-emerald-800">
                 <label className="block text-sm font-medium text-emerald-700 dark:text-emerald-300 mb-1">
-                  📊 סיכום עסקה
+                  סיכום עסקה
                 </label>
                 <div className="flex flex-wrap gap-4 items-center">
                   <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400 font-mono" >
@@ -1409,7 +1417,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                 </div>
                 {!formData.purchasePrice && formData.apiId && (
                   <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
-                    ⏳ בחר תאריך רכישה כדי לשלוף מחיר אוטומטית
+                    בחר תאריך רכישה כדי לשלוף מחיר אוטומטית
                   </p>
                 )}
               </div>

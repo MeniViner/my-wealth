@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, updateDoc, doc, getDoc } from 'firebase/firestore';
-import { Send, Loader2, Sparkles, AlertCircle, X, Circle, LucideMenu, Settings } from 'lucide-react';
+import { Send, Loader2, Sparkles, AlertCircle, X, Circle, LucideMenu, Settings, Copy, Code } from 'lucide-react';
 import { db, appId } from '../services/firebase';
 import { callGeminiAIWithHistory } from '../services/gemini';
 import MarkdownRenderer from './MarkdownRenderer';
@@ -24,6 +24,7 @@ const ChatWindow = ({
     chatId,
     portfolioContext = "",
     aiConfig = {},
+    groqConfig = { model: 'llama-3.3-70b-versatile', customApiKey: '' },
     onCreateNewChat,
     onToggleHistory,
     historyDrawerOpen,
@@ -38,6 +39,7 @@ const ChatWindow = ({
     const [suggestions, setSuggestions] = useState([]);
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
+    const [copiedMessageId, setCopiedMessageId] = useState(null);
 
     // Fetch messages from Firestore
     useEffect(() => {
@@ -87,6 +89,57 @@ const ChatWindow = ({
             }, 100);
         }
     }, [chatId]);
+
+    // Mobile-safe copy to clipboard utility
+    const copyToClipboard = async (text, messageId) => {
+        try {
+            // Primary method: navigator.clipboard
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(text);
+            } else {
+                // Fallback for older browsers/mobile
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                textarea.style.top = '0';
+                textarea.style.left = '0';
+                document.body.appendChild(textarea);
+                textarea.focus();
+                textarea.select();
+                const successful = document.execCommand('copy');
+                document.body.removeChild(textarea);
+
+                if (!successful) {
+                    throw new Error('Copy command failed');
+                }
+            }
+
+            // Show feedback
+            setCopiedMessageId(messageId);
+            setTimeout(() => setCopiedMessageId(null), 2000);
+        } catch (error) {
+            console.error('Failed to copy:', error);
+            alert('לא ניתן להעתיק. אנא נסה שוב.');
+        }
+    };
+
+    // Copy message text
+    const handleCopyMessage = (content, messageId) => {
+        copyToClipboard(content, messageId);
+    };
+
+    // Copy full payload (system + user message)
+    const handleCopyPayload = (message) => {
+        if (!message.fullContext) {
+            // Fallback if fullContext not stored
+            copyToClipboard(message.content, message.id);
+            return;
+        }
+
+        const payload = `[SYSTEM PROMPT]\n${message.fullContext.systemPrompt || 'N/A'}\n\n[USER MESSAGE]\n${message.fullContext.userMessage || message.content}`;
+        copyToClipboard(payload, message.id);
+    };
 
     const handleSendMessage = async (e) => {
         e.preventDefault();
@@ -138,7 +191,8 @@ const ChatWindow = ({
                 {
                     role: 'user',
                     content: userMessage,
-                    timestamp: serverTimestamp()
+                    timestamp: serverTimestamp(),
+                    fullContext: null  // Will be updated after AI call with full context
                 }
             );
         } catch (error) {
@@ -168,10 +222,34 @@ const ChatWindow = ({
 
             // Only include portfolio context if enabled (default to true)
             const contextEnabled = aiConfig?.contextEnabled !== false;
-            const finalContext = contextEnabled ? portfolioContext : "";
+            let finalContext = contextEnabled ? portfolioContext : "";
 
-            // Call AI with history and portfolio context
-            const aiResponse = await callGeminiAIWithHistory(limitedHistory, finalContext);
+            // Add follow-up questions instruction to system context
+            const followUpInstruction = `\n\n**חשוב**: בסוף כל תשובה, הוסף 3 שאלות המלצה רלוונטיות שהמשתמש יכול לשאול אותך הלאה. השאלות חייבות להיות מנוסחות בגוף ראשון (מנקודת מבט של המשתמש).\nדוגמה נכונה: "איך כדאי לי להשקיע את המזומן?" (לא "האם תרצה לשמוע...")\nפורמט: שלח את השאלות בסוף התשובה בפורמט הבא (על שורה נפרדת):\n[SUGGESTIONS]: ["שאלה 1", "שאלה 2", "שאלה 3"]`;
+
+            if (finalContext) {
+                finalContext += followUpInstruction;
+            } else {
+                finalContext = followUpInstruction;
+            }
+
+            // Call AI with history, portfolio context, model, and custom API key
+            const aiResponse = await callGeminiAIWithHistory(
+                limitedHistory,
+                finalContext,
+                groqConfig?.model || 'llama-3.3-70b-versatile',
+                groqConfig?.customApiKey || ''
+            );
+
+            // Update user message with full context for debugging
+            if (userMessageRef) {
+                await updateDoc(userMessageRef, {
+                    fullContext: {
+                        systemPrompt: finalContext,
+                        userMessage: userMessage
+                    }
+                });
+            }
 
             // Check if response contains error
             if (aiResponse && aiResponse.includes('שגיאה')) {
@@ -272,6 +350,44 @@ const ChatWindow = ({
         textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
     };
 
+    // Parse follow-up questions from AI response
+    const parseFollowUpQuestions = (content) => {
+        // Look for [SUGGESTIONS]: ["Q1", "Q2", "Q3"] format
+        const match = content.match(/\[SUGGESTIONS\]:\s*\[(.*?)\]/s);
+        if (!match) return { questions: [], cleanContent: content };
+
+        try {
+            // Extract the array string and parse it
+            const arrayStr = `[${match[1]}]`;
+            const questions = JSON.parse(arrayStr);
+
+            // Remove the suggestions block from content
+            const cleanContent = content.replace(/\[SUGGESTIONS\]:\s*\[.*?\]/s, '').trim();
+
+            return {
+                questions: questions.slice(0, 3), // Max 3 questions
+                cleanContent: cleanContent
+            };
+        } catch (error) {
+            console.error('Failed to parse suggestions:', error);
+            return { questions: [], cleanContent: content };
+        }
+    };
+
+    // Handle follow-up question click - populate input instead of auto-send
+    const handleFollowUpClick = (question) => {
+        setInputValue(question);
+        // Focus the input field
+        setTimeout(() => {
+            inputRef.current?.focus();
+            // Auto-resize textarea
+            if (inputRef.current) {
+                inputRef.current.style.height = 'auto';
+                inputRef.current.style.height = `${Math.min(inputRef.current.scrollHeight, 120)}px`;
+            }
+        }, 100);
+    };
+
     // Generate smart suggestions based on chat context
     const generateSuggestions = useCallback(() => {
         if (!chatId || messages.length === 0) {
@@ -362,13 +478,13 @@ const ChatWindow = ({
                             יועץ השקעות
                         </h2>
                         <div className="flex items-center gap-1.5 mt-0.5">
-                            <Circle 
-                                size={6} 
+                            <Circle
+                                size={6}
                                 className={
                                     aiConfig?.contextEnabled !== false
                                         ? "text-emerald-500 fill-emerald-500"
                                         : "text-slate-400 fill-slate-400"
-                                } 
+                                }
                             />
                             <span className="text-xs text-slate-500 dark:text-slate-400">
                                 {aiConfig?.contextEnabled !== false ? 'תיק אישי מצורף' : 'תיק אינו מצורף'}
@@ -451,29 +567,100 @@ const ChatWindow = ({
                     </div>
                 ) : chatId ? (
                     <div className="max-w-4xl mx-auto px-4 md:px-6 py-6 space-y-6">
-                        {messages.map((message) => (
-                            <div
-                                key={message.id}
-                                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                            >
-                                <div
-                                    className={`max-w-[85%] md:max-w-[75%] rounded-2xl px-4 py-3 shadow-sm ${message.role === 'user'
-                                        ? 'bg-gradient-to-br from-emerald-600 to-emerald-700 dark:from-emerald-700 dark:to-emerald-800 text-white'
-                                        : message.isError
-                                            ? 'bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-300 border border-red-200 dark:border-red-800'
-                                            : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100'
-                                        }`}
-                                >
-                                    {message.role === 'assistant' ? (
-                                        <div className="prose prose-sm dark:prose-invert max-w-none leading-relaxed text-slate-700 dark:text-slate-200">
-                                            <MarkdownRenderer content={message.content} />
+                        {messages.map((message, index) => {
+                            // Parse follow-up questions and get clean content
+                            const parsedResult = message.role === 'assistant' && !message.isError
+                                ? parseFollowUpQuestions(message.content)
+                                : { questions: [], cleanContent: message.content };
+
+                            const followUpQuestions = parsedResult.questions;
+                            const cleanContent = parsedResult.cleanContent;
+                            const isCopied = copiedMessageId === message.id;
+
+                            return (
+                                <div key={message.id}>
+                                    <div
+                                        className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} group`}
+                                    >
+                                        <div
+                                            className={`relative max-w-[85%] md:max-w-[75%] rounded-2xl px-4 py-3 shadow-sm ${message.role === 'user'
+                                                ? 'bg-gradient-to-br from-emerald-600 to-emerald-700 dark:from-emerald-700 dark:to-emerald-800 text-white'
+                                                : message.isError
+                                                    ? 'bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-300 border border-red-200 dark:border-red-800'
+                                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100'
+                                                }`}
+                                        >
+                                            {/* Copy Buttons */}
+                                            <div className={`absolute top-2 ${message.role === 'user' ? 'left-2' : 'right-2'} flex items-center gap-1 opacity-50 md:opacity-0 md:group-hover:opacity-100 transition-opacity`}>
+                                                {/* Standard Copy Button */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleCopyMessage(message.content, message.id)}
+                                                    className={`p-1.5 rounded-lg transition-colors ${message.role === 'user'
+                                                            ? 'hover:bg-emerald-800/50 text-white'
+                                                            : 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'
+                                                        }`}
+                                                    title="העתק טקסט"
+                                                    aria-label="העתק טקסט"
+                                                >
+                                                    <Copy size={14} />
+                                                </button>
+
+                                                {/* Copy Payload Button (User messages only) */}
+                                                {message.role === 'user' && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleCopyPayload(message)}
+                                                        className="p-1.5 rounded-lg hover:bg-emerald-800/50 text-white transition-colors"
+                                                        title="העתק הקשר מלא (דיבוג)"
+                                                        aria-label="העתק הקשר מלא"
+                                                    >
+                                                        <Code size={14} />
+                                                    </button>
+                                                )}
+                                            </div>
+
+                                            {/* Copied Feedback */}
+                                            {isCopied && (
+                                                <div className={`absolute top-2 ${message.role === 'user' ? 'right-2' : 'left-2'} bg-emerald-600 text-white text-xs px-2 py-1 rounded-md shadow-lg animate-fade-in-out`}>
+                                                    הועתק! ✓
+                                                </div>
+                                            )}
+
+                                            {/* Message Content - Use clean content without suggestions */}
+                                            {message.role === 'assistant' ? (
+                                                <div className="prose prose-sm dark:prose-invert max-w-none leading-relaxed text-slate-700 dark:text-slate-200">
+                                                    <MarkdownRenderer content={cleanContent} />
+                                                </div>
+                                            ) : (
+                                                <p className="whitespace-pre-wrap break-words leading-relaxed text-base text-white">{message.content}</p>
+                                            )}
                                         </div>
-                                    ) : (
-                                        <p className="whitespace-pre-wrap break-words leading-relaxed text-base text-white">{message.content}</p>
+                                    </div>
+
+                                    {/* Follow-up Question Chips - Improved styling */}
+                                    {followUpQuestions.length > 0 && !loading && index === messages.length - 1 && (
+                                        <div className="flex justify-start mt-4">
+                                            <div className="max-w-[85%] md:max-w-[75%] space-y-2">
+                                                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-2">💬 שאלות מוצעות:</p>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {followUpQuestions.map((question, qIndex) => (
+                                                        <button
+                                                            key={qIndex}
+                                                            type="button"
+                                                            onClick={() => handleFollowUpClick(question)}
+                                                            className="px-3 py-2 text-sm text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600 rounded-xl hover:border-emerald-500 dark:hover:border-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all cursor-pointer shadow-sm hover:shadow-md font-medium text-right"
+                                                        >
+                                                            {question}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
                                     )}
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
 
                         {/* Typing Indicator - Animated */}
                         {loading && (
@@ -514,7 +701,7 @@ const ChatWindow = ({
                 ) : (
                     /* Empty State - Modern with Twinkling Stars */
                     <div className="flex-1 flex flex-col items-center justify-center mt-[40svh] md:mt-[40dvh] px-4 relative">
-         
+
 
                         <div className="text-center max-w-lg relative z-10">
                             {/* Gradient Text */}
@@ -550,10 +737,15 @@ const ChatWindow = ({
                                 className="flex-1 px-4 py-3 rounded-2xl border-0 focus:outline-none resize-none overflow-y-auto bg-transparent text-base leading-relaxed text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
                                 rows={1}
                                 dir="rtl"
-                                disabled={loading}
                                 style={{
                                     maxHeight: '120px',
                                     fontSize: '16px'
+                                }}
+                                onFocus={(e) => {
+                                    // Scroll input into view on mobile
+                                    setTimeout(() => {
+                                        e.target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                                    }, 300);
                                 }}
                             />
                             <button

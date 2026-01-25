@@ -4,7 +4,8 @@ import ChatWindow from '../components/ChatWindow';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db, appId } from '../services/firebase';
 import { successToast } from '../utils/alerts';
-import { Sparkles, Settings, X } from 'lucide-react';
+import { Sparkles, Settings, X, Eye, EyeOff, ChevronDown, HelpCircle } from 'lucide-react';
+import { GROQ_MODELS } from '../services/gemini';
 
 /**
  * AI Advisor Page - Mobile-First Chat Layout
@@ -29,6 +30,12 @@ const AIAdvisor = ({ assets, totalWealth, user, portfolioContext = "", aiConfig:
     historyLimit: 10,
     contextEnabled: true
   });
+  const [groqConfig, setGroqConfig] = useState({
+    model: 'llama-3.3-70b-versatile',
+    customApiKey: ''
+  });
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [showApiKeyHelp, setShowApiKeyHelp] = useState(false);
 
   const handleCreateNewChat = (chatId) => {
     setActiveChatId(chatId);
@@ -56,7 +63,7 @@ const AIAdvisor = ({ assets, totalWealth, user, portfolioContext = "", aiConfig:
     if (!user || !db) return;
 
     const aiConfigRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'aiConfig');
-    
+
     const loadAiConfig = async () => {
       try {
         const docSnap = await getDoc(aiConfigRef);
@@ -98,16 +105,63 @@ const AIAdvisor = ({ assets, totalWealth, user, portfolioContext = "", aiConfig:
     }
   };
 
+  // Load Groq Config from Firestore
+  useEffect(() => {
+    if (!user || !db) return;
+
+    const groqConfigRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'groqConfig');
+
+    const loadGroqConfig = async () => {
+      try {
+        const docSnap = await getDoc(groqConfigRef);
+        if (docSnap.exists()) {
+          setGroqConfig(docSnap.data());
+        } else {
+          // Create default config
+          const defaultConfig = { model: 'llama-3.3-70b-versatile', customApiKey: '' };
+          await setDoc(groqConfigRef, defaultConfig);
+          setGroqConfig(defaultConfig);
+        }
+      } catch (error) {
+        console.error('Error loading Groq config:', error);
+      }
+    };
+
+    loadGroqConfig();
+
+    // Listen for changes
+    const unsubscribe = onSnapshot(groqConfigRef, (snapshot) => {
+      if (snapshot.exists()) {
+        setGroqConfig(snapshot.data());
+      }
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // Save Groq Config to Firestore
+  const saveGroqConfig = async (newConfig) => {
+    if (!user || !db) return;
+    try {
+      const groqConfigRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'groqConfig');
+      await setDoc(groqConfigRef, newConfig);
+      await successToast('הגדרות Groq נשמרו', 1500);
+    } catch (error) {
+      console.error('Error saving Groq config:', error);
+      await successToast('שגיאה בשמירת הגדרות Groq', 2000);
+    }
+  };
+
   return (
-    <div 
-      className="h-full w-full flex flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden" 
+    <div
+      className="h-full w-full flex flex-col bg-slate-50 dark:bg-slate-900 overflow-hidden"
       dir="rtl"
       style={{ height: '100%' }}
     >
       {/* Settings Panel Overlay */}
       {showSettings && (
         <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setShowSettings(false)}>
-          <div 
+          <div
             className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl max-w-md w-full max-h-[90svh] md:max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
@@ -158,6 +212,106 @@ const AIAdvisor = ({ assets, totalWealth, user, portfolioContext = "", aiConfig:
                 </div>
               </div>
 
+              {/* Groq Configuration Section */}
+              <div className="pt-4 border-t border-slate-200 dark:border-slate-700 space-y-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Sparkles size={16} className="text-emerald-600 dark:text-emerald-400" />
+                  <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-100">הגדרות Groq AI</h4>
+                </div>
+
+                {/* Model Selector */}
+                <div>
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-100 block mb-2">
+                    בחירת מודל AI
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={groqConfig.model}
+                      onChange={(e) => {
+                        const newConfig = { ...groqConfig, model: e.target.value };
+                        setGroqConfig(newConfig);
+                        saveGroqConfig(newConfig);
+                      }}
+                      className="w-full px-4 py-2.5 pr-10 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 appearance-none cursor-pointer"
+                    >
+                      {Object.entries(GROQ_MODELS).map(([value, label]) => (
+                        <option key={value} value={value}>
+                          {label}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+                    מודל ברירת מחדל: Llama 3.3 70B
+                  </p>
+                </div>
+
+                {/* Custom API Key */}
+                <div>
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-100 block mb-2">
+                    מפתח API מותאם אישית (אופציונלי)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showApiKey ? "text" : "password"}
+                      value={groqConfig.customApiKey}
+                      onChange={(e) => {
+                        const newConfig = { ...groqConfig, customApiKey: e.target.value };
+                        setGroqConfig(newConfig);
+                      }}
+                      onBlur={() => saveGroqConfig(groqConfig)}
+                      placeholder="הכנס מפתח Groq API..."
+                      className="w-full px-4 py-2.5 pr-10 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowApiKey(!showApiKey)}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                    >
+                      {showApiKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+                    אם ריק, נשתמש במפתח ברירת המחדל מההגדרות
+                  </p>
+                </div>
+
+                {/* API Key Help Guide */}
+                <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowApiKeyHelp(!showApiKeyHelp)}
+                    className="w-full flex items-center justify-between text-sm font-medium text-slate-700 dark:text-slate-200"
+                  >
+                    <div className="flex items-center gap-2">
+                      <HelpCircle size={16} className="text-emerald-600 dark:text-emerald-400" />
+                      <span>איך להשיג מפתח API?</span>
+                    </div>
+                    <ChevronDown
+                      size={16}
+                      className={`text-slate-400 transition-transform ${showApiKeyHelp ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+                  {showApiKeyHelp && (
+                    <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-600 space-y-2 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                      <p className="font-medium">שלבים לקבלת מפתח API של Groq:</p>
+                      <ol className="list-decimal list-inside space-y-1 mr-2">
+                        <li>כנס ל-<a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="text-emerald-600 dark:text-emerald-400 underline">console.groq.com/keys</a></li>
+                        <li>התחבר או הירשם לחשבון Groq (חינם)</li>
+                        <li>לחץ על "Create API Key" (צור מפתח)</li>
+                        <li>תן שם למפתח (לדוגמה: "MyWealth App")</li>
+                        <li>העתק את המפתח שנוצר</li>
+                        <li>הדבק אותו בשדה למעלה</li>
+                      </ol>
+                      <p className="text-amber-600 dark:text-amber-400 mt-2">
+                        ⚠️ אל תשתף את המפתח עם אחרים!
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* החלף הפעלת הקשר */}
               <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-700">
                 <div>
@@ -174,17 +328,15 @@ const AIAdvisor = ({ assets, totalWealth, user, portfolioContext = "", aiConfig:
                     setAiConfig(newConfig);
                     saveAiConfig(newConfig);
                   }}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${
-                    aiConfig.contextEnabled ? 'bg-emerald-600' : 'bg-slate-300'
-                  }`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${aiConfig.contextEnabled ? 'bg-emerald-600' : 'bg-slate-300'
+                    }`}
                   role="switch"
                   aria-checked={aiConfig.contextEnabled}
                   aria-label="כלול נתוני תיק השקעות"
                 >
                   <span
-                    className={`absolute h-4 w-4 rounded-full bg-white transition-all ${
-                      aiConfig.contextEnabled ? 'left-1' : 'right-1'
-                    }`}
+                    className={`absolute h-4 w-4 rounded-full bg-white transition-all ${aiConfig.contextEnabled ? 'left-1' : 'right-1'
+                      }`}
                   />
                 </button>
               </div>
@@ -204,7 +356,7 @@ const AIAdvisor = ({ assets, totalWealth, user, portfolioContext = "", aiConfig:
             onCreateNewChat={handleCreateNewChat}
             onSelectReport={handleSelectReport}
             isOpen={true}
-            onToggle={() => {}}
+            onToggle={() => { }}
           />
         </div>
 
@@ -212,7 +364,7 @@ const AIAdvisor = ({ assets, totalWealth, user, portfolioContext = "", aiConfig:
         {historyDrawerOpen && (
           <>
             {/* Overlay - Below Main Nav (z-50) but above Chat Content */}
-            <div 
+            <div
               className="lg:hidden fixed inset-0 bg-black/50 z-[35]"
               onClick={() => setHistoryDrawerOpen(false)}
             />
@@ -238,6 +390,7 @@ const AIAdvisor = ({ assets, totalWealth, user, portfolioContext = "", aiConfig:
             chatId={activeChatId}
             portfolioContext={portfolioContext}
             aiConfig={aiConfig}
+            groqConfig={groqConfig}
             onCreateNewChat={handleCreateNewChat}
             onToggleHistory={() => setHistoryDrawerOpen(!historyDrawerOpen)}
             historyDrawerOpen={historyDrawerOpen}

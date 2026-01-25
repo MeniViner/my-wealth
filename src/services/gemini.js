@@ -1,6 +1,6 @@
 /**
  * Service for interacting with AI via Groq API
- * Using Groq's llama-3.3-70b-versatile model
+ * Using Groq's llama-3.3-70b-versatile model (default)
  * Documentation: https://console.groq.com/docs/quickstart
  * 
  * Includes JSON parsing and validation helpers
@@ -16,13 +16,30 @@ import {
 
 // Groq API Configuration
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
 
 /**
- * Get Groq API Key from environment variables
+ * Available Groq Models
+ * Export for use in UI components
+ */
+export const GROQ_MODELS = {
+  'llama-3.3-70b-versatile': 'Llama 3.3 70B - New & Strongest',
+  'llama-3.1-70b-versatile': 'Llama 3.1 70B - Classic',
+  'mixtral-8x7b-32768': 'Mixtral 8x7B - Large Context',
+  'gemma2-9b-it': 'Gemma 2 9B - Fast Google'
+};
+
+/**
+ * Get Groq API Key
+ * @param {string} customApiKey - Optional custom API key from user settings
  * @returns {string} API key
  */
-const getGroqApiKey = () => {
+const getGroqApiKey = (customApiKey = '') => {
+  // Use custom key if provided, otherwise fallback to env variable
+  if (customApiKey && customApiKey.trim()) {
+    return customApiKey.trim();
+  }
+
   const apiKey = import.meta.env.VITE_GROQ_API_KEY;
   if (!apiKey) {
     throw new Error("VITE_GROQ_API_KEY environment variable is not set");
@@ -33,11 +50,13 @@ const getGroqApiKey = () => {
 /**
  * Call Groq API with messages
  * @param {Array} messages - Array of message objects
+ * @param {string} model - Model to use (default: llama-3.3-70b-versatile)
+ * @param {string} customApiKey - Optional custom API key
  * @param {number} temperature - Temperature for response generation (0-2)
  * @returns {Promise<string>} - AI response
  */
-const callGroqAPI = async (messages, temperature = 0.7) => {
-  const apiKey = getGroqApiKey();
+const callGroqAPI = async (messages, model = DEFAULT_MODEL, customApiKey = '', temperature = 0.7) => {
+  const apiKey = getGroqApiKey(customApiKey);
 
   const response = await fetch(GROQ_API_URL, {
     method: 'POST',
@@ -46,7 +65,7 @@ const callGroqAPI = async (messages, temperature = 0.7) => {
       'Authorization': `Bearer ${apiKey}`
     },
     body: JSON.stringify({
-      model: GROQ_MODEL,
+      model: model,
       messages: messages,
       temperature: temperature
     })
@@ -65,9 +84,11 @@ const callGroqAPI = async (messages, temperature = 0.7) => {
  * Call AI with a single prompt (legacy support)
  * @param {string} prompt - User prompt
  * @param {string} portfolioContext - Portfolio context string
+ * @param {string} model - Model to use (default: llama-3.3-70b-versatile)
+ * @param {string} customApiKey - Optional custom API key
  * @returns {Promise<string>} - AI response
  */
-export const callGeminiAI = async (prompt, portfolioContext = "") => {
+export const callGeminiAI = async (prompt, portfolioContext = "", model = DEFAULT_MODEL, customApiKey = "") => {
   try {
     // Build messages array
     const messages = [];
@@ -87,7 +108,7 @@ export const callGeminiAI = async (prompt, portfolioContext = "") => {
     });
 
     // Call Groq API
-    const content = await callGroqAPI(messages);
+    const content = await callGroqAPI(messages, model, customApiKey);
 
     return content || "לא התקבלה תשובה תקינה.";
   } catch (error) {
@@ -111,9 +132,11 @@ export const callGeminiAI = async (prompt, portfolioContext = "") => {
  * 
  * @param {Array} messages - Array of message objects with {role: 'user'|'assistant'|'system', content: string}
  * @param {string} portfolioContext - Portfolio context string (will be added as system message)
+ * @param {string} model - Model to use (default: llama-3.3-70b-versatile)
+ * @param {string} customApiKey - Optional custom API key
  * @returns {Promise<string>} - AI response
  */
-export const callGeminiAIWithHistory = async (messages = [], portfolioContext = "") => {
+export const callGeminiAIWithHistory = async (messages = [], portfolioContext = "", model = DEFAULT_MODEL, customApiKey = "") => {
   try {
     // Build messages array for Groq API
     // Format: [{role: 'system'|'user'|'assistant', content: string}, ...]
@@ -133,7 +156,7 @@ export const callGeminiAIWithHistory = async (messages = [], portfolioContext = 
     formattedMessages.push(...recentMessages);
 
     // Call Groq API
-    const content = await callGroqAPI(formattedMessages);
+    const content = await callGroqAPI(formattedMessages, model, customApiKey);
 
     return content || "לא התקבלה תשובה תקינה.";
   } catch (error) {

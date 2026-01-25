@@ -66,7 +66,7 @@
 - ✅ CORS headers set correctly
 
 **What Doesn't Work:**
-- ❌ `q=1183441` → Will NOT return TASE ETF (Invesco S&P 500)
+- ❌ `q=441` → Will NOT return TASE ETF (Invesco S&P 500)
 - ❌ Hebrew queries for TASE stocks → Relies on Yahoo Finance only
 - ❌ Partial security number matches → Not supported
 
@@ -79,7 +79,7 @@
 **Current Implementation:**
 - ✅ CoinGecko batch: Uses `/simple/price` with comma-separated IDs ✅
 - ⚠️ Yahoo Finance: Uses `/v8/finance/chart` endpoint **per symbol** (line 96)
-- ✅ TASE ID parsing: `tase:1183441` → `1183441.TA` ✅
+- ✅ TASE ID parsing: `tase:441` → `1183441.TA` ✅
 - ✅ Cache headers: `s-maxage=60, stale-while-revalidate=300` ✅
 - ✅ Parallel batching: Limits to 10 concurrent requests ✅
 
@@ -395,3 +395,9 @@ interface TASEStock {
 ---
 
 **END OF CHECKPOINT 1 REPORT**
+
+
+
+
+
+

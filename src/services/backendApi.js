@@ -51,9 +51,12 @@ async function fetchWithCache(url, options = {}, cacheKey, cacheType) {
       fetch(url, options)
         .then(async (response) => {
           if (response.ok) {
-            const data = await response.json();
-            const ttl = getTTL(cacheType);
-            await setCache(cacheKey, data, ttl);
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+              const data = await response.json();
+              const ttl = getTTL(cacheType);
+              await setCache(cacheKey, data, ttl);
+            }
           }
         })
         .catch(console.error);
@@ -65,23 +68,48 @@ async function fetchWithCache(url, options = {}, cacheKey, cacheType) {
   // Fetch from API
   try {
     const response = await fetch(url, options);
-    
+
     if (!response.ok) {
       // If fetch fails and we have cached data, return stale cache
       if (cacheKey) {
         const staleCache = await getCache(cacheKey);
         if (staleCache) {
-          return { 
-            data: staleCache.value, 
-            fromCache: true, 
-            isStale: true 
+          return {
+            data: staleCache.value,
+            fromCache: true,
+            isStale: true
           };
         }
       }
       throw new Error(`API error: ${response.status} ${response.statusText}`);
     }
 
-    const data = await response.json();
+    // Check Content-Type
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await response.text();
+      // If response starts with looking like HTML or JS import
+      if (text.trim().startsWith('<') || text.trim().startsWith('import ') || text.trim().startsWith('export ')) {
+        throw new Error(
+          `Received non-JSON response from API (likely HTML/JS). \n` +
+          `If running locally, please ensure you are running 'npm run vercel:dev' instead of 'npm run dev', ` +
+          `or set VITE_API_BASE to a running backend instance.`
+        );
+      }
+      // Try to parse anyway if it doesn't look obviously wrong, but expect failure
+    }
+
+    let data;
+    try {
+      data = await response.json();
+    } catch (parseError) {
+      // If JSON parsing fails, provide the helpful error message
+      throw new Error(
+        `Failed to parse API response as JSON. \n` +
+        `Response might be HTML or Text. \n` +
+        `If running locally, please ensure you are running 'npm run vercel:dev' instead of 'npm run dev'.`
+      );
+    }
 
     // Cache the result
     if (cacheKey) {
@@ -95,10 +123,10 @@ async function fetchWithCache(url, options = {}, cacheKey, cacheType) {
     if (cacheKey) {
       const staleCache = await getCache(cacheKey);
       if (staleCache) {
-        return { 
-          data: staleCache.value, 
-          fromCache: true, 
-          isStale: true 
+        return {
+          data: staleCache.value,
+          fromCache: true,
+          isStale: true
         };
       }
     }
@@ -118,7 +146,7 @@ export async function searchAssets(query) {
 
   const cacheKey = getCacheKey('search', 'q', query.trim().toLowerCase());
   const url = `${API_BASE}/search?q=${encodeURIComponent(query.trim())}`;
-  
+
   const result = await fetchWithCache(url, {
     method: 'GET',
     headers: { 'Content-Type': 'application/json' },
@@ -144,7 +172,7 @@ export async function getQuotes(ids) {
   // Fetch quotes in batches (to avoid URL length limits)
   const batchSize = 20;
   const batches = [];
-  
+
   for (let i = 0; i < ids.length; i += batchSize) {
     batches.push(ids.slice(i, i + batchSize));
   }
@@ -159,7 +187,7 @@ export async function getQuotes(ids) {
     for (const id of batch) {
       const cacheKey = getCacheKey('quote', id);
       const cached = await getCache(cacheKey);
-      
+
       if (cached) {
         cachedResults.push(cached.value);
       } else {
@@ -172,17 +200,19 @@ export async function getQuotes(ids) {
       try {
         // Prefer GET for CDN caching, fallback to POST if URL would be too long
         // URL length limit: ~2000 chars is safe for most servers
-        const getUrl = `${API_BASE}/quote?${uncachedIds.map(id => `ids=${encodeURIComponent(id)}`).join('&')}`;
+        // const getUrl = `${API_BASE}/quote?${uncachedIds.map(id => `ids=${encodeURIComponent(id)}`).join('&')}`;
+        // שינוי קריטי: שולחים את המזהים מופרדים בפסיקים (String) ולא כפרמטרים נפרדים (Array)
+        const getUrl = `${API_BASE}/quote?ids=${uncachedIds.map(encodeURIComponent).join(',')}`;    
         const useGet = getUrl.length < 2000;
-        
+
         const url = useGet ? getUrl : `${API_BASE}/quote`;
-        
+
         // Debug: Log POST payload in development
         const DEBUG_PRICES = import.meta.env.DEV;
         if (DEBUG_PRICES && !useGet) {
           console.log('[BACKEND API DEBUG] POST /api/quote payload:', { ids: uncachedIds });
         }
-        
+
         const response = await fetch(url, {
           method: useGet ? 'GET' : 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -191,17 +221,17 @@ export async function getQuotes(ids) {
 
         if (response.ok) {
           const data = await response.json();
-          
+
           // Normalize to array (handles both single object and array responses)
           const quotes = normalizeToArray(data);
-          
+
           // Debug: Log first few returned quote IDs in development
           const DEBUG_PRICES = import.meta.env.DEV;
           if (DEBUG_PRICES && quotes.length > 0) {
             const quoteIds = quotes.slice(0, 3).map(q => q?.id).filter(Boolean);
             console.log('[BACKEND API DEBUG] First few returned quote.id values:', quoteIds);
           }
-          
+
           // Cache each result (only if valid quote with id)
           for (const quote of quotes) {
             if (quote && quote.id) {
@@ -210,14 +240,14 @@ export async function getQuotes(ids) {
               await setCache(cacheKey, quote, ttl);
             }
           }
-          
+
           allResults.push(...quotes);
         } else {
           // Log diagnostic info for failed requests
           const requestId = response.headers.get('x-vercel-id') || response.headers.get('x-request-id') || 'unknown';
           const bodyText = await response.text().catch(() => '');
           const bodyPreview = bodyText.length > 200 ? bodyText.substring(0, 200) : bodyText;
-          
+
           console.error('Quote API error:', {
             url,
             status: response.status,
@@ -257,7 +287,7 @@ export async function getHistory(id, range = '1mo', interval = '1d') {
 
   const cacheKey = getCacheKey('history', id, range, interval);
   const url = `${API_BASE}/history?id=${encodeURIComponent(id)}&range=${range}&interval=${interval}`;
-  
+
   try {
     const result = await fetchWithCache(url, {
       method: 'GET',
@@ -265,7 +295,7 @@ export async function getHistory(id, range = '1mo', interval = '1d') {
     }, cacheKey, 'history');
 
     const history = result.data;
-    
+
     // Handle error responses - return null instead of crashing
     if (history && (history.error || !Array.isArray(history.points))) {
       // "History data not found" is a normal case, not an error - use debug level
@@ -298,7 +328,7 @@ export async function getHistory(id, range = '1mo', interval = '1d') {
 export async function getFx(base = 'USD', quote = 'ILS') {
   const cacheKey = getCacheKey('fx', base, quote);
   const url = `${API_BASE}/fx?base=${base}&quote=${quote}`;
-  
+
   try {
     const result = await fetchWithCache(url, {
       method: 'GET',
@@ -327,7 +357,7 @@ export async function checkApiHealth() {
       // Short timeout for health check
       signal: AbortSignal.timeout(5000)
     });
-    
+
     if (response.ok) {
       return true;
     }

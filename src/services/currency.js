@@ -75,7 +75,7 @@ export async function convertAmount(amount, fromCurrency, toCurrency, fxRate = n
   // Rule 2: Same currency -> return as-is (NO conversion)
   if (fromCurrency === toCurrency) {
     if (DEBUG_CURRENCY) {
-      console.log('[CURRENCY DEBUG] Same currency, no conversion:', { amount, currency: fromCurrency });
+      // console.log('[CURRENCY DEBUG] Same currency, no conversion:', { amount, currency: fromCurrency });
     }
     return amount;
   }
@@ -112,15 +112,15 @@ export async function convertAmount(amount, fromCurrency, toCurrency, fxRate = n
   }
 
   // Debug logging
-  if (DEBUG_CURRENCY) {
-    console.log('[CURRENCY DEBUG] Conversion:', {
-      amount,
-      fromCurrency,
-      toCurrency,
-      rateUsed: rate,
-      result
-    });
-  }
+  // if (DEBUG_CURRENCY) {
+  //   console.log('[CURRENCY DEBUG] Conversion:', {
+  //     amount,
+  //     fromCurrency,
+  //     toCurrency,
+  //     rateUsed: rate,
+  //     result
+  //   });
+  // }
 
   return result;
 }
