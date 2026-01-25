@@ -339,11 +339,10 @@ export const fetchYahooPricesBatch = async (symbols) => {
   }
 };
 
-// ==================== UNIFIED PRICE FETCHER ====================
-
 /**
- * Fetch price for any asset type (auto-detects source)
- * Uses resolveInternalId to ensure correct ID format
+ * Fetch price for any asset type (STRICT SPLIT ROUTING)
+ * Israeli (TASE) assets → Browser only (CORS proxy)
+ * Global assets (US Stocks, Crypto) → Backend API only
  * @param {Object} asset - Asset object with apiId, marketDataSource, symbol
  * @returns {Promise<UnifiedAssetPrice|null>}
  */
@@ -364,7 +363,57 @@ export const fetchAssetPrice = async (asset) => {
     return null;
   }
 
+  // ==================== SPLIT ROUTING LOGIC ====================
+  // Determine if this is a TASE asset
+  const isTaseAsset =
+    asset.marketDataSource === 'tase-local' ||
+    internalId.startsWith('tase:') ||
+    (asset.symbol && asset.symbol.endsWith('.TA'));
+
+  // ========== ROUTE A: TASE → Browser Only (No Backend) ==========
+  if (isTaseAsset) {
+    try {
+      // Extract security ID from internal ID (e.g., "tase:5140454" → "5140454")
+      const securityId = internalId.startsWith('tase:')
+        ? internalId.substring(5)
+        : asset.apiId || asset.symbol;
+
+      if (DEBUG_PRICES) {
+        console.log(`[PRICE SINGULAR] Routing TASE asset ${securityId} to browser...`);
+      }
+
+      const browserData = await fetchTasePriceFromBrowser(securityId);
+
+      if (!browserData || !browserData.price) {
+        console.warn(`[PRICE SINGULAR] Failed to fetch TASE asset ${securityId}`);
+        return null;
+      }
+
+      const symbol = asset.apiId || asset.symbol || '';
+
+      return {
+        symbol: symbol,
+        name: asset.name || symbol,
+        currentPrice: browserData.price,
+        currency: 'ILS',
+        change24h: browserData.changePct || 0,
+        changeAmount: (browserData.price * (browserData.changePct || 0)) / 100,
+        lastUpdated: new Date(),
+        source: 'funder-browser',
+        assetType: asset.assetType === 'ETF' ? 'ETF' : 'STOCK',
+      };
+    } catch (error) {
+      console.error(`[PRICE SINGULAR] Error fetching TASE asset ${internalId}:`, error);
+      return null;
+    }
+  }
+
+  // ========== ROUTE B: Global → Backend API Only ==========
   try {
+    if (DEBUG_PRICES) {
+      console.log(`[PRICE SINGULAR] Routing global asset ${internalId} to backend...`);
+    }
+
     // Use getQuotes directly for unified quote fetching
     const quotes = await getQuotes([internalId]);
 
@@ -401,7 +450,7 @@ export const fetchAssetPrice = async (asset) => {
       assetType = 'INDEX';
     } else if (asset.assetType === 'CRYPTO' || internalId.startsWith('cg:')) {
       assetType = 'CRYPTO';
-    } else if (asset.assetType === 'ETF' || asset.marketDataSource === 'tase-local') {
+    } else if (asset.assetType === 'ETF') {
       assetType = 'ETF';
     }
 
@@ -716,6 +765,20 @@ export const fetchAssetHistoricalPrice = async (asset, date) => {
   const internalId = resolveInternalId(asset);
   if (!internalId) return null;
 
+  // ==================== SPLIT ROUTING: Skip TASE Historical ====================
+  // TASE historical data is not supported by backend, return null immediately
+  const isTaseAsset =
+    asset.marketDataSource === 'tase-local' ||
+    internalId.startsWith('tase:') ||
+    (asset.symbol && asset.symbol.endsWith('.TA'));
+
+  if (isTaseAsset) {
+    if (DEBUG_PRICES) {
+      console.log(`[HISTORY DEBUG] TASE historical data not supported for ${internalId}, returning null`);
+    }
+    return null;
+  }
+
   // CoinGecko uses different date format
   if (internalId.startsWith('cg:')) {
     const coinId = internalId.replace('cg:', '');
@@ -724,7 +787,7 @@ export const fetchAssetHistoricalPrice = async (asset, date) => {
     return await fetchCryptoHistoricalPrice(coinId, dateStr);
   }
 
-  // Yahoo and TASE use same backend endpoint
+  // Yahoo and other assets use same backend endpoint
   return await fetchYahooHistoricalPrice(asset, date);
 };
 

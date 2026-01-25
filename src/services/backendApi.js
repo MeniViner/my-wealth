@@ -202,7 +202,7 @@ export async function getQuotes(ids) {
         // URL length limit: ~2000 chars is safe for most servers
         // const getUrl = `${API_BASE}/quote?${uncachedIds.map(id => `ids=${encodeURIComponent(id)}`).join('&')}`;
         // שינוי קריטי: שולחים את המזהים מופרדים בפסיקים (String) ולא כפרמטרים נפרדים (Array)
-        const getUrl = `${API_BASE}/quote?ids=${uncachedIds.map(encodeURIComponent).join(',')}`;    
+        const getUrl = `${API_BASE}/quote?ids=${uncachedIds.map(encodeURIComponent).join(',')}`;
         const useGet = getUrl.length < 2000;
 
         const url = useGet ? getUrl : `${API_BASE}/quote`;
@@ -259,7 +259,7 @@ export async function getQuotes(ids) {
       } catch (error) {
         // Log diagnostic info for network errors
         console.error('Error fetching quotes:', {
-          url,
+          batchIds: uncachedIds,
           error: error.message,
           stack: error.stack
         });

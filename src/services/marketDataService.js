@@ -345,20 +345,28 @@ async function searchIsraeliStocksFromBrowser(query) {
       const corsProxyUrl = `https://corsproxy.io/?${encodeURIComponent(funderUrl)}`;
 
       const response = await fetch(corsProxyUrl);
-      
+
       if (response.ok) {
         const html = await response.text();
         // בדיקה בסיסית אם זה דף תקין (מחפשים את השם בכותרת או במטא)
         // בדרך כלל השם מופיע בתוך <h1 class="font-weight-bold">שם הקרן</h1> או ב-title
         const nameMatch = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) || html.match(/<title>([\s\S]*?)<\/title>/i);
-        
+
         if (nameMatch && nameMatch[1]) {
-          let cleanName = nameMatch[1].replace(/– Funder|– פאנדר|פאנדר/g, '').trim();
-          // ניקוי תגיות HTML אם נשארו
-          cleanName = cleanName.replace(/<[^>]*>/g, '').trim();
+          let cleanName = nameMatch[1]
+            .replace(/– Funder|– פאנדר|פאנדר/g, '')
+            .replace(/<[^>]*>/g, '') // Remove HTML tags
+            .replace(/&nbsp;/g, ' ') // Remove HTML entities
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/קרן הנאמנות:\s*/gi, '') // Remove "קרן הנאמנות:"
+            .replace(/תעודת סל:\s*/gi, '') // Remove "תעודת סל:"
+            .trim();
 
           console.log(`[BROWSER SEARCH] ✅ Direct lookup success! Found: ${cleanName}`);
-          
+
           results.push({
             id: `tase:${cleanQuery}`,
             symbol: cleanQuery,
@@ -371,7 +379,7 @@ async function searchIsraeliStocksFromBrowser(query) {
             exchange: 'TASE',
             extra: { securityNumber: cleanQuery }
           });
-          
+
           // אם מצאנו בשיטה הישירה, אין טעם להמשיך ל-API
           return results;
         }
@@ -415,7 +423,7 @@ async function searchIsraeliStocksFromBrowser(query) {
             exchange: 'TASE'
           };
         });
-      
+
       results.push(...mapped);
     }
   } catch (error) {
