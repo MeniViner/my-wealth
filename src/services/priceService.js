@@ -110,6 +110,26 @@ const setCachedPrice = (key, data) => {
 // ==================== INTERNAL ID HELPERS ====================
 
 /**
+ * Check if an asset's price is stale and needs refreshing
+ * @param {Object} asset - Asset object with lastUpdated field
+ * @param {number} maxAgeMinutes - Maximum age in minutes before price is considered stale
+ * @returns {boolean} True if price needs updating
+ */
+export const isAssetPriceStale = (asset, maxAgeMinutes = 5) => {
+  if (!asset || !asset.lastUpdated) return true;
+
+  const lastUpdatedTime = asset.lastUpdated instanceof Date
+    ? asset.lastUpdated.getTime()
+    : new Date(asset.lastUpdated).getTime();
+
+  const ageMs = Date.now() - lastUpdatedTime;
+  const maxAgeMs = maxAgeMinutes * 60 * 1000;
+
+  return ageMs > maxAgeMs;
+};
+
+
+/**
  * Convert asset to internal ID format (deprecated - use resolveInternalId directly)
  * @deprecated Use resolveInternalId from internalIds.js instead
  */
@@ -474,23 +494,82 @@ export const fetchAssetPrice = async (asset) => {
 };
 
 /**
- * Fetch prices for multiple assets (STRICT SPLIT ROUTING)
+ * Fetch prices for multiple assets (STRICT SPLIT ROUTING with SMART CACHING)
  * Israeli (TASE) assets → Browser only (CORS proxy)
  * Global assets (US Stocks, Crypto) → Backend API only
+ * 
+ * NEW: Only fetches assets with stale prices (older than maxAgeMinutes)
+ * Returns a mix of fresh prices (newly fetched) and cached prices (from assets)
+ * 
  * @param {Array} assets - Array of asset objects
+ * @param {Object} options - Optional configuration
+ * @param {number} options.maxAgeMinutes - Maximum age before refresh (default: 5)
+ * @param {boolean} options.forceRefresh - Force fetch all assets, ignore cache
+ * @param {number} options.globalBatchSize - Batch size for global assets (default: 20)
  * @returns {Promise<Object<string, UnifiedAssetPrice>>}
  */
-export const fetchAssetPricesBatch = async (assets) => {
+export const fetchAssetPricesBatch = async (assets, options = {}) => {
   if (!assets || assets.length === 0) return {};
+
+  const {
+    maxAgeMinutes = 5,
+    forceRefresh = false,
+    globalBatchSize = 20
+  } = options;
+
+  // ==================== STEP 0: SMART FILTERING (NEW!) ====================
+  const assetsToFetch = [];
+  const cachedResults = {};
+
+  assets.forEach(asset => {
+    if (asset.marketDataSource === 'manual') return;
+
+    const internalId = resolveInternalId(asset);
+    if (!internalId) return;
+
+    // Check if asset has fresh price data
+    if (!forceRefresh && !isAssetPriceStale(asset, maxAgeMinutes)) {
+      // Use cached price from asset
+      if (asset.currentPrice) {
+        cachedResults[internalId] = {
+          symbol: asset.apiId || asset.symbol || '',
+          name: asset.name,
+          currentPrice: asset.currentPrice,
+          currency: asset.currency || 'ILS',
+          change24h: asset.priceChange24h || 0,
+          changeAmount: (asset.currentPrice * (asset.priceChange24h || 0)) / 100,
+          lastUpdated: asset.lastUpdated,
+          source: asset.marketDataSource === 'tase-local' ? 'funder-browser' :
+            (asset.assetType === 'CRYPTO' ? 'coingecko' : 'yahoo'),
+          assetType: asset.assetType || 'STOCK',
+          cached: true // Mark as cached for debugging
+        };
+        if (DEBUG_PRICES) {
+          console.log(`[CACHE HIT] Using cached price for ${internalId}`);
+        }
+        return;
+      }
+    }
+
+    // Asset needs updating
+    assetsToFetch.push(asset);
+  });
+
+  if (DEBUG_PRICES) {
+    console.log(`[SMART CACHE] Cached: ${Object.keys(cachedResults).length}, To Fetch: ${assetsToFetch.length}`);
+  }
+
+  // If all assets are cached, return early
+  if (assetsToFetch.length === 0) {
+    return cachedResults;
+  }
 
   // ==================== STEP 1: SEPARATE INTO TWO BUCKETS ====================
   const israelBucket = [];  // TASE assets → Browser fetch
   const globalBucket = [];  // US Stocks, Crypto → Backend API
   const assetMap = new Map(); // Map for result merging
 
-  assets.forEach(asset => {
-    if (asset.marketDataSource === 'manual') return;
-
+  assetsToFetch.forEach(asset => {
     const internalId = resolveInternalId(asset);
     if (!internalId) return;
 
@@ -534,12 +613,29 @@ export const fetchAssetPricesBatch = async (assets) => {
 
       if (!browserData || !browserData.price) {
         console.warn(`[ISRAEL BUCKET] Failed to fetch ${securityId}`);
+        // Return old price if available
+        if (asset.currentPrice) {
+          return {
+            key: internalId,
+            data: {
+              symbol: asset.apiId || asset.symbol || '',
+              name: asset.name,
+              currentPrice: asset.currentPrice,
+              currency: 'ILS',
+              change24h: asset.priceChange24h || 0,
+              changeAmount: (asset.currentPrice * (asset.priceChange24h || 0)) / 100,
+              lastUpdated: asset.lastUpdated,
+              source: 'funder-browser',
+              assetType: asset.assetType === 'ETF' ? 'ETF' : 'STOCK',
+              stale: true // Mark as stale
+            }
+          };
+        }
         return null;
       }
 
       // Normalize to match backend format
       const priceKey = internalId;
-      const symbol = asset.apiId || asset.symbol || '';
 
       return {
         key: priceKey,
@@ -557,19 +653,53 @@ export const fetchAssetPricesBatch = async (assets) => {
       };
     } catch (error) {
       console.error(`[ISRAEL BUCKET] Error fetching ${internalId}:`, error.message);
+      // Return old price if available
+      if (asset.currentPrice) {
+        return {
+          key: internalId,
+          data: {
+            symbol: asset.apiId || asset.symbol || '',
+            name: asset.name,
+            currentPrice: asset.currentPrice,
+            currency: 'ILS',
+            change24h: asset.priceChange24h || 0,
+            changeAmount: (asset.currentPrice * (asset.priceChange24h || 0)) / 100,
+            lastUpdated: asset.lastUpdated,
+            source: 'funder-browser',
+            assetType: asset.assetType === 'ETF' ? 'ETF' : 'STOCK',
+            stale: true
+          }
+        };
+      }
       return null;
     }
   });
 
-  // ========== BUCKET B: GLOBAL (Backend API only) ==========
+  // ========== BUCKET B: GLOBAL (Backend API only) with BATCHING ==========
   let globalQuotes = [];
   if (globalBucket.length > 0) {
     try {
       const globalIds = globalBucket.map(item => item.internalId);
-      if (DEBUG_PRICES) {
-        console.log('[GLOBAL BUCKET] Sending to backend:', globalIds);
+
+      // Split into batches to avoid overwhelming the API
+      const batches = [];
+      for (let i = 0; i < globalIds.length; i += globalBatchSize) {
+        batches.push(globalIds.slice(i, i + globalBatchSize));
       }
-      globalQuotes = await getQuotes(globalIds);
+
+      if (DEBUG_PRICES) {
+        console.log(`[GLOBAL BUCKET] Sending ${globalIds.length} assets in ${batches.length} batches...`);
+      }
+
+      // Process batches sequentially to respect rate limits
+      for (let i = 0; i < batches.length; i++) {
+        const batch = batches[i];
+        if (DEBUG_PRICES) {
+          console.log(`[GLOBAL BUCKET] Processing batch ${i + 1}/${batches.length} (${batch.length} assets)`);
+        }
+        const batchQuotes = await getQuotes(batch);
+        globalQuotes.push(...batchQuotes);
+      }
     } catch (error) {
       console.error('[GLOBAL BUCKET] Backend API error:', error);
     }
@@ -596,10 +726,27 @@ export const fetchAssetPricesBatch = async (assets) => {
     q.price > 0
   );
 
-  // Log errors from backend
+  // Log errors from backend and use old prices if available
   globalQuotes.forEach(q => {
     if (q && q.error) {
       console.warn(`[GLOBAL BUCKET] Backend error for ${q.id}:`, q.error);
+      // Try to use old price
+      const asset = assetMap.get(q.id);
+      if (asset && asset.currentPrice) {
+        const symbol = asset.apiId || asset.symbol || '';
+        results[q.id] = {
+          symbol: symbol,
+          name: asset.name || symbol,
+          currentPrice: asset.currentPrice,
+          currency: asset.currency || 'USD',
+          change24h: asset.priceChange24h || 0,
+          changeAmount: (asset.currentPrice * (asset.priceChange24h || 0)) / 100,
+          lastUpdated: asset.lastUpdated,
+          source: asset.assetType === 'CRYPTO' ? 'coingecko' : 'yahoo',
+          assetType: asset.assetType || 'STOCK',
+          stale: true
+        };
+      }
     }
   });
 
@@ -632,11 +779,14 @@ export const fetchAssetPricesBatch = async (assets) => {
     };
   });
 
+  // Merge cached results with fresh results
+  const finalResults = { ...cachedResults, ...results };
+
   if (DEBUG_PRICES) {
-    console.log(`[SPLIT ROUTING] Final results count: ${Object.keys(results).length}`);
+    console.log(`[SPLIT ROUTING] Final results count: ${Object.keys(finalResults).length} (${Object.keys(cachedResults).length} cached, ${Object.keys(results).length} fresh)`);
   }
 
-  return results;
+  return finalResults;
 };
 
 // ==================== HISTORICAL PRICES ====================

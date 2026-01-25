@@ -1,11 +1,14 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Sparkles, Loader2, Plus, ArrowRight, Calculator, RefreshCw, Calendar, Hash, X } from 'lucide-react';
+import { ArrowLeft, Sparkles, Loader2, Plus, ArrowRight, Calculator, RefreshCw, Calendar, Hash, X, Layers, Search, DollarSign, Tag } from 'lucide-react';
 import { callGeminiAI } from '../services/gemini';
 import { infoAlert, successToast, errorAlert } from '../utils/alerts';
 import { generateRandomColor } from '../constants/defaults';
 import TickerSearch from '../components/TickerSearch';
 import CustomSelect from '../components/CustomSelect';
+import FormSection from '../components/FormSection';
+import AssetModeSelector from '../components/AssetModeSelector';
+import CalculatedField from '../components/CalculatedField';
 import { fetchAssetPrice, fetchAssetHistoricalPrice, convertCurrency } from '../services/priceService';
 
 const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioContext = "" }) => {
@@ -804,10 +807,10 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
           </button>
         )}
       </header>
-      <form onSubmit={handleSubmit} className="md:bg-white md:dark:bg-slate-800 p-2 md:p-8 md:rounded-2xl md:shadow-lg md:border md:border-slate-100 dark:border-slate-700 space-y-6">
+      <form onSubmit={handleSubmit} className="md:bg-white md:dark:bg-slate-800 p-2 md:p-8 md:rounded-2xl md:shadow-lg md:border md:border-slate-100 dark:border-slate-700 space-y-8">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">חשבונות וארנקים</label>
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">חשבון או ארנק</label>
             {!showNewPlatform ? (
               <CustomSelect
                 value={formData.platform || ''}
@@ -869,7 +872,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
             )}
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">מטבעות בסיס</label>
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">מטבע בסיס</label>
             {!showNewInstrument ? (
               <CustomSelect
                 value={formData.instrument || ''}
@@ -932,7 +935,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
           </div>
 
           <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">אפיק השקעה</label>
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">קטגוריית השקעה</label>
             <div className="flex gap-2 flex-wrap">
               {systemData.categories.map(cat => (
                 <button
@@ -948,10 +951,17 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
               ))}
             </div>
           </div>
+        </div>
+
+        {/* Soft Section Divider */}
+        <div className="border-t border-slate-100 dark:border-slate-800 -mx-2 md:-mx-8" />
+
+        {/* Asset Identification Section */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* סמל נכס / Ticker - Hidden for Cash category */}
           {formData.category !== 'מזומן' && (
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">סמל נכס / Ticker</label>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">חיפוש נכס או סימול</label>
               {(formData.category === 'מניות' || formData.category === 'קריפטו') ? (
                 // Smart Ticker Search with Category Selector
                 <TickerSearch
@@ -1135,7 +1145,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
           )}
           <div className="md:col-span-2">
             <div className="flex justify-betweFen items-center mb-2">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">שם הנכס</label>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">שם הנכס</label>
               {(formData.category === 'מניות' || formData.category === 'קריפטו') && (
                 <label className="text-xs mr-2 text-slate-500 dark:text-slate-400">(במניות וקריפטו מוזן אוטומטי)</label>
               )}
@@ -1149,39 +1159,102 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
               placeholder="לדוג': מחקה מדד נאסד''ק"
             />
           </div>
-          {/* Mode Toggle: Quantity vs Legacy - Hidden for Cash */}
+
+          {/* Technical Symbol/ID Field - Shows what will actually be saved */}
           {formData.category !== 'מזומן' && (
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">מצב מעקב</label>
-              <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-700 rounded-lg">
-                <button
-                  type="button"
-                  onClick={() => setFormData({ ...formData, assetMode: 'QUANTITY' })}
-                  className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${formData.assetMode === 'QUANTITY'
-                    ? 'bg-white dark:bg-slate-600 text-emerald-600 dark:text-emerald-400 shadow-sm'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                >
-                  <Hash size={16} />
-                  כמות × מחיר (מומלץ)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFormData({ ...formData, assetMode: 'LEGACY' })}
-                  className={`flex-1 px-4 py-2 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-2 ${formData.assetMode === 'LEGACY'
-                    ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
-                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-                    }`}
-                >
-                  <Calculator size={16} />
-                  שווי סטטי
-                </button>
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                {formData.category === 'מניות' && formData.apiId?.startsWith('tase:')
+                  ? 'מספר נייר ערך (ת״א)'
+                  : formData.category === 'מניות'
+                    ? 'סימול מניה (Ticker)'
+                    : formData.category === 'קריפטו'
+                      ? 'סימול מטבע קריפטו'
+                      : 'מזהה טכני'}
+                <span className="text-xs text-slate-500 dark:text-slate-400 mr-2">
+                  (עוזר למעקב מחיר עדכני)
+                </span>
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  className="w-full p-3 pr-16 border border-slate-200 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-800/50 text-slate-900 dark:text-slate-100 font-mono text-sm"
+                  value={
+                    formData.apiId?.startsWith('tase:')
+                      ? formData.apiId.replace('tase:', '')
+                      : formData.apiId?.startsWith('cg:')
+                        ? formData.apiId.replace('cg:', '')
+                        : formData.apiId?.startsWith('yahoo:')
+                          ? formData.apiId.replace('yahoo:', '')
+                          : formData.symbol || formData.apiId || ''
+                  }
+                  onChange={e => {
+                    const rawValue = e.target.value.trim();
+                    let newApiId = rawValue;
+
+                    // Add appropriate prefix based on category
+                    if (rawValue) {
+                      if (formData.category === 'קריפטו') {
+                        newApiId = rawValue.startsWith('cg:') ? rawValue : `cg:${rawValue}`;
+                      } else if (formData.marketDataSource === 'tase-local' || /^\d+$/.test(rawValue)) {
+                        newApiId = rawValue.startsWith('tase:') ? rawValue : `tase:${rawValue}`;
+                      } else {
+                        newApiId = rawValue.startsWith('yahoo:') ? rawValue : `yahoo:${rawValue}`;
+                      }
+                    }
+
+                    setFormData({
+                      ...formData,
+                      apiId: newApiId,
+                      symbol: rawValue
+                    });
+                  }}
+                  placeholder={
+                    formData.category === 'מניות' && formData.apiId?.startsWith('tase:')
+                      ? 'לדוגמה: 5138524'
+                      : formData.category === 'מניות'
+                        ? 'לדוגמה: AAPL'
+                        : formData.category === 'קריפטו'
+                          ? 'לדוגמה: bitcoin'
+                          : 'מזהה ייחודי'
+                  }
+                  readOnly={!formData.category || formData.category === 'מזומן'}
+                />
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-medium text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-900/50 px-2 py-0.5 rounded-full pointer-events-none">
+                  {formData.apiId?.startsWith('tase:') ? 'TASE'
+                    : formData.apiId?.startsWith('cg:') ? 'CG'
+                      : formData.apiId?.startsWith('yahoo:') ? 'Yahoo'
+                        : 'ID'}
+                </span>
               </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                {formData.assetMode === 'QUANTITY'
-                  ? '✨ מאפשר מעקב אוטומטי אחר שינויי מחיר וחישוב רווח/הפסד'
-                  : 'הזנת שווי כולל ללא מעקב אוטומטי'}
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+                {formData.category === 'מניות' && formData.apiId?.startsWith('tase:')
+                  ? '💡 מספר הנייר בבורסה בתל אביב - נשלף אוטומטית מהחיפוש'
+                  : formData.category === 'מניות'
+                    ? '💡 סימול המניה בבורסה (לדוגמה: AAPL, TSLA, MSFT)'
+                    : formData.category === 'קריפטו'
+                      ? '💡 שם המטבע הקריפטוגרפי ללא prefix (לדוגמה: bitcoin, ethereum)'
+                      : 'המזהה הטכני לנכס במערכת'}
               </p>
+            </div>
+          )}
+        </div>
+
+        {/* Soft Section Divider */}
+        <div className="border-t border-slate-100 dark:border-slate-800 -mx-2 md:-mx-8" />
+
+        {/* Value Tracking Section */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Asset  Tracking Method - Hidden for Cash */}
+          {formData.category !== 'מזומן' && (
+            <div className="md:col-span-2">
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3">
+                אופן חישוב ערך הנכס
+              </label>
+              <AssetModeSelector
+                value={formData.assetMode}
+                onChange={(mode) => setFormData({ ...formData, assetMode: mode })}
+              />
             </div>
           )}
 
@@ -1238,11 +1311,10 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
             <>
               {/* Row 1: Date + Price (auto-fetched) */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">
+                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                   <span className="flex items-center gap-2">
                     <Calendar size={14} />
-                    תאריך רכישה
-                    <span className="text-xs text-slate-500">(ישמש למחיר היחידה)</span>
+                    מתי ביצעת את הרכישה?
                   </span>
                 </label>
                 <input
@@ -1260,9 +1332,9 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
 
               <div>
                 <div className="flex justify-between items-center mb-2">
-                  <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                  <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                     <span className="flex items-center gap-2">
-                      הצגת מחיר היחידה
+                      מחיר ליחידה ברכישה
                     </span>
                   </label>
                   <div className="flex gap-1">
@@ -1314,7 +1386,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                         setIsPriceManual(true); // Still mark as manual to prevent auto-fetch
                       }
                     }}
-                    placeholder="נשלף אוטומטית"
+                    placeholder="לדוגמה: 50,000 או 5.5"
                   />
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 text-sm">
                     {formData.currency === 'ILS' ? '₪' : '$'}
@@ -1336,9 +1408,9 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Total Cost Input */}
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">
+                      <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                         <span className="flex items-center gap-2">
-                          💵 סכום ההשקעה (כמה כסף השקעת?)
+                          💵 כמה השקעת בסה"כ?
                         </span>
                       </label>
                       <div className="relative">
@@ -1354,7 +1426,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                             setFormData({ ...formData, totalCost: e.target.value });
                             setLastEditedField('totalCost');
                           }}
-                          placeholder={`לדוגמה: 500`}
+                          placeholder={`לדוגמה: ${formData.currency === 'ILS' ? '5,000 ₪' : '$1,000'}`}
 
                         />
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 text-sm font-bold">
@@ -1370,10 +1442,10 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
 
                     {/* Quantity Input */}
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-2">
+                      <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                         <span className="flex items-center gap-2">
                           <Hash size={14} />
-                          כמות יחידות (כמה קנית?)
+                          כמה יחידות רכשת?
                         </span>
                       </label>
                       <input
@@ -1388,7 +1460,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                           setFormData({ ...formData, quantity: e.target.value });
                           setLastEditedField('quantity');
                         }}
-                        placeholder="לדוגמה: 2.5"
+                        placeholder="לדוגמה: 2.5 יחידות"
 
                       />
                       {lastEditedField === 'quantity' && formData.purchasePrice && formData.quantity && (
@@ -1435,10 +1507,19 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
               />
             </div>
           )}
+        </div>
 
+        {/* Soft Section Divider */}
+        <div className="border-t border-slate-100 dark:border-slate-800 -mx-2 md:-mx-8" />
+
+        {/* Optional Metadata Section */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="md:col-span-2">
             <div className="flex justify-between mb-2">
-              <label className="text-sm font-medium text-slate-700 dark:text-slate-200">תגיות</label>
+              <label className="text-sm font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                <Tag size={14} />
+                תגיות (אופציונלי)
+              </label>
               <button
                 type="button"
                 onClick={handleGenerateTags}
@@ -1452,19 +1533,25 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
               className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100"
               value={formData.tags || ''}
               onChange={e => setFormData({ ...formData, tags: e.target.value })}
+              placeholder="לדוגמה: הכנסה פסיבית, ארוך טווח"
             />
           </div>
         </div>
-        <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
+
+        {/* Action Buttons with Clear Hierarchy */}
+        <div className="flex flex-col-reverse md:flex-row justify-end gap-3 pt-6 border-t border-slate-200 dark:border-slate-700 mt-8">
           <button
             type="button"
             onClick={() => navigate('/assets')}
-            className="px-6 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
+            className="px-6 py-3 md:py-2.5 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-medium"
           >
             ביטול
           </button>
-          <button type="submit" className="px-6 py-2 bg-slate-900 dark:bg-slate-700 text-white rounded-lg hover:bg-slate-800 dark:hover:bg-slate-600">
-            שמור
+          <button
+            type="submit"
+            className="flex-1 md:flex-initial px-8 py-3 md:py-2.5 bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600 text-white font-semibold rounded-lg transition-colors shadow-sm hover:shadow-md"
+          >
+            {id ? 'עדכן נכס' : 'שמור נכס'}
           </button>
         </div>
       </form>

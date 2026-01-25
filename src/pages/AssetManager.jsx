@@ -270,13 +270,13 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
               <button
                 onClick={onRefreshPrices}
                 disabled={pricesLoading}
-                className="bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-4 py-1.5 md:py-2.5 rounded-lg flex items-center gap-2 font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors disabled:opacity-50"
+                className="bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 md:px-5 py-2.5 rounded-lg flex items-center gap-2 font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors disabled:opacity-50"
                 title={lastPriceUpdate ? `עדכון אחרון: ${lastPriceUpdate.toLocaleTimeString('he-IL')}` : 'רענן מחירים'}
               >
                 <RefreshCw size={16} className={pricesLoading ? 'animate-spin' : ''} />
                 <span className="hidden sm:inline">{pricesLoading ? 'מעדכן...' : 'רענן מחירים'}</span>
                 {lastPriceUpdate && !pricesLoading && (
-                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                  <span className="hidden sm:inline text-xs text-slate-500 dark:text-slate-400">
                     ({Math.floor((Date.now() - lastPriceUpdate) / 60000)}m)
                   </span>
                 )}
@@ -419,24 +419,6 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                   placeholder="כל החשבונות"
                   className="min-w-[150px]"
                 />
-                  {groupedAssets.length > 1 && (
-                    <button
-                      onClick={toggleAllGroups}
-                      className="text-sm text-left mr-auto text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors flex items-center gap-2 "
-                    >
-                      {expandedGroups.size === groupedAssets.length ? (
-                        <>
-                          <ChevronUp size={16} />
-                          <span>צמצם הכל</span>
-                        </>
-                      ) : (
-                        <>
-                          <ChevronDown size={16} />
-                          <span>הרחב הכל</span>
-                        </>
-                      )}
-                    </button>
-                  )}
               </div>
             </div>
 
@@ -502,7 +484,7 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                 {/* כפתורים - הרחב/צמצם הכל ותצוגה */}
                 <div className="flex justify-between items-center gap-2">
                   <div className="relative">
-                    {/* <button
+                    <button
                       ref={colMenuButtonRef}
                       onClick={() => {
                         if (colMenuButtonRef.current) {
@@ -520,11 +502,12 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                         }
                         setColMenuOpen(!colMenuOpen);
                       }}
-                      className="px-4 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700 font-medium text-sm shadow-sm hover:shadow-md"
+                      className="hidden md:block px-4 py-2.5 border border-slate-200 dark:border-slate-600 rounded-lg flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-700 font-medium text-sm shadow-sm hover:shadow-md"
                     >
                       <Eye size={18} />
-                      <span>הצג עמודות</span>
-                    </button> */}
+                      <span>בחר נתונים להצגה</span>
+                    </button>
+
                     {colMenuOpen && (
                       <>
                         {/* Backdrop for mobile */}
@@ -586,7 +569,24 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                       </>
                     )}
                   </div>
-
+                  {groupedAssets.length > 1 && (
+                    <button
+                      onClick={toggleAllGroups}
+                      className="text-sm text-left mr-auto text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors flex items-center gap-2 "
+                    >
+                      {expandedGroups.size === groupedAssets.length ? (
+                        <>
+                          <ChevronUp size={16} />
+                          <span>צמצם הכל</span>
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown size={16} />
+                          <span>הרחב הכל</span>
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
 
                 {groupedAssets.map(({ key, items, totalValue }) => {
