@@ -710,7 +710,7 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
 
       {/* Top Summary Cards */}
       {hasData && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 md:gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5 md:gap-4 mb-6">
           {!isMobile && (
             <SummaryCard
               title={`תיק לפי מטבע ראשי (${mainCurrency})`}
@@ -719,12 +719,12 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
               iconBgColor="bg-blue-500/10"
             />
           )}
-          <SummaryCard
+          {/* <SummaryCard
             title="שווי לפי היסטוריה"
             value={isWealthVisible ? formatCurrency(totalCostBasis) : '••••••'}
             icon={History}
             iconBgColor="bg-slate-500/10"
-          />
+          /> */}
           <SummaryCard
             title="רווח/הפסד יומי"
             value={isWealthVisible ? formatCurrency(dailyProfitLoss.amount) : '••••••'}
@@ -737,7 +737,7 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
             value={isWealthVisible ? formatCurrency(totalProfitLoss.amount) : '••••••'}
             icon={TrendingUp}
             iconBgColor="bg-emerald-500/10"
-            plData={isWealthVisible ? totalProfitLoss : null}
+            plData={totalProfitLoss}
           />
         </div>
       )}

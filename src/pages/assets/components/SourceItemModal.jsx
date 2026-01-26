@@ -52,7 +52,7 @@ const SourceItemModal = ({ isOpen, onClose, type, editingItem, onSave, systemDat
             case 'categories': return 'אפיקי השקעה';
             case 'platforms': return 'חשבונות וארנקים';
             case 'instruments': return 'מטבעות בסיס';
-            case 'symbols': return 'נכסים למעקב';
+            // case 'symbols': return 'נכסים למעקב';
             default: return '';
         }
     };

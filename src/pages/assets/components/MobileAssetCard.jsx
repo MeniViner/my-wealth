@@ -22,7 +22,7 @@ const MobileAssetCard = ({ asset, onClick }) => {
                     </p>
                     {asset.currency && asset.originalValue && (
                         <p className="text-xs text-slate-400 dark:text-slate-500" dir="ltr">
-                            Original: {asset.currency === 'USD' ? '$' : '₪'}{(asset.originalValue || 0).toLocaleString()}
+                            בקניה: {asset.currency === 'USD' ? '$' : '₪'}{(asset.originalValue || 0).toLocaleString()}
                         </p>
                     )}
                 </div>
@@ -44,8 +44,8 @@ const MobileAssetCard = ({ asset, onClick }) => {
                 {asset.profitLoss !== null && asset.profitLoss !== undefined && (
                     <span
                         className={`px-2 py-1 rounded font-medium ${asset.profitLoss >= 0
-                                ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400'
-                                : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'
+                            ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400'
+                            : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'
                             }`}
                     >
                         {asset.profitLoss >= 0 ? '↑' : '↓'} {Math.abs(asset.profitLossPercent || 0).toFixed(1)}%

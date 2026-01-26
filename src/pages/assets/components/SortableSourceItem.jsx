@@ -57,15 +57,15 @@ const SortableSourceItem = ({ item, type, isSymbols, itemName, itemColor, onEdit
                     >
                         <Edit2 size={18} />
                     </button>
-                    {/* {!isFixed && ( */}
-                    <button
-                        onClick={() => onDelete(type, itemName)}
-                        className="p-2 text-slate-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-all"
-                        title="מחק"
-                    >
-                        <Trash2 size={18} />
-                    </button>
-                    {/*  )} */}
+                    {!isFixed && (
+                        <button
+                            onClick={() => onDelete(type, itemName)}
+                            className="p-2 text-slate-400 hover:text-red-500 dark:hover:text-red-400 rounded-lg transition-all"
+                            title="מחק"
+                        >
+                            <Trash2 size={18} />
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

@@ -74,7 +74,7 @@ const SourcesConfiguration = ({ systemData, onAdd, onUpdate, onDelete, onReorder
     };
 
     const toggleAllSections = () => {
-        const allTypes = ['platforms', 'categories', 'symbols', 'instruments'];
+        const allTypes = ['platforms', 'categories', 'instruments'];
         if (expandedSections.size === allTypes.length) {
             // הכל מורחב, צמצם הכל
             setExpandedSections(new Set());
@@ -87,8 +87,7 @@ const SourcesConfiguration = ({ systemData, onAdd, onUpdate, onDelete, onReorder
     const sourceTypes = [
         { key: 'platforms', order: 1 },
         { key: 'categories', order: 2 },
-        { key: 'symbols', order: 3 },
-        { key: 'instruments', order: 4 }
+        { key: 'instruments', order: 3 }
     ];
 
     return (

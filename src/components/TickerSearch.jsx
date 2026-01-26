@@ -286,8 +286,8 @@ const TickerSearch = ({
               type="button"
               onClick={() => handleCategoryChange('us-stock')}
               className={`flex-1 min-w-[70px] px-2 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${selectedCategory === 'us-stock'
-                  ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
-                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                 }`}
             >
               מניות US
@@ -298,8 +298,8 @@ const TickerSearch = ({
               type="button"
               onClick={() => handleCategoryChange('il-stock')}
               className={`flex-1 min-w-[70px] px-2 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${selectedCategory === 'il-stock'
-                  ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
-                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                 }`}
             >
               מניות IL
@@ -310,8 +310,8 @@ const TickerSearch = ({
               type="button"
               onClick={() => handleCategoryChange('index')}
               className={`flex-1 min-w-[70px] px-2 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${selectedCategory === 'index'
-                  ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
-                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                 }`}
             >
               מדדים
@@ -322,8 +322,8 @@ const TickerSearch = ({
               type="button"
               onClick={() => handleCategoryChange('crypto')}
               className={`flex-1 min-w-[70px] px-2 py-2 rounded-md text-xs sm:text-sm font-medium transition-all ${selectedCategory === 'crypto'
-                  ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
-                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                ? 'bg-white dark:bg-slate-600 text-slate-900 dark:text-white shadow-sm'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
                 }`}
             >
               קריפטו

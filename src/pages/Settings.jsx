@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, DollarSign, Moon, Sun, Palette, Rocket, GraduationCap, RefreshCw, TestTube, Clock } from 'lucide-react';
+import { Settings as SettingsIcon, DollarSign, Moon, Sun, Palette, Rocket, GraduationCap, RefreshCw, TestTube, Clock, Bomb } from 'lucide-react';
 import { confirmAlert, successToast } from '../utils/alerts';
 import { useDarkMode } from '../hooks/useDarkMode';
 import { useDemoData } from '../contexts/DemoDataContext';
+import { useAdmin } from '../hooks/useAdmin';
+
 
 const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, onRefreshCurrency, onResetOnboarding, onStartCoachmarks }) => {
   const [activeSection, setActiveSection] = useState('appearance');
   const [isRefreshingCurrency, setIsRefreshingCurrency] = useState(false);
   const { isDarkMode, toggleDarkMode } = useDarkMode();
   const { isActive: isDemoActive, refreshInterval, updateRefreshInterval, toggleDemoMode } = useDemoData();
+  const { isAdmin } = useAdmin(user);
 
   // Read hash from URL to set active section
   useEffect(() => {
@@ -40,7 +43,7 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
       if (diffHours < 24) return `לפני ${diffHours} שעות`;
       if (diffDays === 1) return 'אתמול';
       if (diffDays < 7) return `לפני ${diffDays} ימים`;
-      
+
       // Format full date in Hebrew
       return date.toLocaleDateString('he-IL', {
         year: 'numeric',
@@ -80,69 +83,35 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
             <p className="text-slate-500 dark:text-slate-300 text-sm mt-0.5">נהל את הגדרות המערכת, הגרפים והיעדים</p>
           </div>
         </div>
-        
-        <div className="flex items-center gap-4">
-          {/* Currency Info */}
-          <div className="relative group/currency">
-            <div 
-              className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
-              onClick={handleRefreshCurrency}
-            >
-              <DollarSign className="text-emerald-600 dark:text-emerald-400" size={16} />
-              <span className={`font-medium ${isRefreshingCurrency ? 'opacity-50' : ''}`}>
-                ₪{currencyRate.rate}
-              </span>
-              {isRefreshingCurrency && (
-                <RefreshCw size={14} className="animate-spin text-emerald-600 dark:text-emerald-400" />
-              )}
-            </div>
-            {/* Tooltip */}
-            <div className="absolute bottom-full left-0 mb-2 hidden group-hover/currency:block z-50 pointer-events-none">
-              <div className="bg-slate-800 dark:bg-slate-700 text-white text-xs rounded-lg py-2 px-3 shadow-2xl whitespace-nowrap">
-                {currencyRate.lastUpdated 
-                  ? `עודכן לאחרונה: ${formatLastUpdated(currencyRate.lastUpdated)}`
-                  : currencyRate.date 
-                    ? `תאריך: ${currencyRate.date}`
-                    : 'לחץ לעדכן'}
-                <div className="absolute top-full left-4 -mt-1">
-                  <div className="border-4 border-transparent border-t-slate-800 dark:border-t-slate-700"></div>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-        </div>
+
       </header>
 
       {/* Section Tabs */}
       <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700">
         <button
           onClick={() => setActiveSection('appearance')}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
-            activeSection === 'appearance'
-              ? 'border-emerald-600 dark:border-emerald-400 text-emerald-600 dark:text-emerald-400'
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
-          }`}
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${activeSection === 'appearance'
+            ? 'border-emerald-600 dark:border-emerald-400 text-emerald-600 dark:text-emerald-400'
+            : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
         >
-          מראה
+          כללי
         </button>
         <button
           onClick={() => setActiveSection('demo')}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
-            activeSection === 'demo'
-              ? 'border-amber-600 dark:border-amber-400 text-amber-600 dark:text-amber-400'
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
-          }`}
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${activeSection === 'demo'
+            ? 'border-amber-600 dark:border-amber-400 text-amber-600 dark:text-amber-400'
+            : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
         >
           מצב דמו
         </button>
         <button
           onClick={() => setActiveSection('onboarding')}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
-            activeSection === 'onboarding'
-              ? 'border-emerald-600 dark:border-emerald-400 text-emerald-600 dark:text-emerald-400'
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
-          }`}
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${activeSection === 'onboarding'
+            ? 'border-emerald-600 dark:border-emerald-400 text-emerald-600 dark:text-emerald-400'
+            : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
         >
           הדרכה
         </button>
@@ -173,23 +142,75 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
                 </div>
                 <button
                   onClick={toggleDarkMode}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${
-                    isDarkMode ? 'bg-emerald-600' : 'bg-slate-300'
-                  }`}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${isDarkMode ? 'bg-emerald-600' : 'bg-slate-300'
+                    }`}
                   role="switch"
                   aria-checked={isDarkMode}
                   aria-label="מצב כהה"
                 >
                   <span
-                    className={`absolute h-4 w-4 rounded-full bg-white transition-all ${
-                      isDarkMode ? 'left-1' : 'right-1'
-                    }`}
+                    className={`absolute h-4 w-4 rounded-full bg-white transition-all ${isDarkMode ? 'left-1' : 'right-1'
+                      }`}
                   />
                 </button>
               </div>
             </div>
           </div>
+
+          <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50">
+              <div className="flex items-center gap-2.5">
+                <DollarSign className="text-emerald-600 dark:text-emerald-400" size={18} />
+                <h3 className="text-base font-semibold text-slate-700 dark:text-slate-100">שער הדולר</h3>
+              </div>
+            </div>
+            <div className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <DollarSign className="text-emerald-600 dark:text-emerald-400" size={20} />
+                  <div>
+                    <p className="text-sm font-medium text-slate-700 dark:text-slate-100">דולר לשקל</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-300 mt-0.5">₪{currencyRate.rate}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleRefreshCurrency}
+                  aria-checked={isRefreshingCurrency}
+                  aria-label="עדכון שער המרה"
+                  className={isRefreshingCurrency ? "animate-spin" : ""}
+                >
+                  <RefreshCw size={20} className=" text-emerald-600 dark:text-emerald-400" />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Reset Database Button (Admin only) or Demo Mode Button (Regular users) */}
+          {isAdmin && onResetData && (
+            <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+              <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50">
+                <div className="flex items-center gap-2.5">
+                  <Bomb size={18} className="text-emerald-600 dark:text-emerald-400" />
+                  <h3 className="text-base font-semibold text-slate-700 dark:text-slate-100">אזור מסוכן</h3>
+                </div>
+              </div>
+              <div className='p-4 flex justify-between'>
+                <p className="text-sm text-slate-500 dark:text-slate-300 mt-0.5">איפוס נתוני המניות למה שהוגדר בהתחלה</p> 
+                <div className="mb-6 flex ">
+                  <button
+                    onClick={onResetData}
+                    className="text-sm ml-2 text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 px-4 py-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all flex items-center gap-2 border border-slate-200 dark:border-slate-700 hover:border-red-200 dark:hover:border-red-800 font-medium"
+                    title="אתחול מסד נתונים - ימחק את כל הנתונים"
+                  >
+                    <RefreshCw size={16} />
+                    <span>אפס לנתונים ראשוניים ⚠️</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
+
       )}
 
       {/* Demo Mode Section */}
@@ -206,11 +227,10 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
               {/* Toggle Demo Mode */}
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 p-4 md:p-5 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 dark:from-slate-700/50 dark:to-slate-800/50 border border-amber-200 dark:border-amber-800">
                 <div className="flex items-center gap-3 md:gap-4 flex-1">
-                  <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0 ${
-                    isDemoActive 
-                      ? 'bg-gradient-to-br from-amber-400 to-amber-600 shadow-amber-500/20' 
-                      : 'bg-gradient-to-br from-slate-400 to-slate-600 shadow-slate-500/20'
-                  }`}>
+                  <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0 ${isDemoActive
+                    ? 'bg-gradient-to-br from-amber-400 to-amber-600 shadow-amber-500/20'
+                    : 'bg-gradient-to-br from-slate-400 to-slate-600 shadow-slate-500/20'
+                    }`}>
                     <TestTube size={20} className="md:w-6 md:h-6 text-white" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -218,7 +238,7 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
                       מצב דמו
                     </h4>
                     <p className="text-sm text-slate-600 dark:text-slate-300">
-                      {isDemoActive 
+                      {isDemoActive
                         ? 'מצב דמו פעיל - נתוני דמו מוצגים במקום הנתונים האמיתיים'
                         : 'הפעל מצב דמו כדי לראות נתוני דמו במקום הנתונים האמיתיים'
                       }
@@ -227,6 +247,7 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
                 </div>
                 <div className="flex items-center justify-end md:justify-start md:flex-shrink-0">
                   <button
+
                     onClick={async () => {
                       toggleDemoMode();
                       await successToast(
@@ -236,17 +257,15 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
                         2000
                       );
                     }}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 ${
-                      isDemoActive ? 'bg-amber-600' : 'bg-slate-300'
-                    }`}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 ${isDemoActive ? 'bg-amber-600' : 'bg-slate-300'
+                      }`}
                     role="switch"
                     aria-checked={isDemoActive}
                     aria-label="מצב דמו"
                   >
                     <span
-                      className={`absolute h-4 w-4 rounded-full bg-white transition-all ${
-                        isDemoActive ? 'left-1' : 'right-1'
-                      }`}
+                      className={`absolute h-4 w-4 rounded-full bg-white transition-all ${isDemoActive ? 'left-1' : 'right-1'
+                        }`}
                     />
                   </button>
                 </div>
@@ -255,65 +274,65 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
               {/* Refresh Interval Control - Only show when demo is active */}
               {isDemoActive && (
                 <div className="space-y-4">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-                    <Clock size={20} className="text-amber-600 dark:text-amber-400" />
-                  </div>
-                  <div>
-                    <h4 className="text-base font-semibold text-slate-800 dark:text-white">
-                      מרווח רענון נתונים
-                    </h4>
-                    <p className="text-sm text-slate-600 dark:text-slate-300">
-                      בחר כמה שניות בין כל רענון של ערכי הנכסים במצב דמו
-                    </p>
-                  </div>
-                </div>
-                
-                <div className="bg-slate-50 dark:bg-slate-700/50 p-5 rounded-xl border border-slate-200 dark:border-slate-600">
-                  <div className="flex items-center gap-4 mb-4">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-200 flex-shrink-0">
-                      מרווח (שניות):
-                    </label>
-                    <input
-                      type="number"
-                      min="3"
-                      max="60"
-                      value={refreshInterval}
-                      onChange={(e) => {
-                        const value = parseInt(e.target.value, 10);
-                        if (!isNaN(value) && value >= 3 && value <= 60) {
-                          updateRefreshInterval(value);
-                        }
-                      }}
-                      className="flex-1 px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                    />
-                    <span className="text-sm text-slate-500 dark:text-slate-400 flex-shrink-0">
-                      שניות
-                    </span>
-                  </div>
-                  
-                  <div className="mt-4">
-                    <input
-                      type="range"
-                      min="3"
-                      max="60"
-                      step="1"
-                      value={refreshInterval}
-                      onChange={(e) => updateRefreshInterval(parseInt(e.target.value, 10))}
-                      className="w-full h-2 bg-slate-200 dark:bg-slate-600 rounded-lg appearance-none cursor-pointer accent-amber-500"
-                    />
-                    <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400 mt-2">
-                      <span>3 שניות</span>
-                      <span>60 שניות (דקה)</span>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                      <Clock size={20} className="text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <div>
+                      <h4 className="text-base font-semibold text-slate-800 dark:text-white">
+                        מרווח רענון נתונים
+                      </h4>
+                      <p className="text-sm text-slate-600 dark:text-slate-300">
+                        בחר כמה שניות בין כל רענון של ערכי הנכסים במצב דמו
+                      </p>
                     </div>
                   </div>
-                  
-                  <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
-                    <p className="text-xs text-amber-800 dark:text-amber-200">
-                      <strong>הערה:</strong> המספר הוא בשניות בלבד. הערכים ירעננו כל {refreshInterval} שניות.
-                    </p>
+
+                  <div className="bg-slate-50 dark:bg-slate-700/50 p-5 rounded-xl border border-slate-200 dark:border-slate-600">
+                    <div className="flex items-center gap-4 mb-4">
+                      <label className="text-sm font-medium text-slate-700 dark:text-slate-200 flex-shrink-0">
+                        מרווח (שניות):
+                      </label>
+                      <input
+                        type="number"
+                        min="3"
+                        max="60"
+                        value={refreshInterval}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value, 10);
+                          if (!isNaN(value) && value >= 3 && value <= 60) {
+                            updateRefreshInterval(value);
+                          }
+                        }}
+                        className="flex-1 px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                      />
+                      <span className="text-sm text-slate-500 dark:text-slate-400 flex-shrink-0">
+                        שניות
+                      </span>
+                    </div>
+
+                    <div className="mt-4">
+                      <input
+                        type="range"
+                        min="3"
+                        max="60"
+                        step="1"
+                        value={refreshInterval}
+                        onChange={(e) => updateRefreshInterval(parseInt(e.target.value, 10))}
+                        className="w-full h-2 bg-slate-200 dark:bg-slate-600 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                      />
+                      <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400 mt-2">
+                        <span>3 שניות</span>
+                        <span>60 שניות (דקה)</span>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+                      <p className="text-xs text-amber-800 dark:text-amber-200">
+                        <strong>הערה:</strong> המספר הוא בשניות בלבד. הערכים ירעננו כל {refreshInterval} שניות.
+                      </p>
+                    </div>
                   </div>
-                </div>
                 </div>
               )}
             </div>

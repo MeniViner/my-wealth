@@ -6,14 +6,14 @@ const VIEW_PRESETS = {
         label: 'תצוגה מצומצמת',
         columns: {
             name: true,
-            symbol: false,
+            symbol: true,
             instrument: false,
-            platform: true,
-            category: true,
+            platform: false,
+            category: false,
             tags: false,
             value: true,
-            quantity: false,
-            purchasePrice: false,
+            quantity: true,
+            purchasePrice: true,
             profitLoss: true
         }
     },
@@ -22,13 +22,13 @@ const VIEW_PRESETS = {
         columns: {
             name: true,
             symbol: true,
-            instrument: true,
-            platform: true,
-            category: true,
+            instrument: false,
+            platform: false,
+            category: false,
             tags: true,
             value: true,
             quantity: true,
-            purchasePrice: false,
+            purchasePrice: true,
             profitLoss: true
         }
     },

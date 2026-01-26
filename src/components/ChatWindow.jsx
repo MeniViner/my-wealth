@@ -642,7 +642,7 @@ const ChatWindow = ({
                                     {followUpQuestions.length > 0 && !loading && index === messages.length - 1 && (
                                         <div className="flex justify-start mt-4">
                                             <div className="max-w-[85%] md:max-w-[75%] space-y-2">
-                                                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-2">💬 שאלות מוצעות:</p>
+                                                {/* <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-2">💬 שאלות מוצעות:</p> */}
                                                 <div className="flex flex-wrap gap-2">
                                                     {followUpQuestions.map((question, qIndex) => (
                                                         <button
@@ -681,7 +681,7 @@ const ChatWindow = ({
                         <div ref={messagesEndRef} />
 
                         {/* Smart Suggestions */}
-                        {suggestions.length > 0 && !loading && (
+                        {/* {suggestions.length > 0 && !loading && (
                             <div className="pt-4 pb-2">
                                 <div className="flex flex-wrap gap-2 justify-end">
                                     {suggestions.map((suggestion, index) => (
@@ -696,7 +696,7 @@ const ChatWindow = ({
                                     ))}
                                 </div>
                             </div>
-                        )}
+                        )} */}
                     </div>
                 ) : (
                     /* Empty State - Modern with Twinkling Stars */

@@ -212,6 +212,35 @@ const AIAdvisor = ({ assets, totalWealth, user, portfolioContext = "", aiConfig:
                 </div>
               </div>
 
+                            {/* החלף הפעלת הקשר */}
+              <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-700">
+                <div>
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-100">
+                    כלול נתוני תיק השקעות
+                  </label>
+                  <p className="text-xs text-slate-500 dark:text-slate-300 mt-0.5">
+                    כאשר מופעל, נתוני התיק נשלחים אוטומטית ל-AI כהקשר
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    const newConfig = { ...aiConfig, contextEnabled: !aiConfig.contextEnabled };
+                    setAiConfig(newConfig);
+                    saveAiConfig(newConfig);
+                  }}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${aiConfig.contextEnabled ? 'bg-emerald-600' : 'bg-slate-300'
+                    }`}
+                  role="switch"
+                  aria-checked={aiConfig.contextEnabled}
+                  aria-label="כלול נתוני תיק השקעות"
+                >
+                  <span
+                    className={`absolute h-4 w-4 rounded-full bg-white transition-all ${aiConfig.contextEnabled ? 'left-1' : 'right-1'
+                      }`}
+                  />
+                </button>
+              </div>
+
               {/* Groq Configuration Section */}
               <div className="pt-4 border-t border-slate-200 dark:border-slate-700 space-y-4">
                 <div className="flex items-center gap-2 mb-3">
@@ -312,34 +341,6 @@ const AIAdvisor = ({ assets, totalWealth, user, portfolioContext = "", aiConfig:
                 </div>
               </div>
 
-              {/* החלף הפעלת הקשר */}
-              <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-700">
-                <div>
-                  <label className="text-sm font-medium text-slate-700 dark:text-slate-100">
-                    כלול נתוני תיק השקעות
-                  </label>
-                  <p className="text-xs text-slate-500 dark:text-slate-300 mt-0.5">
-                    כאשר מופעל, נתוני התיק נשלחים אוטומטית ל-AI כהקשר
-                  </p>
-                </div>
-                <button
-                  onClick={() => {
-                    const newConfig = { ...aiConfig, contextEnabled: !aiConfig.contextEnabled };
-                    setAiConfig(newConfig);
-                    saveAiConfig(newConfig);
-                  }}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 ${aiConfig.contextEnabled ? 'bg-emerald-600' : 'bg-slate-300'
-                    }`}
-                  role="switch"
-                  aria-checked={aiConfig.contextEnabled}
-                  aria-label="כלול נתוני תיק השקעות"
-                >
-                  <span
-                    className={`absolute h-4 w-4 rounded-full bg-white transition-all ${aiConfig.contextEnabled ? 'left-1' : 'right-1'
-                      }`}
-                  />
-                </button>
-              </div>
             </div>
           </div>
         </div>

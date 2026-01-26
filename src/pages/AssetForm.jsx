@@ -38,7 +38,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
     instrument: initialInstrument,
     platform: initialPlatform,
     category: initialCategory,
-    currency: 'ILS',
+    currency: initialCategory === 'קריפטו' ? 'USD' : 'ILS',
     originalValue: '',
     tags: '',
     // New fields for real-time tracking
@@ -155,7 +155,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         instrument: initialInstrument,
         platform: initialPlatform,
         category: initialCategory,
-        currency: 'ILS',
+        currency: initialCategory === 'קריפטו' ? 'USD' : 'ILS',
         originalValue: '',
         tags: '',
         assetType: 'STOCK',
@@ -185,12 +185,12 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
   useEffect(() => {
     const prevCategory = prevCategoryRef.current;
     const currentCategory = formData.category;
+    let updates = {};
 
     // If switching between מניות and קריפטו, reset related fields
     if ((prevCategory === 'מניות' && currentCategory === 'קריפטו') ||
       (prevCategory === 'קריפטו' && currentCategory === 'מניות')) {
-      setFormData(prev => ({
-        ...prev,
+      updates = {
         name: '',
         symbol: '',
         displayName: '',
@@ -199,12 +199,21 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         purchasePrice: '',
         totalCost: '',
         quantity: ''
-      }));
+      };
       setCurrentPriceData(null);
       setNativePrice(null);
       setNativeCurrency(null);
       setIsPriceManual(false);
       setLastEditedField(null);
+    }
+
+    // Auto-set currency to USD when switching TO Crypto
+    if (currentCategory === 'קריפטו' && prevCategory !== 'קריפטו') {
+      updates.currency = 'USD';
+    }
+
+    if (Object.keys(updates).length > 0) {
+      setFormData(prev => ({ ...prev, ...updates }));
     }
 
     prevCategoryRef.current = currentCategory;
@@ -575,10 +584,11 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         const currentPrice = Number(formData.purchasePrice) || 0;
         const priceDiff = Math.abs(convertedPrice - currentPrice);
 
-        if (priceDiff > 0.01) { // Only update if difference is significant
+        if (priceDiff > 0.000001) { // רגישות גבוהה יותר
           setFormData(prev => ({
             ...prev,
-            purchasePrice: convertedPrice.toFixed(2)
+            // אם המספר קטן מ-10 (כמו 4.2392), נשמור 4 ספרות. אם גדול, 2 מספיק.
+            purchasePrice: convertedPrice < 10 ? convertedPrice.toFixed(4) : convertedPrice.toFixed(2)
           }));
         }
       } catch (error) {
@@ -1361,7 +1371,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                   </div>
                 </div>
                 <div className="relative">
-                  <input
+                  {/* <input
                     type="number"
                     step="any"
                     className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-600 text-slate-900 dark:text-slate-100 font-mono pr-12"
@@ -1386,6 +1396,40 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                       }
                     }}
                     placeholder="לדוגמה: 50,000 או 5.5"
+                  /> */}
+                  <input
+                    type="number"
+                    step="any" // מאפשר כל דיוק עשרוני
+                    className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-600 text-slate-900 dark:text-slate-100 font-mono pr-12"
+                    value={formData.purchasePrice || ''}
+                    onChange={e => {
+                      const newPrice = e.target.value;
+                      // שמירה על הערך הגולמי המדויק (string) כדי לא לאבד אפסים או ספרות
+                      setFormData({ ...formData, purchasePrice: newPrice });
+                      setLastEditedField('purchasePrice');
+
+                      const priceNum = Number(newPrice);
+                      if (priceNum > 0 && !isNaN(priceNum)) {
+                        setNativePrice(priceNum);
+                        if (!nativeCurrency) {
+                          setNativeCurrency(formData.currency);
+                        }
+                        setIsPriceManual(true);
+                      }
+                    }}
+                    onBlur={() => {
+                      // אופציונלי: פורמט יפה ביציאה מהשדה, אבל בזהירות לא לאבד דיוק
+                      if (formData.purchasePrice) {
+                        const num = Number(formData.purchasePrice);
+                        // מציג עד 4 ספרות אם צריך, אבל לא סתם אפסים
+                        // למשל: 4.2392 יישאר 4.2392, אבל 4.2000 יהפוך ל-4.2
+                        setFormData(prev => ({
+                          ...prev,
+                          purchasePrice: num.toString()
+                        }));
+                      }
+                    }}
+                    placeholder="נשלף אוטומטית"
                   />
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 text-sm">
                     {formData.currency === 'ILS' ? '₪' : '$'}

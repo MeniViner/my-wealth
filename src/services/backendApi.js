@@ -169,6 +169,12 @@ export async function getQuotes(ids) {
     return [];
   }
 
+  // Skip quotes fetch on localhost to avoid errors when backend is not running locally
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    console.debug(`Skipping quotes fetch on localhost`);
+    return [];
+  }
+
   // Fetch quotes in batches (to avoid URL length limits)
   const batchSize = 20;
   const batches = [];
@@ -282,6 +288,12 @@ export async function getQuotes(ids) {
  */
 export async function getHistory(id, range = '1mo', interval = '1d') {
   if (!id) {
+    return null;
+  }
+
+  // Skip history fetch on localhost to avoid errors when backend is not running locally
+  if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    console.debug(`Skipping history fetch for ${id} on localhost`);
     return null;
   }
 

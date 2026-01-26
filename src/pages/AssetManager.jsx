@@ -244,7 +244,7 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
       case 'categories': return 'אפיקי השקעה';
       case 'platforms': return 'חשבונות וארנקים';
       case 'instruments': return 'מטבעות בסיס';
-      case 'symbols': return 'נכסים למעקב';
+      // case 'symbols': return 'נכסים למעקב';
       default: return '';
     }
   };
@@ -257,8 +257,8 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
         return 'איפה הכסף שלך נמצא?';
       case 'instruments':
         return 'סוגי מטבע להערכת שווי';
-      case 'symbols':
-        return 'טיקרים וסמלים ספציפיים';
+      // case 'symbols':
+      //   return 'טיקרים וסמלים ספציפיים';
       default:
         return '';
     }
@@ -306,6 +306,7 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
             ? 'border-emerald-600 dark:border-emerald-400 text-emerald-600 dark:text-emerald-400'
             : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
             }`}
+          data-coachmark="assets-tab"
         >
           נכסים
         </button>
@@ -323,41 +324,6 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
 
       {/* Sources Management Tab */}
       {activeTab === 'sources' && (
-        <>
-          {/* Reset Database Button (Admin only) or Demo Mode Button (Regular users) */}
-          <div className="mb-6 flex justify-end">
-            {isAdmin && onResetData && (
-              <button
-                onClick={onResetData}
-                className="text-sm ml-2 text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 px-4 py-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all flex items-center gap-2 border border-slate-200 dark:border-slate-700 hover:border-red-200 dark:hover:border-red-800 font-medium"
-                title="אתחול מסד נתונים - ימחק את כל הנתונים"
-              >
-                <RefreshCw size={16} />
-                <span>אפס לנתונים ראשוניים⚠️</span>
-              </button>
-            )}
-
-            <button
-              onClick={async () => {
-                toggleDemoMode();
-                await successToast(
-                  isDemoActive
-                    ? 'מצב דמו כובה'
-                    : 'מצב דמו הופעל - נתוני דמו מוצגים',
-                  2000
-                );
-              }}
-              className={`text-sm px-4 py-2 rounded-lg transition-all flex items-center gap-2 border font-medium ${isDemoActive
-                ? 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/30'
-                : 'text-slate-500 dark:text-slate-400 hover:text-green-600 dark:hover:text-green-400 border-slate-200 dark:border-slate-700 hover:border-green-200 dark:hover:border-green-800 hover:bg-green-50 dark:hover:bg-green-900/20'
-                }`}
-              title={isDemoActive ? 'כבה מצב דמו' : 'הפעל מצב דמו - הצג נתוני דמו'}
-            >
-              <TestTube size={16} />
-              <span>{isDemoActive ? 'כבה מצב דמו' : 'הפעל מצב דמו'}</span>
-            </button>
-
-          </div>
           <SourcesConfiguration
             systemData={systemData}
             onAdd={handleAddSource}
@@ -368,7 +334,6 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
             getSourceTypeDescription={getSourceTypeDescription}
             getSourceTypeIcon={getSourceTypeIcon}
           />
-        </>
       )}
 
       {/* Assets Tab */}
@@ -433,7 +398,8 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
               </span>
               <div
                 className="flex gap-2 overflow-x-auto pb-1 -mb-1 scrollbar-thin-horizontal"
-                data-coachmark="asset-grouping"
+                // data-coachmark="asset-grouping"
+                data-coachmark="asset-distribution-categories"
               >
                 <button
                   onClick={() => setGroupBy('platform')}
@@ -441,6 +407,7 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                     ? 'bg-emerald-600 dark:bg-emerald-700 text-white shadow-sm'
                     : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600'
                     }`}
+
                 >
                   חשבונות וארנקים
                 </button>
@@ -450,7 +417,6 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                     ? 'bg-emerald-600 dark:bg-emerald-700 text-white shadow-sm'
                     : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600'
                     }`}
-                  data-coachmark="asset-distribution-categories"
                 >
                   אפיקי השקעה
                 </button>
@@ -540,7 +506,6 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                                 value: 'שווי',
                                 symbol: 'סמל',
                                 instrument: 'מטבע בסיס',
-                                platform: 'חשבון/ארנק',
                                 category: 'אפיק השקעה',
                                 tags: 'תגיות',
                                 quantity: 'כמות',
@@ -761,11 +726,11 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                                       מטבעות בסיס
                                     </th>
                                   )}
-                                  {visibleColumns.platform && (
+                                  {/* {visibleColumns.platform && (
                                     <th className="p-4 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('platform')}>
                                       חשבונות וארנקים
                                     </th>
-                                  )}
+                                  )} */}
                                   {visibleColumns.category && (
                                     <th className="p-4 cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => handleSort('category')}>
                                       אפיקי השקעה
@@ -811,9 +776,9 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                                     {visibleColumns.instrument && (
                                       <td className="p-3 md:p-4 text-slate-600 dark:text-slate-300">{asset.instrument}</td>
                                     )}
-                                    {visibleColumns.platform && (
+                                    {/* {visibleColumns.platform && (
                                       <td className="p-3 md:p-4 text-slate-500 dark:text-slate-400">{asset.platform}</td>
-                                    )}
+                                    )} */}
                                     {visibleColumns.category && (
                                       <td className="p-3 md:p-4">
                                         <span className="bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-full text-xs font-medium text-slate-700 dark:text-slate-200">
@@ -840,9 +805,6 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                                         {asset.assetMode === 'QUANTITY' && asset.quantity ? (
                                           <div className="font-mono text-sm text-slate-700 dark:text-slate-300">
                                             {asset.quantity.toLocaleString('en-US', { maximumFractionDigits: 4 })}
-                                            {asset.hasLivePrice && (
-                                              <div className="text-xs text-emerald-500">● Live</div>
-                                            )}
                                           </div>
                                         ) : (
                                           <span className="text-slate-400 dark:text-slate-500 text-xs">—</span>
@@ -853,7 +815,7 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                                       <td className="p-3 md:p-4">
                                         <div className="font-bold text-slate-900 dark:text-white">₪{asset.value.toLocaleString()}</div>
                                         <div className="text-xs text-slate-400 dark:text-slate-500" dir="ltr">
-                                          Original: {asset.currency === 'USD' ? '$' : '₪'}{(asset.originalValue || 0).toLocaleString()}
+                                          בקניה: {asset.currency === 'USD' ? '$' : '₪'}{Math.round(asset.originalValue || 0).toLocaleString()}
                                         </div>
                                         {asset.priceChange24h !== null && asset.priceChange24h !== undefined && (
                                           <div className={`text-xs mt-1 font-medium ${asset.priceChange24h >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
@@ -872,6 +834,7 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                                             <div className={`text-xs ${asset.profitLossPercent >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
                                               {asset.profitLossPercent >= 0 ? '+' : ''}{asset.profitLossPercent?.toFixed(1)}%
                                             </div>
+
                                           </div>
                                         ) : (
                                           <span className="text-slate-400 dark:text-slate-500 text-xs">—</span>
@@ -913,9 +876,9 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
 
           <Modal isOpen={!!selectedAsset} onClose={() => setSelectedAsset(null)} title={selectedAsset?.name}>
             {selectedAsset && (
-              <div className="space-y-6">
+              <div className="space-y-6 ">
                 {/* Value Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-2  gap-4">
                   {/* שווי נוכחי (תמיד מוצג) */}
                   <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-xl">
                     <div className="text-base md:text-sm text-slate-500 dark:text-slate-400">שווי נוכחי</div>
@@ -925,13 +888,13 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                     {selectedAsset.hasLivePrice && (
                       <div className="text-sm md:text-xs text-emerald-500 flex items-center gap-1 mt-1">
                         <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-                        מחיר חי
+                        מחיר עדכני
                       </div>
                     )}
                     {/* הצג שווי מקור רק אם שונה משווי נוכחי */}
                     {selectedAsset.originalValue && selectedAsset.originalValue !== selectedAsset.value && (
                       <div className="text-sm md:text-xs text-slate-400 dark:text-slate-500 mt-1" dir="ltr">
-                        Original: {selectedAsset.currency === 'USD' ? '$' : '₪'}{(selectedAsset.originalValue || 0).toLocaleString()}
+                        בקניה: {selectedAsset.currency === 'USD' ? '$' : '₪'}{(selectedAsset.originalValue || 0).toLocaleString()}
                       </div>
                     )}
                   </div>
@@ -1041,13 +1004,13 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                 <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100 dark:border-slate-700">
                   <button
                     onClick={() => { handleDelete(selectedAsset.id, selectedAsset.name); setSelectedAsset(null); }}
-                    className="border border-red-600 text-red-600 px-4 py-2 md:py-2 rounded-lg flex items-center gap-2 hover:bg-gray-700 dark:hover:bg-gray-600 transition-colors text-base md:text-sm font-medium"
+                    className="border border-red-500 text-red-500 bg-red-500/10 hover:bg-red-500/20 dark:bg-red-500/10 dark:hover:bg-red-500/20 px-4 py-2 md:py-2 rounded-lg flex items-center gap-2 hover:bg-gray-700 dark:hover:bg-gray-600 transition-colors text-base md:text-sm font-medium"
                   >
                     <Trash2 size={18} /> מחק נכס
                   </button>
                   <button
                     onClick={() => { handleEdit(selectedAsset); setSelectedAsset(null); }}
-                    className="border border-slate-600 text-slate-600 px-4 py-2 md:py-2 rounded-lg flex items-center gap-2 hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors text-base md:text-sm font-medium"
+                    className="border border-slate-600 text-slate-600 dark:text-slate-300 px-4 py-2 md:py-2 rounded-lg flex items-center gap-2 hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors text-base md:text-sm font-medium"
                   >
                     <Edit2 size={18} /> ערוך נכס
                   </button>
