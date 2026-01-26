@@ -143,9 +143,7 @@ export function formatCurrency(amount, currency, options = {}) {
     minimumFractionDigits = 0,
     maximumFractionDigits = 2,
     locale = 'he-IL'
-  } = options;
-
-  try {
+  } = options;  try {
     return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: currency || 'ILS',

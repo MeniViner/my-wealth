@@ -794,7 +794,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
           <ArrowRight size={24} className="text-slate-800 dark:text-slate-200" />
         </button>
         <h2 className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white">
-          {editAsset ? 'עריכת נכס' : 'הוספת נכס חדש'}
+          {editAsset ? 'עריכת נכס' : 'הוספת נכס'}
         </h2>
         {!editAsset && (
           <button
@@ -965,7 +965,6 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
               {(formData.category === 'מניות' || formData.category === 'קריפטו') ? (
                 // Smart Ticker Search with Category Selector
                 <TickerSearch
-                  key={`${formData.symbol || ''}-${formData.displayName || ''}-${formData.apiId || ''}`}
                   type={formData.category === 'קריפטו' ? 'crypto' : 'us-stock'} // Default type (will be overridden by selector)
                   value={formData.symbol || ''}
                   displayValue={formData.displayName || formData.name || ''} // Show Hebrew name

@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { Cloud, Eye, EyeOff, Wallet, Calendar, TrendingUp, ChevronDown, ChevronUp, XCircle } from 'lucide-react';
+import { Cloud, Eye, EyeOff, Wallet, Calendar, TrendingUp, ChevronDown, ChevronUp, XCircle, History } from 'lucide-react';
 import TreemapChart from '../components/TreemapChart';
 import ChartRenderer from '../components/ChartRenderer';
 import SummaryCard from '../components/SummaryCard';
@@ -8,6 +8,7 @@ import { useDemoData } from '../contexts/DemoDataContext';
 import { fetchPriceHistory } from '../services/priceService';
 import { resolveInternalId } from '../services/internalIds';
 import { confirmAlert } from '../utils/alerts';
+import { usePriceSync } from '../hooks/usePriceSync';
 
 // Hebrew font stack
 const HEBREW_FONT = "'Assistant', 'Heebo', 'Rubik', sans-serif";
@@ -165,6 +166,9 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
     return isDemoActive && demoSystemData ? demoSystemData : systemData;
   }, [isDemoActive, demoSystemData, systemData]);
 
+  // Integrate price synchronization (only for real assets, not demo)
+  const { lastSync } = usePriceSync(isDemoActive ? [] : assets);
+
   // Check if dark mode is active
   const isDarkMode = typeof window !== 'undefined' && document.documentElement.classList.contains('dark');
 
@@ -218,22 +222,24 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
     return displayAssets.reduce((sum, item) => sum + item.value, 0);
   }, [displayAssets]);
 
-  // Calculate total profit/loss
-  const totalProfitLoss = useMemo(() => {
-    const totalPL = displayAssets.reduce((sum, item) => {
-      if (item.profitLoss !== null && item.profitLoss !== undefined) {
-        return sum + (item.profitLoss || 0);
-      }
-      return sum;
-    }, 0);
-
-    // Calculate total cost basis for percentage
-    const totalCostBasis = displayAssets.reduce((sum, item) => {
+  // Calculate total cost basis (historical value - שווי לפי היסטוריה)
+  const totalCostBasis = useMemo(() => {
+    return displayAssets.reduce((sum, item) => {
       if (item.assetMode === 'QUANTITY' && item.quantity && item.purchasePrice) {
         const costBasis = item.quantity * item.purchasePrice;
         return sum + (item.currency === 'USD' ? costBasis * (currencyRate || 3.65) : costBasis);
       } else if (item.originalValue) {
         return sum + (item.currency === 'USD' ? item.originalValue * (currencyRate || 3.65) : item.originalValue);
+      }
+      return sum;
+    }, 0);
+  }, [displayAssets, currencyRate]);
+
+  // Calculate total profit/loss
+  const totalProfitLoss = useMemo(() => {
+    const totalPL = displayAssets.reduce((sum, item) => {
+      if (item.profitLoss !== null && item.profitLoss !== undefined) {
+        return sum + (item.profitLoss || 0);
       }
       return sum;
     }, 0);
@@ -244,7 +250,7 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
       amount: totalPL,
       percent: totalPLPercent
     };
-  }, [displayAssets, currencyRate]);
+  }, [displayAssets, totalCostBasis]);
 
   // Calculate daily profit/loss (using 24h change if available, otherwise estimate)
   const dailyProfitLoss = useMemo(() => {
@@ -476,21 +482,21 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
             // Create demo history with realistic variations
             let baseValue = currentValue * 0.85; // Start from 85% of current value
             const variationRange = currentValue * 0.15; // 15% variation range
-            
+
             for (let i = days; i >= 0; i--) {
               const date = new Date(now);
               date.setDate(date.getDate() - i);
-              
+
               // Create smooth variation using sine wave with some randomness
               const progress = (days - i) / days; // 0 to 1
               const sineWave = Math.sin(progress * Math.PI * 4); // Multiple cycles
               const randomFactor = (Math.random() - 0.5) * 0.3; // Small random variation
               const variation = sineWave * 0.5 + randomFactor;
-              
+
               // Gradually increase towards current value with variations
               const trend = baseValue + (currentValue - baseValue) * progress;
               const value = trend + variation * variationRange * 0.3;
-              
+
               dataPoints.push({
                 date: date.toISOString().split('T')[0],
                 value: Math.max(value, currentValue * 0.7), // Don't go below 70% of current
@@ -557,21 +563,21 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
             // Create demo history with realistic variations
             let baseValue = currentValue * 0.85; // Start from 85% of current value
             const variationRange = currentValue * 0.15; // 15% variation range
-            
+
             for (let i = days; i >= 0; i--) {
               const date = new Date(now);
               date.setDate(date.getDate() - i);
-              
+
               // Create smooth variation using sine wave with some randomness
               const progress = (days - i) / days; // 0 to 1
               const sineWave = Math.sin(progress * Math.PI * 4); // Multiple cycles
               const randomFactor = (Math.random() - 0.5) * 0.3; // Small random variation
               const variation = sineWave * 0.5 + randomFactor;
-              
+
               // Gradually increase towards current value with variations
               const trend = baseValue + (currentValue - baseValue) * progress;
               const value = trend + variation * variationRange * 0.3;
-              
+
               dataPoints.push({
                 date: date.toISOString().split('T')[0],
                 value: Math.max(value, currentValue * 0.7), // Don't go below 70% of current
@@ -656,7 +662,7 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
         // Update the last point with current totalWealth
         const updated = [...prev];
         const lastIndex = updated.length - 1;
-        
+
         // Update last point to current value
         updated[lastIndex] = {
           ...updated[lastIndex],
@@ -704,7 +710,7 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
 
       {/* Top Summary Cards */}
       {hasData && (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5 md:gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 md:gap-4 mb-6">
           {!isMobile && (
             <SummaryCard
               title={`תיק לפי מטבע ראשי (${mainCurrency})`}
@@ -714,11 +720,17 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
             />
           )}
           <SummaryCard
+            title="שווי לפי היסטוריה"
+            value={isWealthVisible ? formatCurrency(totalCostBasis) : '••••••'}
+            icon={History}
+            iconBgColor="bg-slate-500/10"
+          />
+          <SummaryCard
             title="רווח/הפסד יומי"
             value={isWealthVisible ? formatCurrency(dailyProfitLoss.amount) : '••••••'}
             icon={Calendar}
             iconBgColor="bg-purple-500/10"
-            plData={ dailyProfitLoss }
+            plData={dailyProfitLoss}
           />
           <SummaryCard
             title="רווח/הפסד כולל"
@@ -767,8 +779,8 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
           {/* Collapsible Content */}
           <div
             className={`transition-all duration-300 ease-in-out overflow-hidden ${isChartOpen
-                ? 'max-h-[1000px] opacity-100 mt-4'
-                : 'max-h-0 opacity-0 mt-0'
+              ? 'max-h-[1000px] opacity-100 mt-4'
+              : 'max-h-0 opacity-0 mt-0'
               }`}
           >
             {/* Timeframe Selectors and XLS Button */}
@@ -779,8 +791,8 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
                     key={period}
                     onClick={() => setTimeRange(period)}
                     className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${timeRange === period
-                        ? 'bg-emerald-600 dark:bg-emerald-500 text-white'
-                        : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                      ? 'bg-emerald-600 dark:bg-emerald-500 text-white'
+                      : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
                       }`}
                   >
                     {period}

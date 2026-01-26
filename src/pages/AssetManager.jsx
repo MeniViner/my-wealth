@@ -11,13 +11,18 @@ import SourcesConfiguration from './assets/components/SourcesConfiguration';
 import AssetKPIs from './assets/components/AssetKPIs';
 import ViewPresetSelector, { VIEW_PRESETS } from './assets/components/ViewPresetSelector';
 import MobileAssetCard from './assets/components/MobileAssetCard';
+import { usePriceSync } from '../hooks/usePriceSync';
 
-const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData, user, onRefreshPrices, pricesLoading, lastPriceUpdate }) => {
+const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData, user }) => {
   const { demoAssets, isActive: isDemoActive, toggleDemoMode } = useDemoData();
   const { isAdmin } = useAdmin(user);
 
   // Use demo assets if tour is active, otherwise use real assets
   const displayAssets = isDemoActive && demoAssets.length > 0 ? demoAssets : assets;
+
+  // Integrate price synchronization (only for real assets, not demo)
+  const { syncPrices, isSyncing, lastSync } = usePriceSync(isDemoActive ? [] : assets);
+
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterPlatform, setFilterPlatform] = useState('all');
@@ -266,30 +271,28 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
         {activeTab === 'assets' && (
           <div className="flex items-center gap-2">
             {/* Refresh Prices Button */}
-            {onRefreshPrices && (
-              <button
-                onClick={onRefreshPrices}
-                disabled={pricesLoading}
-                className="bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 md:px-5 py-2.5 rounded-lg flex items-center gap-2 font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors disabled:opacity-50"
-                title={lastPriceUpdate ? `עדכון אחרון: ${lastPriceUpdate.toLocaleTimeString('he-IL')}` : 'רענן מחירים'}
-              >
-                <RefreshCw size={16} className={pricesLoading ? 'animate-spin' : ''} />
-                <span className="hidden sm:inline">{pricesLoading ? 'מעדכן...' : 'רענן מחירים'}</span>
-                {lastPriceUpdate && !pricesLoading && (
-                  <span className="hidden sm:inline text-xs text-slate-500 dark:text-slate-400">
-                    ({Math.floor((Date.now() - lastPriceUpdate) / 60000)}m)
-                  </span>
-                )}
-              </button>
-            )}
+            <button
+              onClick={syncPrices}
+              disabled={isSyncing}
+              className="bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 md:px-5 py-2.5 rounded-lg flex items-center gap-2 font-medium hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors disabled:opacity-50"
+              title={lastSync ? `עדכון אחרון: ${new Date(lastSync).toLocaleTimeString('he-IL')}` : 'רענן מחירים'}
+            >
+              <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />
+              <span className="hidden sm:inline">{isSyncing ? 'מעדכן...' : 'רענן מחירים'}</span>
+              {lastSync && !isSyncing && (
+                <span className="hidden sm:inline text-xs text-slate-500 dark:text-slate-400">
+                  ({Math.floor((Date.now() - new Date(lastSync)) / 60000)}m)
+                </span>
+              )}
+            </button>
             <button
               onClick={() => navigate('/assets/add')}
               className="bg-emerald-600 dark:bg-emerald-700 text-white px-5 py-1.5 md:py-2.5 rounded-lg flex items-center gap-2 font-medium hover:bg-emerald-700 dark:hover:bg-emerald-600 transition-colors shadow-sm"
               data-coachmark="add-asset"
             >
-              <Plus size={18} />
               <span className="hidden sm:inline">הוסף נכס</span>
               <span className="sm:hidden">הוסף</span>
+              <Plus size={18} />
             </button>
           </div>
         )}
@@ -346,7 +349,7 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
               }}
               className={`text-sm px-4 py-2 rounded-lg transition-all flex items-center gap-2 border font-medium ${isDemoActive
                 ? 'text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/30'
-                : 'text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 border-slate-200 dark:border-slate-700 hover:border-blue-200 dark:hover:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-900/20'
+                : 'text-slate-500 dark:text-slate-400 hover:text-green-600 dark:hover:text-green-400 border-slate-200 dark:border-slate-700 hover:border-green-200 dark:hover:border-green-800 hover:bg-green-50 dark:hover:bg-green-900/20'
                 }`}
               title={isDemoActive ? 'כבה מצב דמו' : 'הפעל מצב דמו - הצג נתוני דמו'}
             >
@@ -600,58 +603,62 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                         className="px-4 md:px-6 py-2.5 md:py-4 border-b border-slate-100 dark:border-slate-700 hover:bg-slate-50/50 dark:hover:bg-slate-700/30 transition-colors"
                         style={{ borderRight: `4px solid ${groupColor}` }}
                       >
-                        {/* Mobile Layout - Stacked */}
-                        <div className="flex flex-col md:hidden gap-3">
-                          {/* Top Row: Buttons + Name */}
-                          <div className="flex items-center gap-3">
-                            <button
-                              onClick={() => toggleGroup(key)}
-                              className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-all flex-shrink-0"
-                              title={isExpanded ? 'צמצם' : 'הרחב'}
-                            >
-                              {isExpanded ? (
-                                <ChevronUp size={20} />
-                              ) : (
-                                <ChevronDown size={20} />
-                              )}
-                            </button>
-                            <button
-                              onClick={() => toggleGroup(key)}
-                              className="flex items-center gap-2 flex-1 min-w-0 text-right hover:opacity-80 transition-opacity"
-                            >
-                              <div className="flex-1 min-w-0">
-                                <h3 className="text-base font-semibold text-slate-900 dark:text-white truncate">{key}</h3>
-                                <span className="text-xs text-slate-500 dark:text-slate-400">{items.length} נכסים</span>
+                        {/* Mobile Layout - Clean Row + Expanded Action */}
+                        <div className="flex flex-col md:hidden">
+                          {/* Main Row: Toggle + Info + Value */}
+                          <div
+                            className="flex items-center justify-between gap-3 cursor-pointer"
+                            onClick={() => toggleGroup(key)}
+                          >
+                            {/* Left: Checkbox & Name */}
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <div className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${isExpanded ? 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300' : 'text-slate-400 dark:text-slate-500'}`}>
+                                {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                               </div>
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const params = new URLSearchParams();
-                                if (groupBy === 'platform') {
-                                  params.set('platform', key);
-                                } else if (groupBy === 'category') {
-                                  params.set('category', key);
-                                } else if (groupBy === 'instrument') {
-                                  params.set('instrument', key);
-                                }
-                                navigate(`/assets/add?${params.toString()}`);
-                              }}
-                              className="bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500 dark:hover:bg-emerald-600 text-white p-2 rounded-lg flex items-center justify-center transition-all shadow-sm hover:shadow-md flex-shrink-0"
-                              title="הוסף נכס לקבוצה זו"
-                            >
-                              <Plus size={18} />
-                            </button>
-                          </div>
-                          {/* Bottom Row: Value */}
-                          <div className="text-right pr-12">
-                            <div className="text-lg font-bold text-slate-900 dark:text-white">
-                              ₪{totalValue.toLocaleString()}
+
+                              <div className="flex flex-col min-w-0">
+                                <h3 className="text-base font-bold text-slate-800 dark:text-white truncate leading-tight">
+                                  {key}
+                                </h3>
+                                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                                  {items.length} נכסים
+                                </span>
+                              </div>
                             </div>
-                            <div className="text-xs text-slate-500 dark:text-slate-400">
-                              {((totalValue / sortedAssets.reduce((sum, a) => sum + (a.value || 0), 0)) * 100).toFixed(1)}%
+
+                            {/* Right: Value & % */}
+                            <div className="text-right flex-shrink-0">
+                              <div className="text-base font-bold text-slate-900 dark:text-white leading-tight">
+                                ₪{Math.round(totalValue).toLocaleString()}
+                              </div>
+                              <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50 px-1.5 py-0.5 rounded inline-block mt-0.5" dir="ltr">
+                                {((totalValue / sortedAssets.reduce((sum, a) => sum + (a.value || 0), 0)) * 100).toFixed(1)}%
+                              </div>
                             </div>
                           </div>
+
+                          {isExpanded && (
+                            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/50 animate-slide-down">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const params = new URLSearchParams();
+                                  if (groupBy === 'platform') {
+                                    params.set('platform', key);
+                                  } else if (groupBy === 'category') {
+                                    params.set('category', key);
+                                  } else if (groupBy === 'instrument') {
+                                    params.set('instrument', key);
+                                  }
+                                  navigate(`/assets/add?${params.toString()}`);
+                                }}
+                                className="w-full bg-emerald-50 dark:bg-emerald-900/10 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/30 p-2.5 rounded-lg flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                              >
+                                <Plus size={16} />
+                                <span className="text-sm font-semibold">הוסף נכס ל-{key}</span>
+                              </button>
+                            </div>
+                          )}
                         </div>
 
                         {/* Desktop Layout - Single Row */}
@@ -875,7 +882,7 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                                       <div className="flex justify-center gap-1 transition-opacity">
                                         <button
                                           onClick={() => handleEdit(asset)}
-                                          className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg transition-colors"
+                                          className="p-2 hover:bg-green-50 dark:hover:bg-green-900/20 text-slate-400 dark:text-slate-500 hover:text-green-600 dark:hover:text-green-400 rounded-lg transition-colors"
                                           title="ערוך"
                                         >
                                           <Edit2 size={16} />
@@ -910,9 +917,9 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                 {/* Value Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* שווי נוכחי (תמיד מוצג) */}
-                  <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl">
+                  <div className="bg-green-50 dark:bg-green-900/20 p-4 rounded-xl">
                     <div className="text-base md:text-sm text-slate-500 dark:text-slate-400">שווי נוכחי</div>
-                    <div className="text-2xl font-bold text-blue-600 dark:text-blue-400" dir="ltr">
+                    <div className="text-2xl font-bold text-green-600 dark:text-green-400" dir="ltr">
                       ₪{selectedAsset.value.toLocaleString()}
                     </div>
                     {selectedAsset.hasLivePrice && (
@@ -947,15 +954,15 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                 {/* Quantity Info (if available) */}
                 {selectedAsset.assetMode === 'QUANTITY' && selectedAsset.quantity && (
                   <div className="grid grid-cols-3 gap-3">
-                    <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg text-center">
-                      <div className="text-sm md:text-xs text-blue-600 dark:text-blue-400">כמות</div>
-                      <div className="font-bold text-blue-700 dark:text-blue-300 font-mono">
+                    <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg text-center">
+                      <div className="text-sm md:text-xs text-green-600 dark:text-green-400">כמות</div>
+                      <div className="font-bold text-green-700 dark:text-green-300 font-mono">
                         {selectedAsset.quantity.toLocaleString('en-US', { maximumFractionDigits: 6 })}
                       </div>
                     </div>
-                    <div className="bg-purple-50 dark:bg-purple-900/20 p-3 rounded-lg text-center">
-                      <div className="text-sm md:text-xs text-purple-600 dark:text-purple-400">מחיר רכישה</div>
-                      <div className="font-bold text-purple-700 dark:text-purple-300 font-mono" dir="ltr">
+                    <div className="bg-gray-50 dark:bg-gray-900/20 p-3 rounded-lg text-center">
+                      <div className="text-sm md:text-xs text-gray-600 dark:text-gray-400">מחיר רכישה</div>
+                      <div className="font-bold text-gray-700 dark:text-gray-300 font-mono" dir="ltr">
                         {selectedAsset.currency === 'USD' ? '$' : '₪'}{(selectedAsset.purchasePrice || 0).toLocaleString()}
                       </div>
                     </div>
@@ -972,31 +979,32 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
 
                 <div className="space-y-4">
                   <div className="flex border-b border-slate-100 dark:border-slate-700 pb-2">
-                    <span className="w-1/3 text-base md:text-sm text-slate-500 dark:text-slate-400">חשבונות וארנקים</span>
-                    <span className="font-medium text-base md:text-sm text-slate-800 dark:text-white">{selectedAsset.platform}</span>
+                    <span className="w-2/5 text-base md:text-sm text-slate-500 dark:text-slate-400">חשבונות וארנקים</span>
+                    <span className="font-medium  text-base md:text-sm text-slate-800 dark:text-white">{selectedAsset.platform}</span>
                   </div>
                   <div className="flex border-b border-slate-100 dark:border-slate-700 pb-2">
-                    <span className="w-1/3 text-base md:text-sm text-slate-500 dark:text-slate-400">מטבעות בסיס</span>
-                    <span className="font-medium text-base md:text-sm text-slate-800 dark:text-white">{selectedAsset.instrument}</span>
+                    <span className="w-2/5 text-base md:text-sm text-slate-500 dark:text-slate-400">מטבעות בסיס</span>
+                    <span className="font-medium  text-base md:text-sm text-slate-800 dark:text-white">{selectedAsset.instrument}</span>
                   </div>
                   <div className="flex border-b border-slate-100 dark:border-slate-700 pb-2">
-                    <span className="w-1/3 text-base md:text-sm text-slate-500 dark:text-slate-400">אפיקי השקעה</span>
-                    <span className="font-medium text-base md:text-sm text-slate-800 dark:text-white">{selectedAsset.category}</span>
+                    <span className="w-2/5 text-base md:text-sm text-slate-500 dark:text-slate-400">אפיקי השקעה</span>
+                    <span className="font-medium  text-base md:text-sm text-slate-800 dark:text-white">{selectedAsset.category}</span>
                   </div>
                   <div className="flex border-b border-slate-100 dark:border-slate-700 pb-2">
-                    <span className="w-1/3 text-base md:text-sm text-slate-500 dark:text-slate-400">סמל נכס</span>
-                    <span className="font-medium text-base md:text-sm text-slate-800 dark:text-white font-mono">
+                    <span className="w-2/5 text-base md:text-sm text-slate-500 dark:text-slate-400">סמל נכס</span>
+                    <span className="font-medium  text-base md:text-sm text-slate-800 dark:text-white font-mono">
                       {selectedAsset.symbol || <span className="text-slate-400 dark:text-slate-500 italic">ללא סמל</span>}
                     </span>
                   </div>
                   {selectedAsset.purchaseDate && (
                     <div className="flex border-b border-slate-100 dark:border-slate-700 pb-2">
-                      <span className="w-1/3 text-base md:text-sm text-slate-500 dark:text-slate-400">תאריך רכישה</span>
-                      <span className="font-medium text-base md:text-sm text-slate-800 dark:text-white">
+                      <span className="w-2/5 text-base md:text-sm text-slate-500 dark:text-slate-400">תאריך רכישה</span>
+                      <span className="font-medium  text-base md:text-sm text-slate-800 dark:text-white">
                         {new Date(selectedAsset.purchaseDate).toLocaleDateString('he-IL')}
                       </span>
                     </div>
                   )}
+
                   {/* {selectedAsset.assetType && (
                     <div className="flex border-b border-slate-100 dark:border-slate-700 pb-2">
                       <span className="w-1/3 text-slate-500 dark:text-slate-400">סוג נכס</span>
@@ -1005,9 +1013,9 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                           {selectedAsset.assetType === 'CRYPTO' ? (
                             <><Bitcoin size={16} className="text-amber-500" /> קריפטו</>
                           ) : selectedAsset.assetType === 'STOCK' ? (
-                            <><TrendingUp size={16} className="text-blue-500" /> מניה</>
+                            <><TrendingUp size={16} className="text-green-500" /> מניה</>
                           ) : selectedAsset.assetType === 'INDEX' ? (
-                            <><BarChart3 size={16} className="text-purple-500" /> מדד</>
+                            <><BarChart3 size={16} className="text-gray-500" /> מדד</>
                           ) : selectedAsset.assetType === 'ETF' ? (
                             <><Package size={16} className="text-green-500" /> תעודת סל</>
                           ) : (
@@ -1023,7 +1031,7 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                   <div className="text-base md:text-sm text-slate-500 dark:text-slate-400 mb-2">תגיות משויכות</div>
                   <div className="flex flex-wrap gap-2">
                     {selectedAsset.tags && selectedAsset.tags.map((tag, i) => (
-                      <span key={i} className="bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-3 py-1.5 md:py-1 rounded-full text-base md:text-sm font-medium border border-purple-100 dark:border-purple-800">
+                      <span key={i} className="bg-gray-50 dark:bg-gray-900/30 text-gray-700 dark:text-gray-300 px-3 py-1.5 md:py-1 rounded-full text-base md:text-sm font-medium border border-gray-100 dark:border-gray-800">
                         {tag}
                       </span>
                     ))}
@@ -1033,13 +1041,13 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                 <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-100 dark:border-slate-700">
                   <button
                     onClick={() => { handleDelete(selectedAsset.id, selectedAsset.name); setSelectedAsset(null); }}
-                    className="bg-red-600 dark:bg-red-700 text-white px-4 py-3 md:py-2 rounded-lg flex items-center gap-2 hover:bg-red-700 dark:hover:bg-red-600 transition-colors text-base md:text-sm font-medium"
+                    className="border border-red-600 text-red-600 px-4 py-2 md:py-2 rounded-lg flex items-center gap-2 hover:bg-gray-700 dark:hover:bg-gray-600 transition-colors text-base md:text-sm font-medium"
                   >
                     <Trash2 size={18} /> מחק נכס
                   </button>
                   <button
                     onClick={() => { handleEdit(selectedAsset); setSelectedAsset(null); }}
-                    className="bg-slate-900 dark:bg-slate-700 text-white px-4 py-3 md:py-2 rounded-lg flex items-center gap-2 hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors text-base md:text-sm font-medium"
+                    className="border border-slate-600 text-slate-600 px-4 py-2 md:py-2 rounded-lg flex items-center gap-2 hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors text-base md:text-sm font-medium"
                   >
                     <Edit2 size={18} /> ערוך נכס
                   </button>
