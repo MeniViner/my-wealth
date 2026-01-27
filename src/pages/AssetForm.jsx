@@ -256,6 +256,30 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
     prevApiIdRef.current = currentApiId;
   }, [formData.symbol, formData.apiId, formData.category]);
 
+  // [FIX #3] Identity Theft: Reset Metadata on Symbol Change
+  // This ensures that if a user types a new ticker manually,
+  // the old "tase-local" or "yahoo" source doesn't persist inappropriately.
+  useEffect(() => {
+    // Skip on initial load
+    if (!formData.symbol) return;
+
+    // If symbol changed and it's not a verified API ID match, reset the source
+    // This forces the system to re-evaluate the source based on the new symbol
+    const isVerifiedMatch = formData.apiId && (
+      formData.apiId.includes(formData.symbol) ||
+      formData.apiId.endsWith(formData.symbol)
+    );
+
+    if (!isVerifiedMatch && formData.marketDataSource) {
+      console.log('[ASSET FORM] Symbol changed manually, resetting data source');
+      setFormData(prev => ({
+        ...prev,
+        marketDataSource: '', // Clear source to prevent "Identity Theft"
+        apiId: ''
+      }));
+    }
+  }, [formData.symbol]);
+
   // Auto-switch to LEGACY mode for Cash category
   useEffect(() => {
     if (formData.category === 'מזומן' && formData.assetMode !== 'LEGACY') {
@@ -309,19 +333,27 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         isFinite(priceData.currentPrice) &&
         priceData.currentPrice > 0) {
         setCurrentPriceData(priceData);
-        const assetNativeCurrency = priceData.currency || 'USD';
-        const assetNativePrice = priceData.currentPrice;
+        // [FIX #4] The Critical Change:
+        // If we are in "Edit Mode" (editAsset exists), DO NOT auto-fill purchase price.
+        // Just show the toast.
+        // Only auto-fill for NEW assets (creating for the first time).
+        const shouldAutoFill = !editAsset;
 
-        // Update native price and currency (this will trigger Effect C to convert)
-        setNativePrice(assetNativePrice);
-        setNativeCurrency(assetNativeCurrency);
-        setIsPriceManual(false); // Reset manual mode
+        if (shouldAutoFill) {
+          setNativePrice(priceData.currentPrice);
+          setNativeCurrency(priceData.currency || 'USD');
+          setIsPriceManual(false);
+        }
 
-        // Get converted price for toast message using canonical conversion
+        // Get converted price for toast message
         const { convertAmount } = await import('../services/currency');
-        const displayPrice = await convertAmount(assetNativePrice, assetNativeCurrency, formData.currency);
+        const displayPrice = await convertAmount(priceData.currentPrice, priceData.currency || 'USD', formData.currency);
 
-        await successToast(`מחיר נוכחי: ${displayPrice.toFixed(2)} ${formData.currency}`, 2000);
+        await successToast(
+          `מחיר נוכחי: ${displayPrice.toFixed(2)} ${formData.currency}` +
+          (shouldAutoFill ? '' : ' (לא עודכן בטופס למניעת דריסת היסטוריה)'),
+          3000
+        );
       } else {
         // Invalid quote - show error with details
         const errorMsg = priceData?.error

@@ -16,6 +16,7 @@ export const useAssets = (user, currencyRate) => {
   const [rawAssets, setRawAssets] = useState([]); // Assets from Firestore without live prices
   const [livePrices, setLivePrices] = useState({}); // { symbol: priceData }
   const [pricesLoading, setPricesLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [lastPriceUpdate, setLastPriceUpdate] = useState(null);
   const priceRefreshTimeoutRef = useRef(null);
 
@@ -24,6 +25,7 @@ export const useAssets = (user, currencyRate) => {
     if (!user || !db) {
       setAssets([]);
       setRawAssets([]);
+      setLoading(false);
       return;
     }
 
@@ -38,7 +40,7 @@ export const useAssets = (user, currencyRate) => {
           ...data
         });
         items.push(normalizedAsset);
-        
+
         // Optionally migrate asset if apiId was normalized (one-time migration)
         // Only migrate if apiId actually changed to avoid infinite loops
         if (normalizedAsset.apiId !== data.apiId && normalizedAsset.apiId) {
@@ -57,9 +59,14 @@ export const useAssets = (user, currencyRate) => {
         }
       });
       setRawAssets(items);
+      // If no assets, we are done loading
+      if (items.length === 0) {
+        setLoading(false);
+      }
     }, (error) => {
       console.error('Error listening to assets:', error);
       setRawAssets([]);
+      setLoading(false);
     });
 
     return () => unsubscribe();
@@ -68,7 +75,7 @@ export const useAssets = (user, currencyRate) => {
   // Calculate asset values based on mode and live prices
   useEffect(() => {
     const rate = currencyRate || 3.65;
-    
+
     // Import convertAmount once
     import('../services/currency').then(({ convertAmount }) => {
       // Calculate all assets in parallel
@@ -88,19 +95,19 @@ export const useAssets = (user, currencyRate) => {
           if (livePrice) {
             const assetNativePrice = livePrice.currentPrice;
             const assetNativeCurrency = livePrice.currency || 'USD';
-            
+
             // Convert price to display currency (ILS) using canonical conversion
             // If asset currency === display currency, no conversion needed
             const priceInDisplayCurrency = await convertAmount(
-              assetNativePrice, 
-              assetNativeCurrency, 
+              assetNativePrice,
+              assetNativeCurrency,
               'ILS', // Display currency is always ILS in this app
               rate
             );
-            
+
             currentPrice = priceInDisplayCurrency;
             value = asset.quantity * priceInDisplayCurrency;
-            
+
             // Calculate P/L in display currency
             const costBasis = asset.quantity * (asset.purchasePrice || 0);
             const costBasisInDisplayCurrency = await convertAmount(
@@ -109,10 +116,10 @@ export const useAssets = (user, currencyRate) => {
               'ILS',
               rate
             );
-            
+
             profitLoss = value - costBasisInDisplayCurrency;
-            profitLossPercent = costBasisInDisplayCurrency > 0 
-              ? (profitLoss / costBasisInDisplayCurrency) * 100 
+            profitLossPercent = costBasisInDisplayCurrency > 0
+              ? (profitLoss / costBasisInDisplayCurrency) * 100
               : 0;
           } else {
             // No live price - use purchase price as estimate
@@ -145,6 +152,12 @@ export const useAssets = (user, currencyRate) => {
         };
       })).then(calculatedAssets => {
         setAssets(calculatedAssets);
+        // Only complete loading here if we actually processed assets
+        // If calculatedAssets is empty, it means rawAssets was likely empty (initial state),
+        // so we wait for onSnapshot to handle the empty state case or provide data.
+        if (calculatedAssets.length > 0) {
+          setLoading(false);
+        }
       });
     });
   }, [rawAssets, livePrices, currencyRate]);
@@ -154,9 +167,9 @@ export const useAssets = (user, currencyRate) => {
     if (rawAssets.length === 0) return;
 
     // Filter assets that can have live prices
-    const trackableAssets = rawAssets.filter(asset => 
-      asset.assetMode === 'QUANTITY' && 
-      asset.marketDataSource && 
+    const trackableAssets = rawAssets.filter(asset =>
+      asset.assetMode === 'QUANTITY' &&
+      asset.marketDataSource &&
       asset.marketDataSource !== 'manual' &&
       (asset.apiId || asset.symbol)
     );
@@ -234,16 +247,16 @@ export const useAssets = (user, currencyRate) => {
 
   const initializeAssets = async () => {
     if (!user || !db) return false;
-    
+
     try {
       const batch = writeBatch(db);
-      
+
       // Delete all existing assets
       const assetsSnapshot = await getDocs(
         collection(db, 'artifacts', appId, 'users', user.uid, 'assets')
       );
       assetsSnapshot.docs.forEach((d) => batch.delete(d.ref));
-      
+
       // Add initial seed assets
       INITIAL_ASSETS_SEED.forEach((seed) => {
         const newRef = doc(
@@ -251,7 +264,7 @@ export const useAssets = (user, currencyRate) => {
         );
         batch.set(newRef, seed);
       });
-      
+
       await batch.commit();
       return true;
     } catch (error) {
@@ -268,6 +281,7 @@ export const useAssets = (user, currencyRate) => {
     initializeAssets,
     refreshPrices,
     pricesLoading,
+    assetsLoading: loading,
     lastPriceUpdate
   };
 };

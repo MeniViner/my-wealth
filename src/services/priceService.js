@@ -15,111 +15,15 @@ import { resolveInternalId } from './internalIds';
  * @param {string} securityId - TASE security ID (e.g., "5140454")
  * @returns {Promise<{price: number, changePct: number}|null>}
  */
-// --- BACKUP: Globes ---
-// POST request via proxy to handle array JSON response
-// async function fetchTasePriceFromGlobes(securityId) {
-//   try {
-//     const targetUrl = "https://www.globes.co.il/Portal/Handlers/GTOFeeder.ashx";
-//     // Use corsproxy.io which supports POST
-//     const proxyUrl = `https://corsproxy.io/?${targetUrl}`;
-
-//     // Type 49 worked in testing
-//     const body = `instrumentId=${securityId}&type=49`;
-
-//     console.log(`[GLOBES] Fetching ${securityId}...`);
-
-//     const response = await fetch(proxyUrl, {
-//       method: "POST",
-//       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-//       body: body
-//     });
-
-//     if (!response.ok) {
-//       console.warn(`[GLOBES] HTTP error ${response.status}`);
-//       return null;
-//     }
-
-//     const json = await response.json();
-
-//     // Critical fix: Access array structure
-//     // Structure: [{ Table: { Security: [...] } }, { Tns: ... }]
-//     const securityData = json?.[0]?.Table?.Security?.[0];
-
-//     if (!securityData) {
-//       console.warn(`[GLOBES] Structure mismatch for ${securityId}`);
-//       return null;
-//     }
-
-//     // Smart Currency Normalization
-//     const rawPriceStr = String(securityData.LastDealRate);
-//     let price = parseFloat(rawPriceStr);
-//     const changePct = parseFloat(securityData.BaseRateChangePercentage || 0);
-
-//     // Rule 1: Decimal Check - If it has a dot, it's already NIS.
-//     if (rawPriceStr.includes('.')) {
-//       // Keep price as is
-//     }
-//     // Rule 2: Integer Check - If no dot AND > 500, it's Agorot -> Divide by 100
-//     else if (price > 500) {
-//       price = price / 100;
-//     }
-
-//     console.log(`[GLOBES] ✅ Success for ${securityId}: ${price}`);
-//     return { price, changePct };
-
-//   } catch (e) {
-//     console.warn(`[GLOBES] Fetch failed for ${securityId}:`, e.message);
-//     return null;
-//   }
-// }
-
-// --- PRIMARY SOURCE: Funder ---
-// async function fetchTasePriceFromFunder(securityId) {
-//   try {
-//     const funderUrl = `https://www.funder.co.il/fund/${securityId}`;
-//     const corsProxyUrl = `https://corsproxy.io/?${encodeURIComponent(funderUrl)}`;
-
-//     console.log(`[FUNDER] Fetching ${securityId}...`);
-
-//     const response = await fetch(corsProxyUrl);
-//     if (!response.ok) return null;
-//     const html = await response.text();
-
-//     const priceMatch = html.match(/"buyPrice"\s*:\s*([\d\.]+)/);
-//     if (!priceMatch) return null;
-
-//     const rawPriceStr = priceMatch[1];
-//     let price = parseFloat(rawPriceStr);
-//     const changeMatch = html.match(/"1day"\s*:\s*([-\d\.]+)/);
-//     const changePct = changeMatch ? parseFloat(changeMatch[1]) : 0;
-
-//     // Smart Currency Normalization
-//     // Rule 1: Decimal Check - If it has a dot, it's already NIS.
-//     if (rawPriceStr.includes('.')) {
-//       // Keep price as is
-//     }
-//     // Rule 2: Integer Check - If no dot AND > 500, it's Agorot -> Divide by 100
-//     else if (price > 500) {
-//       price = price / 100;
-//     }
-
-//     console.log(`[FUNDER] ✅ Success for ${securityId}: ${price} (Original: ${priceMatch[1]})`);
-//     return { price, changePct };
-//   } catch (e) {
-//     console.warn(`[FUNDER] Fetch failed for ${securityId}:`, e.message);
-//     return null;
-//   }
-// }
-
 /**
  * Fetch with Proxy Rotation fallback
  * מנסה פרוקסי ראשי, ואם נכשל מנסה גיבוי
  */
 async function fetchWithFallbackProxy(targetUrl, options = {}) {
-  // אפשרות 1: corsproxy.io (מהיר, לפעמים נחסם בפרודקשיין)
+  // 1. corsproxy.io (מהיר, לפעמים נחסם בפרודקשיין)
   const proxy1 = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
 
-  // אפשרות 2: allorigins.win (איטי יותר, אבל אמין מאוד כגיבוי)
+  // 2. allorigins.win (איטי יותר, אבל אמין מאוד כגיבוי)
   // הערה: allorigins מחזיר JSON עם שדה contents שמכיל את התשובה
   const proxy2 = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
 
@@ -127,17 +31,16 @@ async function fetchWithFallbackProxy(targetUrl, options = {}) {
     // נסיון ראשון
     const res1 = await fetch(proxy1, options);
     if (res1.ok) return res1;
-    throw new Error('Proxy 1 failed');
+    console.warn(`[PROXY] Primary failed for ${targetUrl}, trying backup...`);
   } catch (e) {
-    console.warn(`[PROXY] Primary failed, trying backup for ${targetUrl}...`);
+    console.warn(`[PROXY] Primary error for ${targetUrl}:`, e.message);
+  }
 
+  // Backup (GET only) - allorigins supports only GET
+  // If original request was POST (like Globes), we can't use this backup easily unless we skip it.
+  if (!options.method || options.method === 'GET') {
     try {
-      // נסיון שני (גיבוי)
-      // allorigins תומך רק ב-GET. אם הבקשה היא POST, אי אפשר להשתמש בו ישירות ללא התאמה מורכבת.
-      // במקרה של גלובס (POST), אנחנו בבעיה עם allorigins רגיל.
-      // לכן עבור גלובס ננסה גישה ישירה אם הפרוקסי נכשל, או שנחזיר שגיאה.
-      if (options.method === 'POST') throw new Error('POST not supported on backup proxy');
-
+      console.log(`[PROXY] Trying backup for ${targetUrl}...`);
       const res2 = await fetch(proxy2);
       if (res2.ok) {
         const json = await res2.json();
@@ -145,9 +48,10 @@ async function fetchWithFallbackProxy(targetUrl, options = {}) {
         return new Response(json.contents, { status: 200 });
       }
     } catch (e2) {
-      console.error(`[PROXY] All proxies failed for ${targetUrl}`);
+      console.error(`[PROXY] Backup failed for ${targetUrl}`);
     }
   }
+
   return { ok: false };
 }
 
@@ -159,7 +63,6 @@ async function fetchTasePriceFromGlobes(securityId) {
     const targetUrl = "https://www.globes.co.il/Portal/Handlers/GTOFeeder.ashx";
 
     // גלובס דורש POST. corsproxy.io תומך ב-POST.
-    // אם זה נכשל בפרודקשיין, זה כנראה בגלל Header Origin.
     const proxyUrl = `https://corsproxy.io/?${targetUrl}`;
 
     const body = `instrumentId=${securityId}&type=49`;
@@ -191,13 +94,14 @@ async function fetchTasePriceFromGlobes(securityId) {
     let price = parseFloat(String(securityData.LastDealRate));
     const changePct = parseFloat(securityData.BaseRateChangePercentage || 0);
 
-    // נרמול אגורות לשקלים (אם > 20, חלק ב-100)
-    if (price > 20) {
+    // [FIX #2] Agorot Crash: Threshold raised to 500
+    // נרמול אגורות לשקלים (אם > 500, חלק ב-100)
+    // זה ימנע את הבעיה של נכסים ששווים 400 ש"ח שנהרסים ל-4 ש"ח
+    if (price > 500) {
       price = price / 100;
     }
 
-    // 2. חילוץ שם (התיקון לבעיה 1233170)
-    // גלובס מחזיר שמות נקיים בדרך כלל
+    // 2. חילוץ שם
     const name = securityData.HebName || securityData.EngName;
 
     console.log(`[GLOBES] ✅ Success for ${securityId}: ${price} | Name: ${name}`);
@@ -205,7 +109,8 @@ async function fetchTasePriceFromGlobes(securityId) {
     return {
       price,
       changePct,
-      name // מחזירים גם את השם!
+      name, // מחזירים גם את השם!
+      currency: 'ILS' // [FIX #1] Fake Dollar: Force ILS
     };
 
   } catch (e) {
@@ -235,13 +140,30 @@ async function fetchTasePriceFromFunder(securityId) {
     const changeMatch = html.match(/"1day"\s*:\s*([-\d\.]+)/);
     const changePct = changeMatch ? parseFloat(changeMatch[1]) : 0;
 
-    // נרמול אגורות
-    if (price > 20) {
+    // [FIX #2] Agorot Crash: Threshold raised to 500
+    if (price > 500) {
       price = price / 100;
     }
 
+    // [FIX #5] Proxy Ping-Pong: Attempt to extract name from Funder HTML
+    // This ensures we dont lose the name when switching between proxies
+    let name = null;
+    const nameMatch = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) ||
+      html.match(/<meta property="og:title" content="([^"]*)"/i);
+
+    if (nameMatch && nameMatch[1]) {
+      name = nameMatch[1]
+        .replace(/– Funder|– פאנדר|פאנדר|קרן נאמנות:|תעודת סל:/g, '')
+        .trim();
+    }
+
     console.log(`[FUNDER] ✅ Success for ${securityId}: ${price}`);
-    return { price, changePct }; // פאנדר לא תמיד מחזיר שם נקי ב-HTML הזה, אז נסתמך על מה שיש
+    return {
+      price,
+      changePct,
+      name, // Now returning name if found
+      currency: 'ILS' // [FIX #1] Fake Dollar: Force ILS
+    };
   } catch (e) {
     console.warn(`[FUNDER] Fetch failed for ${securityId}:`, e.message);
     return null;
@@ -265,105 +187,12 @@ async function fetchTasePriceFromBrowser(securityId) {
   return null;
 }
 
-// // --- BACKUP: Globes ---
-// async function fetchTasePriceFromGlobes(securityId) {
-//   try {
-//     const targetUrl = "https://www.globes.co.il/Portal/Handlers/GTOFeeder.ashx";
-//     const proxyUrl = `https://corsproxy.io/?${targetUrl}`;
-//     const body = `instrumentId=${securityId}&type=49`;
-
-//     console.log(`[GLOBES] Fetching ${securityId}...`);
-
-//     const response = await fetch(proxyUrl, {
-//       method: "POST",
-//       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-//       body: body
-//     });
-
-//     if (!response.ok) return null;
-
-//     const json = await response.json();
-//     const securityData = json?.[0]?.Table?.Security?.[0];
-
-//     if (!securityData) {
-//       console.warn(`[GLOBES] Structure mismatch for ${securityId}`);
-//       return null;
-//     }
-
-//     // נרמול אגורות לשקלים (Force Agorot to NIS)
-//     let price = parseFloat(String(securityData.LastDealRate));
-//     const changePct = parseFloat(securityData.BaseRateChangePercentage || 0);
-
-//     // התיקון: הסרת בדיקת הנקודה העשרונית.
-//     // אם המחיר גדול מ-20, נניח שזה אגורות ונחלק ב-100.
-//     // זה יתפוס גם 423.92 (יהפוך ל-4.24) וגם 14590 (יהפוך ל-145.90)
-//     if (price > 20) {
-//       price = price / 100;
-//     }
-
-//     console.log(`[GLOBES] ✅ Success for ${securityId}: ${price}`);
-//     return { price, changePct };
-
-//   } catch (e) {
-//     console.warn(`[GLOBES] Fetch failed for ${securityId}:`, e.message);
-//     return null;
-//   }
-// }
-
-// // --- PRIMARY SOURCE: Funder ---
-// async function fetchTasePriceFromFunder(securityId) {
-//   try {
-//     const funderUrl = `https://www.funder.co.il/fund/${securityId}`;
-//     const corsProxyUrl = `https://corsproxy.io/?${encodeURIComponent(funderUrl)}`;
-
-//     console.log(`[FUNDER] Fetching ${securityId}...`);
-
-//     const response = await fetch(corsProxyUrl);
-//     if (!response.ok) return null;
-//     const html = await response.text();
-
-//     const priceMatch = html.match(/"buyPrice"\s*:\s*([\d\.]+)/);
-//     if (!priceMatch) return null;
-
-//     const rawPriceStr = priceMatch[1];
-//     let price = parseFloat(rawPriceStr);
-//     const changeMatch = html.match(/"1day"\s*:\s*([-\d\.]+)/);
-//     const changePct = changeMatch ? parseFloat(changeMatch[1]) : 0;
-
-//     // התיקון: הסרת בדיקת הנקודה העשרונית.
-//     // אם המחיר גדול מ-20, נניח שזה אגורות ונחלק ב-100.
-//     // זה יתפוס גם 423.92 (יהפוך ל-4.24) וגם 14590 (יהפוך ל-145.90)
-//     if (price > 20) {
-//       price = price / 100;
-//     }
-
-//     console.log(`[FUNDER] ✅ Success for ${securityId}: ${price} (Original: ${priceMatch[1]})`);
-//     return { price, changePct };
-//   } catch (e) {
-//     console.warn(`[FUNDER] Fetch failed for ${securityId}:`, e.message);
-//     return null;
-//   }
-// }
-
 /**
  * Fetch TASE price directly from browser using CORS proxy
  * Strategy: Funder -> Globes -> Fail
  * @param {string} securityId - TASE security ID (e.g., "5140454")
  * @returns {Promise<{price: number, changePct: number, source: string}|null>}
  */
-// async function fetchTasePriceFromBrowser(securityId) {
-//   // 1. Try Funder (Most reliable for funds)
-//   let data = await fetchTasePriceFromFunder(securityId);
-//   if (data) return { ...data, source: 'funder-browser' };
-
-//   // 2. Try Globes (New Backup)
-//   console.log(`[BROWSER FALLBACK] Funder failed for ${securityId}, trying Globes...`);
-//   data = await fetchTasePriceFromGlobes(securityId);
-//   if (data) return { ...data, source: 'globes-browser' };
-
-//   // 3. Fail (Main logic will try Yahoo if fallback is enabled there)
-//   return null;
-// }
 
 // Debug flag for price fetching
 const DEBUG_PRICES = import.meta.env.DEV;
@@ -723,7 +552,7 @@ export const fetchAssetPrice = async (asset) => {
       const symbol = asset.apiId || asset.symbol || '';
 
       // --- התיקון לשם הגנרי ---
-      let finalName = asset.name || symbol;
+      let finalName = asset.name || asset.symbol; // [FIX #5] Fallback to symbol if name missing
       const genericTitle = "פורטל קרנות";
 
       // אם קיבלנו שם חדש (למשל מגלובס), והשם הנוכחי ריק או גנרי ("פורטל...") -> נדרוס אותו
@@ -736,7 +565,7 @@ export const fetchAssetPrice = async (asset) => {
         symbol: symbol,
         name: finalName, // שימוש בשם המתוקן
         currentPrice: browserData.price,
-        currency: 'ILS',
+        currency: 'ILS', // [FIX #1] Force ILS
         change24h: browserData.changePct || 0,
         changeAmount: (browserData.price * (browserData.changePct || 0)) / 100,
         lastUpdated: new Date(),
@@ -795,11 +624,17 @@ export const fetchAssetPrice = async (asset) => {
       assetType = 'ETF';
     }
 
+    // [FIX #1] Force ILS if symbol ends in .TA (even if fetched via Yahoo)
+    let currency = quote.currency || 'USD';
+    if (asset.symbol && asset.symbol.endsWith('.TA')) {
+      currency = 'ILS';
+    }
+
     const result = {
       symbol: symbol,
       name: asset.name || symbol,
       currentPrice: quote.price,
-      currency: quote.currency || 'USD',
+      currency: currency,
       change24h: quote.changePct || 0,
       changeAmount: (quote.price * (quote.changePct || 0)) / 100,
       lastUpdated: new Date(quote.timestamp || Date.now()),

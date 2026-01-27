@@ -4,6 +4,7 @@ import { confirmAlert, successToast } from '../utils/alerts';
 import { useDarkMode } from '../hooks/useDarkMode';
 import { useDemoData } from '../contexts/DemoDataContext';
 import { useAdmin } from '../hooks/useAdmin';
+import DataRepair from '../components/DataRepair';
 
 
 const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, onRefreshCurrency, onResetOnboarding, onStartCoachmarks }) => {
@@ -195,7 +196,7 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
                 </div>
               </div>
               <div className='p-4 flex justify-between'>
-                <p className="text-sm text-slate-500 dark:text-slate-300 mt-0.5">איפוס נתוני המניות למה שהוגדר בהתחלה</p> 
+                <p className="text-sm text-slate-500 dark:text-slate-300 mt-0.5">איפוס נתוני המניות למה שהוגדר בהתחלה</p>
                 <div className="mb-6 flex ">
                   <button
                     onClick={onResetData}
@@ -209,6 +210,9 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
               </div>
             </div>
           )}
+
+          {/* Emergency Data Repair Tool (Admin only) */}
+          {isAdmin && <DataRepair />}
         </div>
 
       )}

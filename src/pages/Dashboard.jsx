@@ -153,7 +153,17 @@ const NoDataMessage = () => (
   </div>
 );
 
-const Dashboard = ({ assets, systemData, currencyRate }) => {
+// Chart Loader Component
+const ChartLoader = () => (
+  <div className="h-full flex items-center justify-center">
+    <div className="text-center">
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600 mx-auto mb-2"></div>
+      <p className="text-sm text-slate-500 dark:text-slate-400">טוען נתונים...</p>
+    </div>
+  </div>
+);
+
+const Dashboard = ({ assets, systemData, currencyRate, isLoading = false }) => {
   const { demoAssets, isActive: isDemoActive, demoSystemData, clearDemoAssets, refreshInterval } = useDemoData();
 
   // Use demo assets if tour is active, otherwise use real assets
@@ -709,360 +719,397 @@ const Dashboard = ({ assets, systemData, currencyRate }) => {
       </header>
 
       {/* Top Summary Cards */}
-      {hasData && (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5 md:gap-4 mb-6">
-          {!isMobile && (
-            <SummaryCard
-              title={`תיק לפי מטבע ראשי (${mainCurrency})`}
-              value={isWealthVisible ? formatCurrency(totalWealth) : '••••••'}
-              icon={Wallet}
-              iconBgColor="bg-blue-500/10"
-            />
-          )}
-          {/* <SummaryCard
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5 md:gap-4 mb-6">
+        {!isMobile && (
+          <SummaryCard
+            title={`תיק לפי מטבע ראשי (${mainCurrency})`}
+            value={isWealthVisible ? formatCurrency(totalWealth) : '••••••'}
+            icon={Wallet}
+            iconBgColor="bg-blue-500/10"
+            loading={isLoading || !hasData}
+          />
+        )}
+        {/* <SummaryCard
             title="שווי לפי היסטוריה"
             value={isWealthVisible ? formatCurrency(totalCostBasis) : '••••••'}
             icon={History}
             iconBgColor="bg-slate-500/10"
+            loading={isLoading || !hasData}
           /> */}
-          <SummaryCard
-            title="רווח/הפסד יומי"
-            value={isWealthVisible ? formatCurrency(dailyProfitLoss.amount) : '••••••'}
-            icon={Calendar}
-            iconBgColor="bg-purple-500/10"
-            plData={dailyProfitLoss}
-          />
-          <SummaryCard
-            title="רווח/הפסד כולל"
-            value={isWealthVisible ? formatCurrency(totalProfitLoss.amount) : '••••••'}
-            icon={TrendingUp}
-            iconBgColor="bg-emerald-500/10"
-            plData={totalProfitLoss}
-          />
-        </div>
-      )}
+        <SummaryCard
+          title="רווח/הפסד יומי"
+          value={isWealthVisible ? formatCurrency(dailyProfitLoss.amount) : '••••••'}
+          icon={Calendar}
+          iconBgColor="bg-purple-500/10"
+          plData={dailyProfitLoss}
+          loading={isLoading || !hasData}
+        />
+        <SummaryCard
+          title="רווח/הפסד כולל"
+          value={isWealthVisible ? formatCurrency(totalProfitLoss.amount) : '••••••'}
+          icon={TrendingUp}
+          iconBgColor="bg-emerald-500/10"
+          plData={totalProfitLoss}
+          loading={isLoading || !hasData}
+        />
+      </div>
 
       {/* Collapsible Balance Chart Section */}
-      {hasData && (
-        <div className="bg-white dark:bg-[#1E1E2D] rounded-xl p-4 md:p-6 shadow-sm border border-slate-200 dark:border-slate-700">
-          {/* Clickable Header */}
-          <div
-            onClick={() => setIsChartOpen(!isChartOpen)}
-            className="flex justify-between items-center cursor-pointer mb-4"
-            data-coachmark="wealth-card"
-          >
-            <div className="flex-1">
-              <div className="text-sm text-slate-500 dark:text-slate-400 mb-1">שווי לפי היסטוריה</div>
-              <div className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white font-mono">
-                {isWealthVisible ? formatCurrency(totalWealth) : '••••••'}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsWealthVisible(!isWealthVisible);
-                }}
-                className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 w-6 h-6 flex items-center justify-center flex-shrink-0"
-                title={isWealthVisible ? 'הסתר' : 'הצג'}
-              >
-                {isWealthVisible ? <Eye size={14} /> : <EyeOff size={14} />}
-              </button>
-              {isChartOpen ? (
-                <ChevronUp className="w-5 h-5 text-slate-400 dark:text-slate-500" />
+      <div className="bg-white dark:bg-[#1E1E2D] rounded-xl p-4 md:p-6 shadow-sm border border-slate-200 dark:border-slate-700">
+        {/* Clickable Header */}
+        <div
+          onClick={() => setIsChartOpen(!isChartOpen)}
+          className="flex justify-between items-center cursor-pointer mb-4"
+          data-coachmark="wealth-card"
+        >
+          <div className="flex-1">
+            <div className="text-sm text-slate-500 dark:text-slate-400 mb-1">שווי לפי היסטוריה</div>
+            <div className="text-2xl md:text-3xl font-bold text-slate-800 dark:text-white font-mono">
+              {isLoading || !hasData ? (
+                <div className="h-8 w-32 bg-slate-200 dark:bg-slate-700 rounded animate-pulse" />
+              ) : isWealthVisible ? (
+                formatCurrency(totalWealth)
               ) : (
-                <ChevronDown className="w-5 h-5 text-slate-400 dark:text-slate-500" />
+                '••••••'
               )}
             </div>
           </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsWealthVisible(!isWealthVisible);
+              }}
+              className="text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 w-6 h-6 flex items-center justify-center flex-shrink-0"
+              title={isWealthVisible ? 'הסתר' : 'הצג'}
+            >
+              {isWealthVisible ? <Eye size={14} /> : <EyeOff size={14} />}
+            </button>
+            {isChartOpen ? (
+              <ChevronUp className="w-5 h-5 text-slate-400 dark:text-slate-500" />
+            ) : (
+              <ChevronDown className="w-5 h-5 text-slate-400 dark:text-slate-500" />
+            )}
+          </div>
+        </div>
 
-          {/* Collapsible Content */}
-          <div
-            className={`transition-all duration-300 ease-in-out overflow-hidden ${isChartOpen
-              ? 'max-h-[1000px] opacity-100 mt-4'
-              : 'max-h-0 opacity-0 mt-0'
-              }`}
-          >
-            {/* Timeframe Selectors and XLS Button */}
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-4 border-b border-slate-200 dark:border-slate-700">
-              <div className="flex flex-wrap gap-2">
-                {['1D', '1W', '1M', '3M', '1Y', 'ALL'].map((period) => (
-                  <button
-                    key={period}
-                    onClick={() => setTimeRange(period)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${timeRange === period
-                      ? 'bg-emerald-600 dark:bg-emerald-500 text-white'
-                      : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
-                      }`}
-                  >
-                    {period}
-                  </button>
-                ))}
-              </div>
-              {/* <button
+        {/* Collapsible Content */}
+        <div
+          className={`transition-all duration-300 ease-in-out overflow-hidden ${isChartOpen
+            ? 'max-h-[1000px] opacity-100 mt-4'
+            : 'max-h-0 opacity-0 mt-0'
+            }`}
+        >
+          {/* Timeframe Selectors and XLS Button */}
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-4 border-b border-slate-200 dark:border-slate-700">
+            <div className="flex flex-wrap gap-2">
+              {['1D', '1W', '1M', '3M', '1Y', 'ALL'].map((period) => (
+                <button
+                  key={period}
+                  onClick={() => setTimeRange(period)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${timeRange === period
+                    ? 'bg-emerald-600 dark:bg-emerald-500 text-white'
+                    : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                    }`}
+                >
+                  {period}
+                </button>
+              ))}
+            </div>
+            {/* <button
                 className="px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-600 dark:bg-emerald-500 text-white hover:bg-emerald-700 dark:hover:bg-emerald-600 transition-colors flex items-center gap-1.5"
                 title="ייצא ל-Excel"
               >
                 <Cloud size={14} />
                 XLS
               </button> */}
-            </div>
-
-            {/* Balance Chart - Time Series */}
-            <ErrorBoundary
-              title="שגיאה בטעינת גרף ההיסטוריה"
-              message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
-            >
-              <div className="h-64 md:h-80">
-                {historyLoading ? (
-                  <div className="h-full flex items-center justify-center">
-                    <div className="text-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-600 mx-auto mb-2"></div>
-                      <p className="text-sm text-slate-500 dark:text-slate-400">טוען נתונים...</p>
-                    </div>
-                  </div>
-                ) : portfolioHistory.length === 0 ? (
-                  <div className="h-full flex items-center justify-center">
-                    <p className="text-sm text-slate-500 dark:text-slate-400">אין נתונים להצגה</p>
-                  </div>
-                ) : (
-                  <ChartRenderer
-                    config={{
-                      chartType: 'AreaChart',
-                      dataKey: 'date',
-                      showGrid: true
-                    }}
-                    chartData={portfolioHistory}
-                    systemData={displaySystemData}
-                    totalValue={totalWealth}
-                  />
-                )}
-              </div>
-            </ErrorBoundary>
-          </div>
-        </div>
-      )}
-
-      {!hasData ? (
-        <div className="bg-white dark:bg-slate-800 p-12 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-          <NoDataMessage />
-        </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-            {/* Pie Chart - Category Distribution */}
-            <ErrorBoundary
-              title="שגיאה בטעינת גרף הקטגוריות"
-              message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
-            >
-              <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-visible">
-                <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">פיזור לפי קטגוריות</h3>
-                <div className="h-64 md:h-80 min-h-[250px] overflow-visible">
-                  <ChartRenderer
-                    config={{
-                      chartType: 'PieChart',
-                      dataKey: 'category',
-                      showGrid: false
-                    }}
-                    chartData={pieDataByCategory}
-                    systemData={displaySystemData}
-                    totalValue={totalWealth}
-                  />
-                </div>
-              </div>
-            </ErrorBoundary>
-
-            {/* Area Chart - Category Balance */}
-            <ErrorBoundary
-              title="שגיאה בטעינת גרף האיזון"
-              message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
-            >
-              <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-                <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">איזון תיק לפי קטגוריות</h3>
-                <div className="h-72 md:h-80 min-h-[280px]">
-                  <ChartRenderer
-                    config={{
-                      chartType: 'AreaChart',
-                      dataKey: 'category',
-                      showGrid: true
-                    }}
-                    chartData={areaDataByCategory}
-                    systemData={displaySystemData}
-                    totalValue={totalWealth}
-                  />
-                </div>
-              </div>
-            </ErrorBoundary>
-
-            {/* Treemap - Platforms */}
-            <ErrorBoundary
-              title="שגיאה בטעינת מפת הפלטפורמות"
-              message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
-            >
-              <TreemapChart
-                data={treemapData}
-                title="מפת גודל נכסים לפי פלטפורמות"
-                height="h-64"
-                aspectRatio={4 / 3}
-                totalValue={totalWealth}
-              />
-            </ErrorBoundary>
-
-            {/* Bar Chart - Allocation by Symbol */}
-            <ErrorBoundary
-              title="שגיאה בטעינת גרף ההקצאה"
-              message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
-            >
-              <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-                <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">הקצאה לפי נכס</h3>
-                <div className="h-72 md:h-80 min-h-[280px]">
-                  <ChartRenderer
-                    config={{
-                      chartType: 'BarChart',
-                      dataKey: 'symbol',
-                      showGrid: false
-                    }}
-                    chartData={dataBySymbol}
-                    systemData={displaySystemData}
-                    totalValue={totalWealth}
-                  />
-                </div>
-              </div>
-            </ErrorBoundary>
           </div>
 
-          {/* Large Treemap Section - Full Width */}
+          {/* Balance Chart - Time Series */}
           <ErrorBoundary
-            title="שגיאה בטעינת מפת הנכסים"
+            title="שגיאה בטעינת גרף ההיסטוריה"
             message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
           >
-            <TreemapChart
-              data={treemapDataByAssets}
-              title="מפת נכסים - כל הנכסים"
-              height="h-80 md:h-96"
-              aspectRatio={16 / 9}
-              className="mt-6"
-              totalValue={totalWealth}
-            />
-          </ErrorBoundary>
-
-          {/* Additional Charts Section */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 mt-6">
-            {/* Bar Chart - Instruments */}
-            <ErrorBoundary
-              title="שגיאה בטעינת גרף המכשירים"
-              message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
-            >
-              <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-                <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">במה מושקע הכסף?</h3>
-                <div className="h-72 md:h-80 min-h-[280px]">
-                  <ChartRenderer
-                    config={{
-                      chartType: 'BarChart',
-                      dataKey: 'instrument',
-                      showGrid: false
-                    }}
-                    chartData={dataByInstrument}
-                    systemData={displaySystemData}
-                    totalValue={totalWealth}
-                  />
+            <div className="h-64 md:h-80">
+              {isLoading || historyLoading || !hasData ? (
+                <ChartLoader />
+              ) : portfolioHistory.length === 0 ? (
+                <div className="h-full flex items-center justify-center">
+                  <p className="text-sm text-slate-500 dark:text-slate-400">אין נתונים להצגה</p>
                 </div>
-              </div>
-            </ErrorBoundary>
-
-            {/* Pie Chart - Currency Distribution */}
-            <ErrorBoundary
-              title="שגיאה בטעינת גרף המטבעות"
-              message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
-            >
-              <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-visible">
-                <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">פיזור לפי מטבעות</h3>
-                <div className="h-56 md:h-64 min-h-[220px] overflow-visible">
-                  <ChartRenderer
-                    config={{
-                      chartType: 'PieChart',
-                      dataKey: 'currency',
-                      showGrid: false
-                    }}
-                    chartData={dataByCurrency}
-                    systemData={displaySystemData}
-                    totalValue={totalWealth}
-                  />
-                </div>
-              </div>
-            </ErrorBoundary>
-          </div>
-
-          {/* Horizontal Bar Chart - Platforms - Full Width */}
-          <ErrorBoundary
-            title="שגיאה בטעינת גרף הפלטפורמות"
-            message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
-          >
-            <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 mt-6">
-              <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">פיזור לפי פלטפורמות</h3>
-              <div className="h-64 md:h-80 min-h-[280px]">
+              ) : (
                 <ChartRenderer
                   config={{
-                    chartType: 'HorizontalBarChart',
-                    dataKey: 'platform',
+                    chartType: 'AreaChart',
+                    dataKey: 'date',
                     showGrid: true
                   }}
-                  chartData={dataByPlatform}
+                  chartData={portfolioHistory}
                   systemData={displaySystemData}
                   totalValue={totalWealth}
                 />
-              </div>
+              )}
             </div>
           </ErrorBoundary>
+        </div>
+      </div>
 
-          {/* Additional Charts Section - Top 10 and Line Chart */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 mt-6">
-            {/* Bar Chart - Top 10 Assets */}
-            <ErrorBoundary
-              title="שגיאה בטעינת גרף 10 הנכסים הגדולים"
-              message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
-            >
-              <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-                <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">10 הנכסים הגדולים ביותר</h3>
-                <div className="h-72 md:h-80 min-h-[280px]">
-                  <ChartRenderer
-                    config={{
-                      chartType: 'BarChart',
-                      dataKey: 'symbol',
-                      showGrid: true
-                    }}
-                    chartData={topAssets}
-                    systemData={displaySystemData}
-                    totalValue={totalWealth}
-                  />
-                </div>
-              </div>
-            </ErrorBoundary>
-
-            {/* Line Chart - Category Comparison */}
-            <ErrorBoundary
-              title="שגיאה בטעינת גרף ההשוואה"
-              message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
-            >
-              <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
-                <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">השוואת קטגוריות</h3>
-                <div className="h-72 md:h-80 min-h-[280px]">
-                  <ChartRenderer
-                    config={{
-                      chartType: 'LineChart',
-                      dataKey: 'category',
-                      showGrid: true
-                    }}
-                    chartData={areaDataByCategory}
-                    systemData={displaySystemData}
-                    totalValue={totalWealth}
-                  />
-                </div>
-              </div>
-            </ErrorBoundary>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+        {/* Pie Chart - Category Distribution */}
+        <ErrorBoundary
+          title="שגיאה בטעינת גרף הקטגוריות"
+          message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
+        >
+          <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-visible">
+            <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">פיזור לפי קטגוריות</h3>
+            <div className="h-64 md:h-80 min-h-[250px] overflow-visible">
+              {isLoading || !hasData ? (
+                <ChartLoader />
+              ) : (
+                <ChartRenderer
+                  config={{
+                    chartType: 'PieChart',
+                    dataKey: 'category',
+                    showGrid: false
+                  }}
+                  chartData={pieDataByCategory}
+                  systemData={displaySystemData}
+                  totalValue={totalWealth}
+                />
+              )}
+            </div>
           </div>
-        </>
-      )}
+        </ErrorBoundary>
+
+        {/* Area Chart - Category Balance */}
+        <ErrorBoundary
+          title="שגיאה בטעינת גרף האיזון"
+          message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
+        >
+          <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+            <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">איזון תיק לפי קטגוריות</h3>
+            <div className="h-72 md:h-80 min-h-[280px]">
+              {isLoading || !hasData ? (
+                <ChartLoader />
+              ) : (
+                <ChartRenderer
+                  config={{
+                    chartType: 'AreaChart',
+                    dataKey: 'category',
+                    showGrid: true
+                  }}
+                  chartData={areaDataByCategory}
+                  systemData={displaySystemData}
+                  totalValue={totalWealth}
+                />
+              )}
+            </div>
+          </div>
+        </ErrorBoundary>
+
+        {/* Treemap - Platforms */}
+        <ErrorBoundary
+          title="שגיאה בטעינת מפת הפלטפורמות"
+          message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
+        >
+          {isLoading || !hasData ? (
+            <div className="h-64 bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm border border-slate-100 dark:border-slate-700">
+              <ChartLoader />
+            </div>
+          ) : (
+            <TreemapChart
+              data={treemapData}
+              title="מפת גודל נכסים לפי פלטפורמות"
+              height="h-64"
+              aspectRatio={4 / 3}
+              totalValue={totalWealth}
+            />
+          )}
+        </ErrorBoundary>
+
+        {/* Bar Chart - Allocation by Symbol */}
+        <ErrorBoundary
+          title="שגיאה בטעינת גרף ההקצאה"
+          message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
+        >
+          <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+            <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">הקצאה לפי נכס</h3>
+            <div className="h-72 md:h-80 min-h-[280px]">
+              {isLoading || !hasData ? (
+                <ChartLoader />
+              ) : (
+                <ChartRenderer
+                  config={{
+                    chartType: 'BarChart',
+                    dataKey: 'symbol',
+                    showGrid: false
+                  }}
+                  chartData={dataBySymbol}
+                  systemData={displaySystemData}
+                  totalValue={totalWealth}
+                />
+              )}
+            </div>
+          </div>
+        </ErrorBoundary>
+      </div>
+
+      {/* Large Treemap Section - Full Width */}
+      <ErrorBoundary
+        title="שגיאה בטעינת מפת הנכסים"
+        message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
+      >
+        {isLoading || !hasData ? (
+          <div className="h-80 md:h-96 mt-6 bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm border border-slate-100 dark:border-slate-700">
+            <ChartLoader />
+          </div>
+        ) : (
+          <TreemapChart
+            data={treemapDataByAssets}
+            title="מפת נכסים - כל הנכסים"
+            height="h-80 md:h-96"
+            aspectRatio={16 / 9}
+            className="mt-6"
+            totalValue={totalWealth}
+          />
+        )}
+      </ErrorBoundary>
+
+      {/* Additional Charts Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 mt-6">
+        {/* Bar Chart - Instruments */}
+        <ErrorBoundary
+          title="שגיאה בטעינת גרף המכשירים"
+          message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
+        >
+          <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+            <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">במה מושקע הכסף?</h3>
+            <div className="h-72 md:h-80 min-h-[280px]">
+              {isLoading || !hasData ? (
+                <ChartLoader />
+              ) : (
+                <ChartRenderer
+                  config={{
+                    chartType: 'BarChart',
+                    dataKey: 'instrument',
+                    showGrid: false
+                  }}
+                  chartData={dataByInstrument}
+                  systemData={displaySystemData}
+                  totalValue={totalWealth}
+                />
+              )}
+            </div>
+          </div>
+        </ErrorBoundary>
+
+        {/* Pie Chart - Currency Distribution */}
+        <ErrorBoundary
+          title="שגיאה בטעינת גרף המטבעות"
+          message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
+        >
+          <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-visible">
+            <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">פיזור לפי מטבעות</h3>
+            <div className="h-56 md:h-64 min-h-[220px] overflow-visible">
+              {isLoading || !hasData ? (
+                <ChartLoader />
+              ) : (
+                <ChartRenderer
+                  config={{
+                    chartType: 'PieChart',
+                    dataKey: 'currency',
+                    showGrid: false
+                  }}
+                  chartData={dataByCurrency}
+                  systemData={displaySystemData}
+                  totalValue={totalWealth}
+                />
+              )}
+            </div>
+          </div>
+        </ErrorBoundary>
+      </div>
+
+      {/* Horizontal Bar Chart - Platforms - Full Width */}
+      <ErrorBoundary
+        title="שגיאה בטעינת גרף הפלטפורמות"
+        message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
+      >
+        <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 mt-6">
+          <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">פיזור לפי פלטפורמות</h3>
+          <div className="h-64 md:h-80 min-h-[280px]">
+            {isLoading || !hasData ? (
+              <ChartLoader />
+            ) : (
+              <ChartRenderer
+                config={{
+                  chartType: 'HorizontalBarChart',
+                  dataKey: 'platform',
+                  showGrid: true
+                }}
+                chartData={dataByPlatform}
+                systemData={displaySystemData}
+                totalValue={totalWealth}
+              />
+            )}
+          </div>
+        </div>
+      </ErrorBoundary>
+
+      {/* Additional Charts Section - Top 10 and Line Chart */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6 mt-6">
+        {/* Bar Chart - Top 10 Assets */}
+        <ErrorBoundary
+          title="שגיאה בטעינת גרף 10 הנכסים הגדולים"
+          message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
+        >
+          <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+            <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">10 הנכסים הגדולים ביותר</h3>
+            <div className="h-72 md:h-80 min-h-[280px]">
+              {isLoading || !hasData ? (
+                <ChartLoader />
+              ) : (
+                <ChartRenderer
+                  config={{
+                    chartType: 'BarChart',
+                    dataKey: 'symbol',
+                    showGrid: true
+                  }}
+                  chartData={topAssets}
+                  systemData={displaySystemData}
+                  totalValue={totalWealth}
+                />
+              )}
+            </div>
+          </div>
+        </ErrorBoundary>
+
+        {/* Line Chart - Category Comparison */}
+        <ErrorBoundary
+          title="שגיאה בטעינת גרף ההשוואה"
+          message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
+        >
+          <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+            <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">השוואת קטגוריות</h3>
+            <div className="h-72 md:h-80 min-h-[280px]">
+              {isLoading || !hasData ? (
+                <ChartLoader />
+              ) : (
+                <ChartRenderer
+                  config={{
+                    chartType: 'LineChart',
+                    dataKey: 'category',
+                    showGrid: true
+                  }}
+                  chartData={areaDataByCategory}
+                  systemData={displaySystemData}
+                  totalValue={totalWealth}
+                />
+              )}
+            </div>
+          </div>
+        </ErrorBoundary>
+      </div>
     </div>
   );
 };
