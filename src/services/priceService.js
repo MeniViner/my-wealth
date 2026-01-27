@@ -1,220 +1,30 @@
 /**
- * Price Service
- * Fetches live and historical prices via backend API (Vercel Functions)
- * All external API calls are now handled server-side to avoid CORS issues
+ * Price Service - Strategy Pattern Implementation
+ * ================================================
+ * COMPLETE REWRITE: Eliminates fragile threshold logic with robust Strategy Pattern
+ * 
+ * Architecture:
+ * - TASEStrategy: Israeli assets (ALWAYS /100 for non-INDEX, ALWAYS ILS)
+ * - GlobalStrategy: US/International assets (As-Is, USD)
+ * - CryptoStrategy: Cryptocurrency (As-Is, USD)
+ * 
+ * Critical Rules:
+ * - NO magic thresholds (500, 100, etc.)
+ * - Price normalization happens in strategy, NOT in data fetchers
+ * - Currency is hardcoded per strategy
+ * - Waterfall fallback: TASE failures retry with GlobalStrategy
  */
 
 import { getQuotes, getHistory } from './backendApi';
 import { resolveInternalId } from './internalIds';
 
-// ==================== CLIENT-SIDE TASE FALLBACK ====================
-
-/**
- * Fetch TASE price directly from browser using CORS proxy
- * This is a fallback for when the backend API fails to get TASE prices
- * @param {string} securityId - TASE security ID (e.g., "5140454")
- * @returns {Promise<{price: number, changePct: number}|null>}
- */
-/**
- * Fetch with Proxy Rotation fallback
- * מנסה פרוקסי ראשי, ואם נכשל מנסה גיבוי
- */
-async function fetchWithFallbackProxy(targetUrl, options = {}) {
-  // 1. corsproxy.io (מהיר, לפעמים נחסם בפרודקשיין)
-  const proxy1 = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
-
-  // 2. allorigins.win (איטי יותר, אבל אמין מאוד כגיבוי)
-  // הערה: allorigins מחזיר JSON עם שדה contents שמכיל את התשובה
-  const proxy2 = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
-
-  try {
-    // נסיון ראשון
-    const res1 = await fetch(proxy1, options);
-    if (res1.ok) return res1;
-    console.warn(`[PROXY] Primary failed for ${targetUrl}, trying backup...`);
-  } catch (e) {
-    console.warn(`[PROXY] Primary error for ${targetUrl}:`, e.message);
-  }
-
-  // Backup (GET only) - allorigins supports only GET
-  // If original request was POST (like Globes), we can't use this backup easily unless we skip it.
-  if (!options.method || options.method === 'GET') {
-    try {
-      console.log(`[PROXY] Trying backup for ${targetUrl}...`);
-      const res2 = await fetch(proxy2);
-      if (res2.ok) {
-        const json = await res2.json();
-        // בניית Response מזויף כדי שהקוד הקיים ימשיך לעבוד
-        return new Response(json.contents, { status: 200 });
-      }
-    } catch (e2) {
-      console.error(`[PROXY] Backup failed for ${targetUrl}`);
-    }
-  }
-
-  return { ok: false };
-}
-
-// ==================== CLIENT-SIDE TASE FALLBACK ====================
-
-// --- BACKUP: Globes (מעודכן: מושך גם שם + מטפל ב-Production) ---
-async function fetchTasePriceFromGlobes(securityId) {
-  try {
-    const targetUrl = "https://www.globes.co.il/Portal/Handlers/GTOFeeder.ashx";
-
-    // גלובס דורש POST. corsproxy.io תומך ב-POST.
-    const proxyUrl = `https://corsproxy.io/?${targetUrl}`;
-
-    const body = `instrumentId=${securityId}&type=49`;
-
-    console.log(`[GLOBES] Fetching ${securityId}...`);
-
-    const response = await fetch(proxyUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
-      body: body
-    });
-
-    if (!response.ok) {
-      console.warn(`[GLOBES] HTTP error ${response.status}`);
-      return null;
-    }
-
-    const json = await response.json();
-    const securityData = json?.[0]?.Table?.Security?.[0];
-
-    if (!securityData) {
-      console.warn(`[GLOBES] Structure mismatch for ${securityId}`);
-      return null;
-    }
-
-    // 1. חילוץ מחיר ונרמול
-    let price = parseFloat(String(securityData.LastDealRate));
-    const changePct = parseFloat(securityData.BaseRateChangePercentage || 0);
-
-    // [FIX #2] Agorot Crash: Threshold raised to 500
-    // נרמול אגורות לשקלים (אם > 500, חלק ב-100)
-    // זה ימנע את הבעיה של נכסים ששווים 400 ש"ח שנהרסים ל-4 ש"ח
-    if (price > 500) {
-      price = price / 100;
-    }
-
-    // 2. חילוץ שם
-    const name = securityData.HebName || securityData.EngName;
-
-    console.log(`[GLOBES] ✅ Success for ${securityId}: ${price} | Name: ${name}`);
-
-    return {
-      price,
-      changePct,
-      name, // מחזירים גם את השם!
-      currency: 'ILS' // [FIX #1] Fake Dollar: Force ILS
-    };
-
-  } catch (e) {
-    console.warn(`[GLOBES] Fetch failed for ${securityId}:`, e.message);
-    return null;
-  }
-}
-
-// --- PRIMARY SOURCE: Funder (מעודכן עם Proxy Rotation) ---
-async function fetchTasePriceFromFunder(securityId) {
-  try {
-    const funderUrl = `https://www.funder.co.il/fund/${securityId}`;
-
-    console.log(`[FUNDER] Fetching ${securityId}...`);
-
-    // שימוש בפונקציית העזר החדשה שמנסה כמה פרוקסים
-    const response = await fetchWithFallbackProxy(funderUrl);
-
-    if (!response.ok) return null;
-    const html = await response.text();
-
-    const priceMatch = html.match(/"buyPrice"\s*:\s*([\d\.]+)/);
-    if (!priceMatch) return null;
-
-    const rawPriceStr = priceMatch[1];
-    let price = parseFloat(rawPriceStr);
-    const changeMatch = html.match(/"1day"\s*:\s*([-\d\.]+)/);
-    const changePct = changeMatch ? parseFloat(changeMatch[1]) : 0;
-
-    // [FIX #2] Agorot Crash: Threshold raised to 500
-    if (price > 500) {
-      price = price / 100;
-    }
-
-    // [FIX #5] Proxy Ping-Pong: Attempt to extract name from Funder HTML
-    // This ensures we dont lose the name when switching between proxies
-    let name = null;
-    const nameMatch = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) ||
-      html.match(/<meta property="og:title" content="([^"]*)"/i);
-
-    if (nameMatch && nameMatch[1]) {
-      name = nameMatch[1]
-        .replace(/– Funder|– פאנדר|פאנדר|קרן נאמנות:|תעודת סל:/g, '')
-        .trim();
-    }
-
-    console.log(`[FUNDER] ✅ Success for ${securityId}: ${price}`);
-    return {
-      price,
-      changePct,
-      name, // Now returning name if found
-      currency: 'ILS' // [FIX #1] Fake Dollar: Force ILS
-    };
-  } catch (e) {
-    console.warn(`[FUNDER] Fetch failed for ${securityId}:`, e.message);
-    return null;
-  }
-}
-
-/**
- * המנהל הראשי: מנסה את כולם לפי הסדר
- */
-async function fetchTasePriceFromBrowser(securityId) {
-  // 1. נסה פאנדר (עם גיבוי פרוקסי)
-  let data = await fetchTasePriceFromFunder(securityId);
-  if (data) return { ...data, source: 'funder-browser' };
-
-  // 2. נסה גלובס (כעת שואב גם את השם!)
-  console.log(`[BROWSER FALLBACK] Funder failed for ${securityId}, trying Globes...`);
-  data = await fetchTasePriceFromGlobes(securityId);
-  if (data) return { ...data, source: 'globes-browser' };
-
-  // 3. נכשל
-  return null;
-}
-
-/**
- * Fetch TASE price directly from browser using CORS proxy
- * Strategy: Funder -> Globes -> Fail
- * @param {string} securityId - TASE security ID (e.g., "5140454")
- * @returns {Promise<{price: number, changePct: number, source: string}|null>}
- */
-
 // Debug flag for price fetching
 const DEBUG_PRICES = import.meta.env.DEV;
 
-// In-memory cache for price data (fallback, IndexedDB is primary)
+// In-memory cache for price data
 const priceCache = new Map();
 const PRICE_CACHE_DURATION = 60 * 1000; // 1 minute for prices
 const HISTORY_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes for history
-
-/**
- * Unified Asset Price Interface
- * @typedef {Object} UnifiedAssetPrice
- * @property {string} symbol - Ticker symbol
- * @property {string} name - Asset name
- * @property {number} currentPrice - Current price in native currency
- * @property {string} currency - Price currency ('USD' | 'ILS')
- * @property {number} change24h - 24h change percentage
- * @property {number} changeAmount - 24h change in absolute value
- * @property {Date} lastUpdated - Last update timestamp
- * @property {string} source - Data source ('coingecko' | 'yahoo' | 'manual')
- * @property {string} assetType - Asset type ('CRYPTO' | 'STOCK' | 'INDEX' | 'ETF')
- */
 
 // ==================== CACHE HELPERS ====================
 
@@ -238,19 +48,51 @@ const setCachedPrice = (key, data) => {
   });
 };
 
-// ==================== INTERNAL ID HELPERS ====================
+// ==================== HELPER FUNCTIONS ====================
+
+/**
+ * Fetch with Proxy Rotation fallback
+ * Tries primary proxy (corsproxy.io), then backup (allorigins.win)
+ */
+async function fetchWithFallbackProxy(targetUrl, options = {}) {
+  // 1. corsproxy.io (fast, sometimes blocked in production)
+  const proxy1 = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+
+  // 2. allorigins.win (slower, but very reliable as backup)
+  const proxy2 = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+
+  try {
+    const res1 = await fetch(proxy1, options);
+    if (res1.ok) return res1;
+    console.warn(`[PROXY] Primary failed for ${targetUrl}, trying backup...`);
+  } catch (e) {
+    console.warn(`[PROXY] Primary error for ${targetUrl}:`, e.message);
+  }
+
+  // Backup (GET only) - allorigins supports only GET
+  if (!options.method || options.method === 'GET') {
+    try {
+      console.log(`[PROXY] Trying backup for ${targetUrl}...`);
+      const res2 = await fetch(proxy2);
+      if (res2.ok) {
+        const json = await res2.json();
+        return new Response(json.contents, { status: 200 });
+      }
+    } catch (e2) {
+      console.error(`[PROXY] Backup failed for ${targetUrl}`);
+    }
+  }
+
+  return { ok: false };
+}
 
 /**
  * Check if an asset's price is stale and needs refreshing
- * @param {Object} asset - Asset object with lastUpdated field
- * @param {number} maxAgeMinutes - Maximum age in minutes before price is considered stale
- * @returns {boolean} True if price needs updating
  */
 export const isAssetPriceStale = (asset, maxAgeMinutes = 5) => {
   if (!asset || !asset.lastUpdated) return true;
 
   let lastUpdatedTime;
-  // Handle Firestore Timestamp, Date object, or string/number
   if (asset.lastUpdated.toDate && typeof asset.lastUpdated.toDate === 'function') {
     lastUpdatedTime = asset.lastUpdated.toDate().getTime();
   } else if (asset.lastUpdated instanceof Date) {
@@ -265,243 +107,350 @@ export const isAssetPriceStale = (asset, maxAgeMinutes = 5) => {
   return ageMs > maxAgeMs;
 };
 
+// ==================== TASE DATA FETCHERS ====================
+// These functions fetch RAW data from Funder/Globes
+// NO price normalization here - that happens in TASEStrategy
 
-/**
- * Convert asset to internal ID format (deprecated - use resolveInternalId directly)
- * @deprecated Use resolveInternalId from internalIds.js instead
- */
-function getInternalId(asset) {
-  return resolveInternalId(asset);
-}
-
-// ==================== COINGECKO (CRYPTO) - DEPRECATED ====================
-// These functions are kept for backward compatibility but now use backendApi
-
-/**
- * Fetch current crypto price from CoinGecko (via backend API)
- * @param {string} coinId - CoinGecko coin ID (e.g., "bitcoin", "ethereum")
- * @param {string} [vsCurrency='usd'] - Target currency
- * @returns {Promise<UnifiedAssetPrice|null>}
- */
-export const fetchCryptoPrice = async (coinId, vsCurrency = 'usd') => {
-  if (!coinId) return null;
-
-  const cacheKey = `crypto:${coinId}:${vsCurrency}`;
-  const cached = getCachedPrice(cacheKey);
-  if (cached) return cached;
-
+async function fetchTasePriceFromGlobes(securityId) {
   try {
-    const quotes = await getQuotes([`cg:${coinId}`]);
+    const targetUrl = "https://www.globes.co.il/Portal/Handlers/GTOFeeder.ashx";
+    const proxyUrl = `https://corsproxy.io/?${targetUrl}`;
+    const body = `instrumentId=${securityId}&type=49`;
 
-    // Filter valid quotes (no errors, valid price)
-    const validQuotes = quotes.filter(q =>
-      q &&
-      !q.error &&
-      typeof q.price === 'number' &&
-      !isNaN(q.price) &&
-      q.price > 0
-    );
+    console.log(`[GLOBES] Fetching ${securityId}...`);
 
-    if (validQuotes.length === 0) {
-      const errorQuote = quotes.find(q => q && q.error);
-      if (errorQuote) {
-        console.warn(`Quote error for cg:${coinId}:`, errorQuote.error);
-      }
-      return null;
-    }
-
-    const quote = validQuotes[0];
-
-    const result = {
-      symbol: coinId.toUpperCase(),
-      name: coinId,
-      currentPrice: quote.price,
-      currency: quote.currency || 'USD',
-      change24h: quote.changePct || 0,
-      changeAmount: (quote.price * (quote.changePct || 0)) / 100,
-      lastUpdated: new Date(quote.timestamp || Date.now()),
-      source: 'coingecko',
-      assetType: 'CRYPTO'
-    };
-
-    setCachedPrice(cacheKey, result);
-    return result;
-  } catch (error) {
-    console.error('Error fetching crypto price:', error);
-    return null;
-  }
-};
-
-/**
- * Fetch multiple crypto prices at once (batch) - via backend API
- * @param {string[]} coinIds - Array of CoinGecko IDs
- * @param {string} [vsCurrency='usd']
- * @returns {Promise<Object<string, UnifiedAssetPrice>>}
- */
-export const fetchCryptoPricesBatch = async (coinIds, vsCurrency = 'usd') => {
-  if (!coinIds || coinIds.length === 0) return {};
-
-  const idsString = coinIds.join(',');
-  const cacheKey = `crypto-batch:${idsString}:${vsCurrency}`;
-  const cached = getCachedPrice(cacheKey);
-  if (cached) return cached;
-
-  try {
-    const internalIds = coinIds.map(id => `cg:${id}`);
-    const quotes = await getQuotes(internalIds);
-    const results = {};
-
-    // Filter valid quotes only
-    const validQuotes = quotes.filter(q =>
-      q &&
-      !q.error &&
-      typeof q.price === 'number' &&
-      !isNaN(q.price) &&
-      q.price > 0
-    );
-
-    validQuotes.forEach((quote) => {
-
-      const coinId = quote.id.replace('cg:', '');
-      results[coinId] = {
-        symbol: coinId.toUpperCase(),
-        name: coinId,
-        currentPrice: quote.price,
-        currency: quote.currency || 'USD',
-        change24h: quote.changePct || 0,
-        changeAmount: (quote.price * (quote.changePct || 0)) / 100,
-        lastUpdated: new Date(quote.timestamp || Date.now()),
-        source: 'coingecko',
-        assetType: 'CRYPTO'
-      };
+    const response = await fetch(proxyUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body
     });
 
-    setCachedPrice(cacheKey, results);
-    return results;
-  } catch (error) {
-    console.error('Error fetching crypto prices batch:', error);
-    return {};
-  }
-};
-
-// ==================== YAHOO FINANCE (STOCKS/INDICES) - VIA BACKEND API ====================
-
-/**
- * Fetch current stock/index price from Yahoo Finance (via backend API)
- * @param {string} symbol - Stock symbol (e.g., "AAPL", "^GSPC", "TEVA.TA")
- * @returns {Promise<UnifiedAssetPrice|null>}
- */
-export const fetchYahooPrice = async (symbol) => {
-  if (!symbol) return null;
-
-  const cacheKey = `yahoo:${symbol}`;
-  const cached = getCachedPrice(cacheKey);
-  if (cached) return cached;
-
-  try {
-    const quotes = await getQuotes([`yahoo:${symbol}`]);
-
-    // Filter valid quotes (no errors, valid price)
-    const validQuotes = quotes.filter(q =>
-      q &&
-      !q.error &&
-      typeof q.price === 'number' &&
-      !isNaN(q.price) &&
-      q.price > 0
-    );
-
-    if (validQuotes.length === 0) {
-      const errorQuote = quotes.find(q => q && q.error);
-      if (errorQuote) {
-        console.warn(`Quote error for yahoo:${symbol}:`, errorQuote.error);
-      }
+    if (!response.ok) {
+      console.warn(`[GLOBES] HTTP error ${response.status}`);
       return null;
     }
 
-    const quote = validQuotes[0];
+    const json = await response.json();
+    const securityData = json?.[0]?.Table?.Security?.[0];
 
-    // Determine asset type from symbol
-    let assetType = 'STOCK';
-    if (symbol.startsWith('^')) {
-      assetType = 'INDEX';
+    if (!securityData) {
+      console.warn(`[GLOBES] Structure mismatch for ${securityId}`);
+      return null;
     }
 
-    const result = {
-      symbol: symbol,
-      name: symbol, // Name will be populated from search results
-      currentPrice: quote.price,
-      currency: quote.currency || 'USD',
-      change24h: quote.changePct || 0,
-      changeAmount: (quote.price * (quote.changePct || 0)) / 100,
-      lastUpdated: new Date(quote.timestamp || Date.now()),
-      source: 'yahoo',
-      assetType: assetType,
-    };
+    // Extract RAW price (in Agorot) - NO normalization here
+    const price = parseFloat(String(securityData.LastDealRate));
+    const changePct = parseFloat(securityData.BaseRateChangePercentage || 0);
+    const name = securityData.HebName || securityData.EngName;
 
-    setCachedPrice(cacheKey, result);
-    return result;
-  } catch (error) {
-    console.error(`Error fetching Yahoo price for ${symbol}:`, error);
+    console.log(`[GLOBES] ✅ Success for ${securityId}: RAW price ${price} Agorot`);
+
+    return {
+      price,        // RAW Agorot value
+      changePct,
+      name,
+      currency: 'ILS'
+    };
+  } catch (e) {
+    console.warn(`[GLOBES] Fetch failed for ${securityId}:`, e.message);
     return null;
   }
-};
+}
+
+async function fetchTasePriceFromFunder(securityId) {
+  try {
+    const funderUrl = `https://www.funder.co.il/fund/${securityId}`;
+    console.log(`[FUNDER] Fetching ${securityId}...`);
+
+    const response = await fetchWithFallbackProxy(funderUrl);
+    if (!response.ok) return null;
+
+    const html = await response.text();
+
+    const priceMatch = html.match(/"buyPrice"\s*:\s*([\d\.]+)/);
+    if (!priceMatch) return null;
+
+    // Extract RAW price (in Agorot) - NO normalization here
+    const price = parseFloat(priceMatch[1]);
+    const changeMatch = html.match(/"1day"\s*:\s*([-\d\.]+)/);
+    const changePct = changeMatch ? parseFloat(changeMatch[1]) : 0;
+
+    // Extract name
+    let name = null;
+    const nameMatch = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) ||
+      html.match(/<meta property="og:title" content="([^"]*)"/i);
+
+    if (nameMatch && nameMatch[1]) {
+      name = nameMatch[1]
+        .replace(/– Funder|– פאנדר|פאנדר|קרן נאמנות:|תעודת סל:/g, '')
+        .trim();
+    }
+
+    console.log(`[FUNDER] ✅ Success for ${securityId}: RAW price ${price} Agorot`);
+    return {
+      price,        // RAW Agorot value
+      changePct,
+      name,
+      currency: 'ILS'
+    };
+  } catch (e) {
+    console.warn(`[FUNDER] Fetch failed for ${securityId}:`, e.message);
+    return null;
+  }
+}
 
 /**
- * Fetch multiple stock prices at once (batch) - via backend API
- * @param {string[]} symbols - Array of stock symbols
- * @returns {Promise<Object<string, UnifiedAssetPrice>>}
+ * Main TASE fetcher: Funder → Globes waterfall
+ * Returns RAW data (price in Agorot)
  */
-export const fetchYahooPricesBatch = async (symbols) => {
-  if (!symbols || symbols.length === 0) return {};
+async function fetchTasePriceFromBrowser(securityId) {
+  // 1. Try Funder (with proxy rotation)
+  let data = await fetchTasePriceFromFunder(securityId);
+  if (data) return { ...data, source: 'funder-browser' };
 
-  try {
-    const internalIds = symbols.map(s => `yahoo:${s}`);
-    const quotes = await getQuotes(internalIds);
-    const results = {};
+  // 2. Try Globes
+  console.log(`[BROWSER FALLBACK] Funder failed for ${securityId}, trying Globes...`);
+  data = await fetchTasePriceFromGlobes(securityId);
+  if (data) return { ...data, source: 'globes-browser' };
 
-    // Filter valid quotes only
-    const validQuotes = quotes.filter(q =>
-      q &&
-      !q.error &&
-      typeof q.price === 'number' &&
-      !isNaN(q.price) &&
-      q.price > 0
+  // 3. Failed
+  return null;
+}
+
+// ==================== STRATEGY PATTERN IMPLEMENTATION ====================
+
+/**
+ * TASE Strategy - Israeli Assets
+ * 
+ * Rules:
+ * - Data source: Browser (Funder/Globes)
+ * - Price: ALWAYS divide by 100 (Agorot → Shekels)
+ *   EXCEPTION: If assetType === 'INDEX', do NOT divide (indices are points, not Agorot)
+ * - Currency: ALWAYS 'ILS'
+ */
+class TASEStrategy {
+  static canHandle(asset) {
+    const internalId = resolveInternalId(asset);
+    return (
+      asset.marketDataSource === 'tase-local' ||
+      internalId?.startsWith('tase:') ||
+      (asset.symbol && asset.symbol.endsWith('.TA'))
     );
+  }
 
-    validQuotes.forEach((quote) => {
+  static async execute(asset) {
+    try {
+      const internalId = resolveInternalId(asset);
+      const securityId = internalId.startsWith('tase:')
+        ? internalId.substring(5)
+        : asset.apiId || asset.symbol;
 
-      const symbol = quote.id.replace('yahoo:', '');
-      let assetType = 'STOCK';
-      if (symbol.startsWith('^')) {
-        assetType = 'INDEX';
+      if (DEBUG_PRICES) {
+        console.log(`[TASE STRATEGY] Fetching ${securityId}...`);
       }
 
-      results[symbol] = {
+      const browserData = await fetchTasePriceFromBrowser(securityId);
+
+      if (!browserData || !browserData.price) {
+        console.warn(`[TASE STRATEGY] Failed to fetch ${securityId}`);
+        return null;
+      }
+
+      // CRITICAL: Price normalization with INDEX exception
+      let normalizedPrice = browserData.price;
+
+      // RULE: Divide by 100 for everything EXCEPT indices
+      if (asset.assetType !== 'INDEX') {
+        normalizedPrice = browserData.price / 100;
+        if (DEBUG_PRICES) {
+          console.log(`[TASE STRATEGY] Normalized ${securityId}: ${browserData.price} Agorot → ${normalizedPrice} NIS`);
+        }
+      } else {
+        if (DEBUG_PRICES) {
+          console.log(`[TASE STRATEGY] INDEX detected for ${securityId}: keeping price as-is (${normalizedPrice} points)`);
+        }
+      }
+
+      // Name repair logic
+      const symbol = asset.apiId || asset.symbol || '';
+      let finalName = asset.name || asset.symbol;
+      const genericTitle = "פורטל קרנות";
+
+      if (browserData.name && (!finalName || finalName.includes(genericTitle))) {
+        finalName = browserData.name;
+      }
+
+      return {
         symbol: symbol,
-        name: symbol,
-        currentPrice: quote.price,
-        currency: quote.currency || 'USD',
+        name: finalName,
+        currentPrice: normalizedPrice,  // Normalized price
+        currency: 'ILS',                 // Always ILS
+        change24h: browserData.changePct || 0,
+        changeAmount: (normalizedPrice * (browserData.changePct || 0)) / 100,
+        lastUpdated: new Date(),
+        source: browserData.source || 'funder-browser',
+        assetType: asset.assetType || 'STOCK',
+      };
+    } catch (error) {
+      console.error(`[TASE STRATEGY] Error fetching TASE asset:`, error);
+      return null;
+    }
+  }
+}
+
+/**
+ * Global Strategy - US/International Assets
+ * 
+ * Rules:
+ * - Data source: Backend API (Yahoo Finance)
+ * - Price: As-Is (no normalization)
+ * - Currency: USD by default, ILS if symbol ends with .TA
+ */
+class GlobalStrategy {
+  static canHandle(asset) {
+    // Handles everything that's not TASE or Crypto
+    return !TASEStrategy.canHandle(asset) && !CryptoStrategy.canHandle(asset);
+  }
+
+  static async execute(asset) {
+    try {
+      const internalId = resolveInternalId(asset);
+      if (!internalId) return null;
+
+      if (DEBUG_PRICES) {
+        console.log(`[GLOBAL STRATEGY] Fetching ${internalId}...`);
+      }
+
+      const quotes = await getQuotes([internalId]);
+      const validQuotes = quotes.filter(q =>
+        q &&
+        !q.error &&
+        typeof q.price === 'number' &&
+        !isNaN(q.price) &&
+        q.price > 0
+      );
+
+      if (validQuotes.length === 0) {
+        const errorQuote = quotes.find(q => q && q.error);
+        if (errorQuote && DEBUG_PRICES) {
+          console.warn(`[GLOBAL STRATEGY] Quote error for ${internalId}:`, errorQuote.error);
+        }
+        return null;
+      }
+
+      const quote = validQuotes[0];
+
+      // Determine asset type
+      const symbol = asset.symbol || asset.apiId || '';
+      let assetType = 'STOCK';
+      if (symbol.startsWith('^') || internalId.startsWith('yahoo:^')) {
+        assetType = 'INDEX';
+      } else if (asset.assetType === 'ETF') {
+        assetType = 'ETF';
+      }
+
+      // Currency: USD by default, ILS if .TA symbol
+      let currency = quote.currency || 'USD';
+      if (asset.symbol && asset.symbol.endsWith('.TA')) {
+        currency = 'ILS';
+      }
+
+      return {
+        symbol: symbol,
+        name: asset.name || symbol,
+        currentPrice: quote.price,      // As-Is
+        currency: currency,
         change24h: quote.changePct || 0,
         changeAmount: (quote.price * (quote.changePct || 0)) / 100,
         lastUpdated: new Date(quote.timestamp || Date.now()),
         source: 'yahoo',
         assetType: assetType,
       };
-    });
-
-    return results;
-  } catch (error) {
-    console.error('Error fetching Yahoo prices batch:', error);
-    return {};
+    } catch (error) {
+      console.error('[GLOBAL STRATEGY] Error fetching price:', error);
+      return null;
+    }
   }
-};
+}
 
 /**
- * Fetch price for any asset type (STRICT SPLIT ROUTING)
- * Israeli (TASE) assets → Browser only (CORS proxy)
- * Global assets (US Stocks, Crypto) → Backend API only
- * @param {Object} asset - Asset object with apiId, marketDataSource, symbol
- * @returns {Promise<UnifiedAssetPrice|null>}
+ * Crypto Strategy - Cryptocurrency Assets
+ * 
+ * Rules:
+ * - Data source: Backend API (CoinGecko)
+ * - Price: As-Is (no normalization)
+ * - Currency: Always USD
+ */
+class CryptoStrategy {
+  static canHandle(asset) {
+    const internalId = resolveInternalId(asset);
+    return (
+      asset.marketDataSource === 'coingecko' ||
+      asset.assetType === 'CRYPTO' ||
+      internalId?.startsWith('cg:')
+    );
+  }
+
+  static async execute(asset) {
+    try {
+      const internalId = resolveInternalId(asset);
+      if (!internalId) return null;
+
+      if (DEBUG_PRICES) {
+        console.log(`[CRYPTO STRATEGY] Fetching ${internalId}...`);
+      }
+
+      const quotes = await getQuotes([internalId]);
+      const validQuotes = quotes.filter(q =>
+        q &&
+        !q.error &&
+        typeof q.price === 'number' &&
+        !isNaN(q.price) &&
+        q.price > 0
+      );
+
+      if (validQuotes.length === 0) {
+        const errorQuote = quotes.find(q => q && q.error);
+        if (errorQuote && DEBUG_PRICES) {
+          console.warn(`[CRYPTO STRATEGY] Quote error for ${internalId}:`, errorQuote.error);
+        }
+        return null;
+      }
+
+      const quote = validQuotes[0];
+
+      return {
+        symbol: asset.symbol || asset.apiId || '',
+        name: asset.name || asset.symbol,
+        currentPrice: quote.price,      // As-Is
+        currency: 'USD',                 // Always USD
+        change24h: quote.changePct || 0,
+        changeAmount: (quote.price * (quote.changePct || 0)) / 100,
+        lastUpdated: new Date(quote.timestamp || Date.now()),
+        source: 'coingecko',
+        assetType: 'CRYPTO',
+      };
+    } catch (error) {
+      console.error('[CRYPTO STRATEGY] Error fetching price:', error);
+      return null;
+    }
+  }
+}
+
+/**
+ * Strategy Dispatcher
+ * Returns the appropriate strategy for a given asset
+ */
+function getStrategy(asset) {
+  if (TASEStrategy.canHandle(asset)) return TASEStrategy;
+  if (CryptoStrategy.canHandle(asset)) return CryptoStrategy;
+  return GlobalStrategy;
+}
+
+// ==================== PUBLIC API ====================
+
+/**
+ * Fetch price for a single asset using Strategy Pattern
  */
 export const fetchAssetPrice = async (asset) => {
   if (!asset) return null;
@@ -511,158 +460,25 @@ export const fetchAssetPrice = async (asset) => {
     return null;
   }
 
-  // Resolve internal ID using the unified helper
-  const internalId = resolveInternalId(asset);
-  if (!internalId) {
-    if (DEBUG_PRICES) {
-      console.warn('[PRICE DEBUG] Could not resolve internal ID for asset:', asset);
-    }
-    return null;
+  const strategy = getStrategy(asset);
+  const strategyName = strategy.name || 'Unknown';
+
+  if (DEBUG_PRICES) {
+    console.log(`[PRICE SERVICE] Using ${strategyName} for asset:`, asset.name || asset.symbol);
   }
 
-  // ==================== SPLIT ROUTING LOGIC ====================
-  // Determine if this is a TASE asset
-  const isTaseAsset =
-    asset.marketDataSource === 'tase-local' ||
-    internalId.startsWith('tase:') ||
-    (asset.symbol && asset.symbol.endsWith('.TA'));
-
-  // ========== ROUTE A: TASE → Browser with Fallback ==========
-  if (isTaseAsset) {
-    try {
-      const securityId = internalId.startsWith('tase:')
-        ? internalId.substring(5)
-        : asset.apiId || asset.symbol;
-
-      if (DEBUG_PRICES) {
-        console.log(`[PRICE SINGULAR] Routing TASE asset ${securityId} to browser...`);
-      }
-
-      const browserData = await fetchTasePriceFromBrowser(securityId);
-
-      if (!browserData || !browserData.price) {
-        console.warn(`[PRICE SINGULAR] Failed to fetch TASE asset ${securityId} from browser`);
-
-        // ... (קוד ה-Fallback ליאהו נשאר ללא שינוי) ...
-        // ... אם יש לך שם את ה-Fallback, תשאיר אותו ...
-
-        return null;
-      }
-
-      const symbol = asset.apiId || asset.symbol || '';
-
-      // --- התיקון לשם הגנרי ---
-      let finalName = asset.name || asset.symbol; // [FIX #5] Fallback to symbol if name missing
-      const genericTitle = "פורטל קרנות";
-
-      // אם קיבלנו שם חדש (למשל מגלובס), והשם הנוכחי ריק או גנרי ("פורטל...") -> נדרוס אותו
-      if (browserData.name && (!finalName || finalName.includes(genericTitle))) {
-        console.log(`[NAME FIX] Replacing generic name with: ${browserData.name}`);
-        finalName = browserData.name;
-      }
-
-      return {
-        symbol: symbol,
-        name: finalName, // שימוש בשם המתוקן
-        currentPrice: browserData.price,
-        currency: 'ILS', // [FIX #1] Force ILS
-        change24h: browserData.changePct || 0,
-        changeAmount: (browserData.price * (browserData.changePct || 0)) / 100,
-        lastUpdated: new Date(),
-        source: browserData.source || 'funder-browser',
-        assetType: asset.assetType === 'ETF' ? 'ETF' : 'STOCK',
-      };
-    } catch (error) {
-      console.error(`[PRICE SINGULAR] Error fetching TASE asset ${internalId}:`, error);
-      return null;
-    }
-  }
-
-  // ========== ROUTE B: Global → Backend API Only ==========
-  try {
-    if (DEBUG_PRICES) {
-      console.log(`[PRICE SINGULAR] Routing global asset ${internalId} to backend...`);
-    }
-
-    // Use getQuotes directly for unified quote fetching
-    const quotes = await getQuotes([internalId]);
-
-    // Debug: Log quote fetching
-    if (DEBUG_PRICES) {
-      console.log('[PRICE DEBUG] fetchAssetPrice requested:', internalId, 'got quotes:', quotes.length);
-    }
-
-    // Filter valid quotes (no errors, valid price)
-    const validQuotes = quotes.filter(q =>
-      q &&
-      !q.error &&
-      typeof q.price === 'number' &&
-      !isNaN(q.price) &&
-      q.price > 0
-    );
-
-    if (validQuotes.length === 0) {
-      const errorQuote = quotes.find(q => q && q.error);
-      if (errorQuote) {
-        if (DEBUG_PRICES) {
-          console.warn(`[PRICE DEBUG] Quote error for ${internalId}:`, errorQuote.error);
-        }
-      }
-      return null;
-    }
-
-    const quote = validQuotes[0];
-
-    // Determine asset type
-    let assetType = 'STOCK';
-    const symbol = asset.symbol || asset.apiId || '';
-    if (symbol.startsWith('^') || internalId.startsWith('yahoo:^')) {
-      assetType = 'INDEX';
-    } else if (asset.assetType === 'CRYPTO' || internalId.startsWith('cg:')) {
-      assetType = 'CRYPTO';
-    } else if (asset.assetType === 'ETF') {
-      assetType = 'ETF';
-    }
-
-    // [FIX #1] Force ILS if symbol ends in .TA (even if fetched via Yahoo)
-    let currency = quote.currency || 'USD';
-    if (asset.symbol && asset.symbol.endsWith('.TA')) {
-      currency = 'ILS';
-    }
-
-    const result = {
-      symbol: symbol,
-      name: asset.name || symbol,
-      currentPrice: quote.price,
-      currency: currency,
-      change24h: quote.changePct || 0,
-      changeAmount: (quote.price * (quote.changePct || 0)) / 100,
-      lastUpdated: new Date(quote.timestamp || Date.now()),
-      source: internalId.startsWith('cg:') ? 'coingecko' : 'yahoo',
-      assetType: assetType,
-    };
-
-    return result;
-  } catch (error) {
-    console.error('Error fetching asset price:', error);
-    return null;
-  }
+  return await strategy.execute(asset);
 };
 
 /**
- * Fetch prices for multiple assets (STRICT SPLIT ROUTING with SMART CACHING)
- * Israeli (TASE) assets → Browser only (CORS proxy)
- * Global assets (US Stocks, Crypto) → Backend API only
+ * Fetch prices for multiple assets (with waterfall fallback)
  * 
- * NEW: Only fetches assets with stale prices (older than maxAgeMinutes)
- * Returns a mix of fresh prices (newly fetched) and cached prices (from assets)
- * 
- * @param {Array} assets - Array of asset objects
- * @param {Object} options - Optional configuration
- * @param {number} options.maxAgeMinutes - Maximum age before refresh (default: 5)
- * @param {boolean} options.forceRefresh - Force fetch all assets, ignore cache
- * @param {number} options.globalBatchSize - Batch size for global assets (default: 20)
- * @returns {Promise<Object<string, UnifiedAssetPrice>>}
+ * WATERFALL LOGIC:
+ * 1. Group assets by strategy
+ * 2. Execute TASE strategy first (browser)
+ * 3. If TASE assets fail but have valid symbols, retry with Global strategy (Yahoo .TA)
+ * 4. Execute Global and Crypto strategies
+ * 5. Merge results
  */
 export const fetchAssetPricesBatch = async (assets, options = {}) => {
   if (!assets || assets.length === 0) return {};
@@ -673,7 +489,7 @@ export const fetchAssetPricesBatch = async (assets, options = {}) => {
     globalBatchSize = 20
   } = options;
 
-  // ==================== STEP 0: SMART FILTERING (NEW!) ====================
+  // Step 0: Smart caching - filter out fresh prices
   const assetsToFetch = [];
   const cachedResults = {};
 
@@ -685,7 +501,6 @@ export const fetchAssetPricesBatch = async (assets, options = {}) => {
 
     // Check if asset has fresh price data
     if (!forceRefresh && !isAssetPriceStale(asset, maxAgeMinutes)) {
-      // Use cached price from asset
       if (asset.currentPrice) {
         cachedResults[internalId] = {
           symbol: asset.apiId || asset.symbol || '',
@@ -698,7 +513,7 @@ export const fetchAssetPricesBatch = async (assets, options = {}) => {
           source: asset.marketDataSource === 'tase-local' ? 'funder-browser' :
             (asset.assetType === 'CRYPTO' ? 'coingecko' : 'yahoo'),
           assetType: asset.assetType || 'STOCK',
-          cached: true // Mark as cached for debugging
+          cached: true
         };
         if (DEBUG_PRICES) {
           console.log(`[CACHE HIT] Using cached price for ${internalId}`);
@@ -707,7 +522,6 @@ export const fetchAssetPricesBatch = async (assets, options = {}) => {
       }
     }
 
-    // Asset needs updating
     assetsToFetch.push(asset);
   });
 
@@ -715,201 +529,140 @@ export const fetchAssetPricesBatch = async (assets, options = {}) => {
     console.log(`[SMART CACHE] Cached: ${Object.keys(cachedResults).length}, To Fetch: ${assetsToFetch.length}`);
   }
 
-  // If all assets are cached, return early
   if (assetsToFetch.length === 0) {
     return cachedResults;
   }
 
-  // ==================== STEP 1: SEPARATE INTO TWO BUCKETS ====================
-  const israelBucket = [];  // TASE assets → Browser fetch
-  const globalBucket = [];  // US Stocks, Crypto → Backend API
-  const assetMap = new Map(); // Map for result merging
+  // Step 1: Group assets by strategy
+  const taseAssets = [];
+  const globalAssets = [];
+  const cryptoAssets = [];
+  const assetMap = new Map();
 
   assetsToFetch.forEach(asset => {
     const internalId = resolveInternalId(asset);
     if (!internalId) return;
 
-    // Store asset for later lookup
     assetMap.set(internalId, asset);
 
-    // Routing logic: TASE assets go to Israel bucket, everything else to Global bucket
-    const isTaseAsset =
-      asset.marketDataSource === 'tase-local' ||
-      internalId.startsWith('tase:') ||
-      (asset.symbol && asset.symbol.endsWith('.TA'));
-
-    if (isTaseAsset) {
-      israelBucket.push({ asset, internalId });
+    const strategy = getStrategy(asset);
+    if (strategy === TASEStrategy) {
+      taseAssets.push({ asset, internalId });
+    } else if (strategy === CryptoStrategy) {
+      cryptoAssets.push({ asset, internalId });
     } else {
-      globalBucket.push({ asset, internalId });
+      globalAssets.push({ asset, internalId });
     }
   });
 
   if (DEBUG_PRICES) {
-    console.log(`[SPLIT ROUTING] Israel Bucket: ${israelBucket.length}, Global Bucket: ${globalBucket.length}`);
+    console.log(`[STRATEGY ROUTING] TASE: ${taseAssets.length}, Global: ${globalAssets.length}, Crypto: ${cryptoAssets.length}`);
   }
 
   const results = {};
 
-  // ==================== STEP 2: PARALLEL EXECUTION ====================
+  // Step 2: Execute TASE strategy (browser-based)
+  const tasePromises = taseAssets.map(async ({ asset, internalId }) => {
+    const data = await TASEStrategy.execute(asset);
 
-  // ========== BUCKET A: ISRAEL (Browser-only with Fallback Tracking) ==========
-  const israelPromises = israelBucket.map(async ({ asset, internalId }) => {
-    try {
-      // Extract security ID from internal ID (e.g., "tase:5140454" → "5140454")
-      const securityId = internalId.startsWith('tase:')
-        ? internalId.substring(5)
-        : asset.apiId || asset.symbol;
-
-      if (DEBUG_PRICES) {
-        console.log(`[ISRAEL BUCKET] Fetching ${securityId} from browser...`);
-      }
-
-      const browserData = await fetchTasePriceFromBrowser(securityId);
-
-      if (!browserData || !browserData.price) {
-        console.warn(`[ISRAEL BUCKET] Failed to fetch ${securityId} - marking for server retry`);
-        // CRITICAL CHANGE: Return failure marker instead of fallback
-        return {
-          key: internalId,
-          failed: true, // Mark as failed for waterfall retry
-          asset: asset  // Keep asset for retry logic
-        };
-      }
-
-      // Normalize to match backend format
-      const priceKey = internalId;
-      const symbol = asset.apiId || asset.symbol || '';
-
-      // --- התיקון לשם הגנרי ---
-      let finalName = asset.name || symbol;
-      const genericTitle = "פורטל קרנות";
-
-      if (browserData.name && (!finalName || finalName.includes(genericTitle))) {
-        finalName = browserData.name;
-      }
-
-      return {
-        key: priceKey,
-        data: {
-          symbol: symbol,
-          name: finalName,
-          currentPrice: browserData.price,
-          currency: 'ILS',
-          change24h: browserData.changePct || 0,
-          changeAmount: (browserData.price * (browserData.changePct || 0)) / 100,
-          lastUpdated: new Date(),
-          source: browserData.source || 'funder-browser',
-          assetType: asset.assetType === 'ETF' ? 'ETF' : 'STOCK',
-        }
-      };
-    } catch (error) {
-      console.error(`[ISRAEL BUCKET] Error fetching ${internalId}:`, error.message);
-      // Return failure marker for waterfall retry
+    if (!data) {
+      // WATERFALL FALLBACK: Mark for retry with Global strategy
       return {
         key: internalId,
         failed: true,
         asset: asset
       };
     }
+
+    return {
+      key: internalId,
+      data: data
+    };
   });
 
-  // ==================== STEP 2.5: WATERFALL FALLBACK - Wait for Israel Results ====================
+  const taseResults = await Promise.all(tasePromises);
 
-  // Wait for all Israel bucket fetches first
-  const israelResults = await Promise.all(israelPromises);
+  // Step 3: WATERFALL FALLBACK - Retry failed TASE with Global strategy
+  const failedTaseAssets = taseResults.filter(r => r && r.failed);
+  const retryBucket = [];
 
-  // Extract failed Israeli assets for server retry
-  const failedIsraeliAssets = israelResults.filter(result => result && result.failed);
+  if (failedTaseAssets.length > 0) {
+    if (DEBUG_PRICES) {
+      console.log(`[WATERFALL FALLBACK] ${failedTaseAssets.length} TASE assets failed, retrying with Yahoo...`);
+    }
 
-  if (DEBUG_PRICES && failedIsraeliAssets.length > 0) {
-    console.log(`[WATERFALL FALLBACK] ${failedIsraeliAssets.length} Israeli assets failed browser fetch, retrying via server...`);
+    failedTaseAssets.forEach(({ asset, key }) => {
+      const symbol = asset.symbol || asset.apiId;
+      if (!symbol) {
+        console.warn(`[WATERFALL FALLBACK] Skipping asset without symbol:`, asset.name);
+        return;
+      }
+
+      // Format for Yahoo: Ensure .TA suffix
+      let yahooSymbol = symbol.toString().toUpperCase();
+      if (!yahooSymbol.endsWith('.TA')) {
+        yahooSymbol = `${yahooSymbol}.TA`;
+      }
+
+      const yahooInternalId = `yahoo:${yahooSymbol}`;
+
+      if (DEBUG_PRICES) {
+        console.log(`[WATERFALL FALLBACK] Retrying ${symbol} as ${yahooSymbol}`);
+      }
+
+      retryBucket.push({
+        asset: asset,
+        internalId: yahooInternalId,
+        originalKey: key,
+        yahooSymbol: yahooSymbol
+      });
+    });
   }
 
-  // ==================== STEP 3: FORMAT FAILED ISRAELI ASSETS FOR YAHOO ====================
+  // Step 4: Execute Global and Crypto strategies (backend API)
+  const backendAssets = [...globalAssets, ...cryptoAssets, ...retryBucket];
+  let backendQuotes = [];
 
-  const retryBucket = [];
-  failedIsraeliAssets.forEach(({ asset, key }) => {
-    // Check if asset has a valid symbol or security ID
-    const symbol = asset.symbol || asset.apiId;
-
-    if (!symbol) {
-      console.warn(`[WATERFALL FALLBACK] Skipping asset without symbol:`, asset.name);
-      return;
-    }
-
-    // Format for Yahoo: Ensure .TA suffix
-    // Works for both tickers (POLI → POLI.TA) and numeric IDs (1183441 → 1183441.TA)
-    let yahooSymbol = symbol.toString().toUpperCase();
-    if (!yahooSymbol.endsWith('.TA')) {
-      yahooSymbol = `${yahooSymbol}.TA`;
-    }
-
-    const yahooInternalId = `yahoo:${yahooSymbol}`;
-
-    if (DEBUG_PRICES) {
-      console.log(`[WATERFALL FALLBACK] Retrying ${symbol} as ${yahooSymbol} via server`);
-    }
-
-    retryBucket.push({
-      asset: asset,
-      internalId: yahooInternalId,
-      originalKey: key, // Keep original key for result mapping
-      yahooSymbol: yahooSymbol
-    });
-  });
-
-  // ==================== STEP 4: EXECUTE SERVER FETCH (Global + Retry) ====================
-
-  // ========== BUCKET B: GLOBAL + RETRY (Backend API with BATCHING) ==========
-  let globalQuotes = [];
-  const combinedBucket = [...globalBucket, ...retryBucket];
-
-  if (combinedBucket.length > 0) {
+  if (backendAssets.length > 0) {
     try {
-      const combinedIds = combinedBucket.map(item => item.internalId);
+      const backendIds = backendAssets.map(item => item.internalId);
 
-      // Split into batches to avoid overwhelming the API
+      // Split into batches
       const batches = [];
-      for (let i = 0; i < combinedIds.length; i += globalBatchSize) {
-        batches.push(combinedIds.slice(i, i + globalBatchSize));
+      for (let i = 0; i < backendIds.length; i += globalBatchSize) {
+        batches.push(backendIds.slice(i, i + globalBatchSize));
       }
 
       if (DEBUG_PRICES) {
-        console.log(`[GLOBAL+RETRY BUCKET] Sending ${combinedIds.length} assets (${globalBucket.length} global + ${retryBucket.length} retry) in ${batches.length} batches...`);
+        console.log(`[BACKEND API] Fetching ${backendIds.length} assets in ${batches.length} batches...`);
       }
 
-      // Process batches sequentially to respect rate limits
       for (let i = 0; i < batches.length; i++) {
         const batch = batches[i];
-        if (DEBUG_PRICES) {
-          console.log(`[GLOBAL+RETRY BUCKET] Processing batch ${i + 1}/${batches.length} (${batch.length} assets)`);
-        }
         const batchQuotes = await getQuotes(batch);
-        globalQuotes.push(...batchQuotes);
+        backendQuotes.push(...batchQuotes);
       }
     } catch (error) {
-      console.error('[GLOBAL+RETRY BUCKET] Backend API error:', error);
+      console.error('[BACKEND API] Error:', error);
     }
   }
 
-  // ==================== STEP 5: MERGE & NORMALIZE ====================
-
-  // Add successful Israel bucket results to final output
-  israelResults.forEach(result => {
+  // Step 5: Merge results
+  // Add successful TASE results
+  taseResults.forEach(result => {
     if (result && result.key && result.data) {
       results[result.key] = result.data;
     }
   });
 
-  // Create a map of retry bucket items for result mapping
+  // Create retry map for waterfall results
   const retryMap = new Map();
   retryBucket.forEach(item => {
     retryMap.set(item.internalId, item);
   });
 
-  // Add Global bucket results (backend API) AND Retry bucket results
-  const validGlobalQuotes = globalQuotes.filter(q =>
+  // Add backend results
+  const validBackendQuotes = backendQuotes.filter(q =>
     q &&
     !q.error &&
     typeof q.price === 'number' &&
@@ -917,74 +670,40 @@ export const fetchAssetPricesBatch = async (assets, options = {}) => {
     q.price > 0
   );
 
-  // Log errors from backend and use old prices if available
-  globalQuotes.forEach(q => {
-    if (q && q.error) {
-      console.warn(`[GLOBAL+RETRY BUCKET] Backend error for ${q.id}:`, q.error);
-
-      // Check if this is a retry item first
-      const retryItem = retryMap.get(q.id);
-      if (retryItem) {
-        console.warn(`[WATERFALL FALLBACK] Failed to fetch ${retryItem.yahooSymbol} from server - no fallback available`);
-        // Could optionally use old price here if needed
-        return;
-      }
-
-      // Try to use old price for regular global assets
-      const asset = assetMap.get(q.id);
-      if (asset && asset.currentPrice) {
-        const symbol = asset.apiId || asset.symbol || '';
-        results[q.id] = {
-          symbol: symbol,
-          name: asset.name || symbol,
-          currentPrice: asset.currentPrice,
-          currency: asset.currency || 'USD',
-          change24h: asset.priceChange24h || 0,
-          changeAmount: (asset.currentPrice * (asset.priceChange24h || 0)) / 100,
-          lastUpdated: asset.lastUpdated,
-          source: asset.assetType === 'CRYPTO' ? 'coingecko' : 'yahoo',
-          assetType: asset.assetType || 'STOCK',
-          stale: true
-        };
-      }
-    }
-  });
-
-  validGlobalQuotes.forEach((quote) => {
-    // Check if this is a retry item (waterfall fallback from Israel bucket)
+  validBackendQuotes.forEach(quote => {
+    // Check if this is a retry item (waterfall fallback)
     const retryItem = retryMap.get(quote.id);
 
     if (retryItem) {
-      // This is a retry item - map back to original Israeli asset key
+      // Waterfall fallback success - map back to original TASE key
       const asset = retryItem.asset;
       const originalKey = retryItem.originalKey;
 
       if (DEBUG_PRICES) {
-        console.log(`[WATERFALL FALLBACK] ✅ Success! ${retryItem.yahooSymbol} fetched from server`);
+        console.log(`[WATERFALL FALLBACK] ✅ Success! ${retryItem.yahooSymbol} fetched from Yahoo`);
       }
 
       results[originalKey] = {
         symbol: asset.apiId || asset.symbol || '',
         name: asset.name || retryItem.yahooSymbol,
-        currentPrice: quote.price,
-        currency: quote.currency || 'ILS', // Keep ILS for Israeli stocks
+        currentPrice: quote.price,  // As-Is from Yahoo
+        currency: quote.currency || 'ILS',
         change24h: quote.changePct || 0,
         changeAmount: (quote.price * (quote.changePct || 0)) / 100,
         lastUpdated: new Date(quote.timestamp || Date.now()),
-        source: 'yahoo-fallback', // Mark as fallback source
+        source: 'yahoo-fallback',
         assetType: asset.assetType || 'STOCK',
       };
       return;
     }
 
-    // Regular global asset (not a retry)
+    // Regular backend asset (not a retry)
     const asset = assetMap.get(quote.id);
     if (!asset) return;
 
-    const priceKey = quote.id;
     const symbol = asset.apiId || asset.symbol || '';
-
     let assetType = 'STOCK';
+
     if (symbol.startsWith('^')) {
       assetType = 'INDEX';
     } else if (asset.assetType === 'CRYPTO' || quote.id.startsWith('cg:')) {
@@ -993,145 +712,101 @@ export const fetchAssetPricesBatch = async (assets, options = {}) => {
       assetType = 'ETF';
     }
 
-    results[priceKey] = {
+    results[quote.id] = {
       symbol: symbol,
       name: asset.name || symbol,
-      currentPrice: quote.price,
-      currency: quote.currency || 'USD',
+      currentPrice: quote.price,  // As-Is
+      currency: quote.currency || (assetType === 'CRYPTO' ? 'USD' : 'USD'),
       change24h: quote.changePct || 0,
       changeAmount: (quote.price * (quote.changePct || 0)) / 100,
       lastUpdated: new Date(quote.timestamp || Date.now()),
-      source: quote.source === 'coingecko' ? 'coingecko' : 'yahoo',
+      source: assetType === 'CRYPTO' ? 'coingecko' : 'yahoo',
       assetType: assetType,
     };
   });
 
   // Merge cached results with fresh results
-  const finalResults = { ...cachedResults, ...results };
+  return { ...cachedResults, ...results };
+};
 
-  if (DEBUG_PRICES) {
-    console.log(`[SPLIT ROUTING] Final results count: ${Object.keys(finalResults).length} (${Object.keys(cachedResults).length} cached, ${Object.keys(results).length} fresh)`);
+// ==================== HISTORICAL DATA ====================
+
+/**
+ * Fetch price history for an asset
+ * Uses backend API for all asset types
+ */
+export const fetchPriceHistory = async (asset, timeRange = '1M') => {
+  if (!asset) return null;
+
+  const internalId = resolveInternalId(asset);
+  if (!internalId) return null;
+
+  const cacheKey = `history:${internalId}:${timeRange}`;
+  const cached = getCachedPrice(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const history = await getHistory(internalId, timeRange);
+
+    if (history && history.length > 0) {
+      setCachedPrice(cacheKey, history);
+      return history;
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Error fetching price history:', error);
+    return null;
   }
+};
 
-  return finalResults;
+// ==================== BACKWARD COMPATIBILITY ====================
+// Keep legacy functions for backward compatibility
+
+export const fetchCryptoPrice = async (coinId, vsCurrency = 'usd') => {
+  const asset = {
+    marketDataSource: 'coingecko',
+    apiId: coinId,
+    symbol: coinId,
+    assetType: 'CRYPTO'
+  };
+  return await fetchAssetPrice(asset);
+};
+
+export const fetchCryptoPricesBatch = async (coinIds, vsCurrency = 'usd') => {
+  const assets = coinIds.map(id => ({
+    marketDataSource: 'coingecko',
+    apiId: id,
+    symbol: id,
+    assetType: 'CRYPTO'
+  }));
+  return await fetchAssetPricesBatch(assets);
+};
+
+export const fetchYahooPrice = async (symbol) => {
+  const asset = {
+    marketDataSource: 'yahoo',
+    apiId: symbol,
+    symbol: symbol,
+    assetType: 'STOCK'
+  };
+  return await fetchAssetPrice(asset);
+};
+
+export const fetchYahooPricesBatch = async (symbols) => {
+  const assets = symbols.map(symbol => ({
+    marketDataSource: 'yahoo',
+    apiId: symbol,
+    symbol: symbol,
+    assetType: 'STOCK'
+  }));
+  return await fetchAssetPricesBatch(assets);
 };
 
 // ==================== HISTORICAL PRICES ====================
 
 /**
- * Fetch historical price for a crypto on a specific date
- * @param {string} coinId - CoinGecko coin ID
- * @param {string} date - Date string "DD-MM-YYYY"
- * @returns {Promise<number|null>}
- */
-export const fetchCryptoHistoricalPrice = async (coinId, date) => {
-  if (!coinId || !date) return null;
-
-  const cacheKey = `crypto-history:${coinId}:${date}`;
-  const cached = getCachedPrice(cacheKey);
-  if (cached) return cached;
-
-  try {
-    // Use backend API instead of direct CoinGecko call
-    // Convert date to internal ID and fetch history
-    const internalId = `cg:${coinId}`;
-
-    // Fetch 5d range to ensure we get the date
-    const history = await getHistory(internalId, '5d', '1d');
-
-    if (!history || !history.points || history.points.length === 0) {
-      return null;
-    }
-
-    // Parse target date
-    const [day, month, year] = date.split('-').map(Number);
-    const targetDate = new Date(year, month - 1, day);
-    const targetTimestamp = targetDate.getTime();
-
-    // Find the closest point to the target date
-    let closestPoint = null;
-    let minDiff = Infinity;
-
-    for (const point of history.points) {
-      const diff = Math.abs(point.t - targetTimestamp);
-      if (diff < minDiff) {
-        minDiff = diff;
-        closestPoint = point;
-      }
-    }
-
-    // If we found a point within 24 hours, use it
-    if (closestPoint && minDiff < 24 * 60 * 60 * 1000) {
-      setCachedPrice(cacheKey, closestPoint.v);
-      return closestPoint.v;
-    }
-
-    return null;
-  } catch (error) {
-    console.error('Error fetching crypto historical price:', error);
-    return null;
-  }
-};
-
-/**
- * Fetch historical price for a stock on a specific date
- * @param {Object|string} assetOrId - Asset object or ID string
- * @param {Date|string} date - Target date
- * @returns {Promise<number|null>}
- */
-export const fetchYahooHistoricalPrice = async (assetOrId, date) => {
-  if (!assetOrId || !date) return null;
-
-  // Resolve internal ID
-  const internalId = typeof assetOrId === 'object'
-    ? resolveInternalId(assetOrId)
-    : resolveInternalId(assetOrId);
-
-  if (!internalId) return null;
-
-  const targetDate = new Date(date);
-  const dateStr = targetDate.toISOString().split('T')[0];
-  const cacheKey = `yahoo-history:${internalId}:${dateStr}`;
-  const cached = getCachedPrice(cacheKey);
-  if (cached) return cached;
-
-  try {
-    // Fetch history data from backend (5d range to ensure we get the date)
-    const history = await getHistory(internalId, '5d', '1d');
-
-    if (!history || !history.points || history.points.length === 0) {
-      return null;
-    }
-
-    // Find the closest point to the target date
-    const targetTimestamp = targetDate.getTime();
-    let closestPoint = null;
-    let minDiff = Infinity;
-
-    for (const point of history.points) {
-      const diff = Math.abs(point.t - targetTimestamp);
-      if (diff < minDiff) {
-        minDiff = diff;
-        closestPoint = point;
-      }
-    }
-
-    // If we found a point within 24 hours, use it
-    if (closestPoint && minDiff < 24 * 60 * 60 * 1000) {
-      setCachedPrice(cacheKey, closestPoint.v);
-      return closestPoint.v;
-    }
-
-    return null;
-  } catch (error) {
-    console.error(`Error fetching historical price for ${internalId}:`, error);
-    // Return null instead of throwing to prevent app crashes
-    return null;
-  }
-};
-
-/**
- * Fetch historical price for any asset type
+ * Fetch historical price for an asset on a specific date
  * @param {Object} asset - Asset object
  * @param {Date|string} date - Target date
  * @returns {Promise<number|null>}
@@ -1142,8 +817,7 @@ export const fetchAssetHistoricalPrice = async (asset, date) => {
   const internalId = resolveInternalId(asset);
   if (!internalId) return null;
 
-  // ==================== SPLIT ROUTING: Skip TASE Historical ====================
-  // TASE historical data is not supported by backend, return null immediately
+  // TASE historical data not supported via browser scraping
   const isTaseAsset =
     asset.marketDataSource === 'tase-local' ||
     internalId.startsWith('tase:') ||
@@ -1151,98 +825,48 @@ export const fetchAssetHistoricalPrice = async (asset, date) => {
 
   if (isTaseAsset) {
     if (DEBUG_PRICES) {
-      console.log(`[HISTORY DEBUG] TASE historical data not supported for ${internalId}, returning null`);
+      console.log(`[HISTORY] TASE historical data not supported for ${internalId}`);
     }
     return null;
   }
 
-  // CoinGecko uses different date format
-  if (internalId.startsWith('cg:')) {
-    const coinId = internalId.replace('cg:', '');
-    const targetDate = new Date(date);
-    const dateStr = `${String(targetDate.getDate()).padStart(2, '0')}-${String(targetDate.getMonth() + 1).padStart(2, '0')}-${targetDate.getFullYear()}`;
-    return await fetchCryptoHistoricalPrice(coinId, dateStr);
-  }
-
-  // Yahoo and other assets use same backend endpoint
-  return await fetchYahooHistoricalPrice(asset, date);
-};
-
-// ==================== PRICE CHART DATA ====================
-
-/**
- * Fetch price history for chart (time series) - via backend API
- * @param {Object|string} assetOrId - Asset object or ID string
- * @param {number} days - Number of days of history
- * @returns {Promise<Array<{date: Date, price: number}>>}
- */
-export const fetchPriceHistory = async (assetOrId, days = 30) => {
-  if (!assetOrId) return [];
-
-  // Resolve internal ID from asset or string
-  const internalId = typeof assetOrId === 'object'
-    ? resolveInternalId(assetOrId)
-    : resolveInternalId(assetOrId);
-
-  if (!internalId) return [];
-
-  const cacheKey = `history:${internalId}:${days}`;
-  const cached = priceCache.get(cacheKey);
-  if (cached && Date.now() - cached.timestamp < HISTORY_CACHE_DURATION) {
-    return cached.data;
-  }
+  const targetDate = new Date(date);
+  const dateStr = targetDate.toISOString().split('T')[0];
+  const cacheKey = `history:${internalId}:${dateStr}`;
+  const cached = getCachedPrice(cacheKey);
+  if (cached) return cached;
 
   try {
-    // Convert days to range
-    const range = days <= 7 ? '5d' : days <= 30 ? '1mo' : days <= 90 ? '3mo' : '1y';
+    // Fetch 5-day history range to find the target date
+    const history = await getHistory(internalId, '5d', '1d');
 
-    let fetchId = internalId;
+    if (!history || !history.points || history.points.length === 0) {
+      return null;
+    }
 
-    // NEW: Handle TASE assets (scraped) by falling back to Yahoo for history
-    // TASE IDs are "tase:123". Backend doesn't know "tase".
-    // We convert to "yahoo:123.TA" to try fetching history from Yahoo.
-    if (internalId.startsWith('tase:')) {
-      const rawId = internalId.replace('tase:', '');
-      // Check if rawId is numeric (typical TASE ID) or ticker
-      const symbol = typeof assetOrId === 'object' && assetOrId.symbol ? assetOrId.symbol : rawId;
+    // Find closest point to target date
+    const targetTimestamp = targetDate.getTime();
+    let closestPoint = null;
+    let minDiff = Infinity;
 
-      // Use symbol if available (e.g. "TEVA"), otherwise rawId (e.g. "123456")
-      // Yahoo expects "TEVA.TA" or "123456.TA"
-      const yahooSymbol = symbol.endsWith('.TA') ? symbol : `${symbol}.TA`;
-
-      fetchId = `yahoo:${yahooSymbol}`;
-
-      if (DEBUG_PRICES) {
-        console.log(`[HISTORY] Routing TASE asset ${internalId} to Yahoo history as ${fetchId}`);
+    for (const point of history.points) {
+      const diff = Math.abs(point.t - targetTimestamp);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestPoint = point;
       }
     }
 
-    const history = await getHistory(fetchId, range, '1d');
-
-    // Handle error responses or missing data gracefully
-    if (!history || history.error || !Array.isArray(history.points) || history.points.length === 0) {
-      if (history && history.error) {
-        // "History data not found" is a normal case, not an error - use debug level
-        if (history.error === 'History data not found') {
-          console.debug(`History data not found for ${fetchId} (this is normal)`);
-        } else {
-          // Real errors should be logged as warnings
-          console.warn(`History error for ${fetchId}:`, history.error);
-        }
-      }
-      return [];
+    // Use point if within 24 hours
+    if (closestPoint && minDiff < 24 * 60 * 60 * 1000) {
+      setCachedPrice(cacheKey, closestPoint.v);
+      return closestPoint.v;
     }
 
-    const prices = history.points.map((point) => ({
-      date: new Date(point.t),
-      price: point.v,
-    }));
-
-    priceCache.set(cacheKey, { data: prices, timestamp: Date.now() });
-    return prices;
+    return null;
   } catch (error) {
-    console.error('Error fetching price history:', error);
-    return [];
+    console.error(`Error fetching historical price for ${internalId}:`, error);
+    return null;
   }
 };
 
@@ -1287,7 +911,6 @@ export const getExchangeRate = async () => {
     return 3.2;
   } catch (error) {
     console.error('Error fetching exchange rate:', error);
-    // Return cached rate even if expired, or default
     return exchangeRateCache.rate || 3.2;
   }
 };
@@ -1301,27 +924,6 @@ export const getExchangeRate = async () => {
  * @returns {Promise<number>} Converted price
  */
 export const convertCurrency = async (price, fromCurrency, toCurrency) => {
-  // Use the canonical conversion function
   const { convertAmount } = await import('./currency');
   return await convertAmount(price, fromCurrency, toCurrency);
 };
-
-// ==================== CACHE MANAGEMENT ====================
-
-/**
- * Clear price cache
- */
-export const clearPriceCache = () => {
-  priceCache.clear();
-};
-
-/**
- * Get cache statistics
- */
-export const getPriceCacheStats = () => {
-  return {
-    size: priceCache.size,
-    keys: Array.from(priceCache.keys())
-  };
-};
-
