@@ -105,7 +105,15 @@ export const useAssets = (user, currencyRate) => {
               rate
             );
 
-            currentPrice = priceInDisplayCurrency;
+            // ALSO convert to asset's currency for display
+            const priceInAssetCurrency = await convertAmount(
+              assetNativePrice,
+              assetNativeCurrency,
+              asset.currency || 'USD',
+              rate
+            );
+
+            currentPrice = priceInDisplayCurrency;  // For calculations
             value = asset.quantity * priceInDisplayCurrency;
 
             // Calculate P/L in display currency
@@ -121,6 +129,17 @@ export const useAssets = (user, currencyRate) => {
             profitLossPercent = costBasisInDisplayCurrency > 0
               ? (profitLoss / costBasisInDisplayCurrency) * 100
               : 0;
+
+            return {
+              ...asset,
+              value,
+              currentPrice,
+              currentPriceNative: priceInAssetCurrency,  // NEW: price in asset's currency
+              profitLoss,
+              profitLossPercent,
+              hasLivePrice: !!livePrice,
+              priceChange24h: livePrice?.change24h || null
+            };
           } else {
             // No live price - use purchase price as estimate
             const costBasis = asset.quantity * (asset.purchasePrice || 0);

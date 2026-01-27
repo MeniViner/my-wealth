@@ -324,16 +324,16 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
 
       {/* Sources Management Tab */}
       {activeTab === 'sources' && (
-          <SourcesConfiguration
-            systemData={systemData}
-            onAdd={handleAddSource}
-            onUpdate={handleUpdateSource}
-            onDelete={handleDeleteSource}
-            onReorder={handleReorderSource}
-            getSourceTypeTitle={getSourceTypeTitle}
-            getSourceTypeDescription={getSourceTypeDescription}
-            getSourceTypeIcon={getSourceTypeIcon}
-          />
+        <SourcesConfiguration
+          systemData={systemData}
+          onAdd={handleAddSource}
+          onUpdate={handleUpdateSource}
+          onDelete={handleDeleteSource}
+          onReorder={handleReorderSource}
+          getSourceTypeTitle={getSourceTypeTitle}
+          getSourceTypeDescription={getSourceTypeDescription}
+          getSourceTypeIcon={getSourceTypeIcon}
+        />
       )}
 
       {/* Assets Tab */}
@@ -885,12 +885,6 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                     <div className="text-2xl font-bold text-green-600 dark:text-green-400" dir="ltr">
                       ₪{selectedAsset.value.toLocaleString()}
                     </div>
-                    {selectedAsset.hasLivePrice && (
-                      <div className="text-sm md:text-xs text-emerald-500 flex items-center gap-1 mt-1">
-                        <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-                        מחיר עדכני
-                      </div>
-                    )}
                     {/* הצג שווי מקור רק אם שונה משווי נוכחי */}
                     {selectedAsset.originalValue && selectedAsset.originalValue !== selectedAsset.value && (
                       <div className="text-sm md:text-xs text-slate-400 dark:text-slate-500 mt-1" dir="ltr">
@@ -929,12 +923,18 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                         {selectedAsset.currency === 'USD' ? '$' : '₪'}{(selectedAsset.purchasePrice || 0).toLocaleString()}
                       </div>
                     </div>
-                    {selectedAsset.currentPrice && (
+                    {selectedAsset.currentPriceNative && (
                       <div className="bg-emerald-50 dark:bg-emerald-900/20 p-3 rounded-lg text-center">
                         <div className="text-sm md:text-xs text-emerald-600 dark:text-emerald-400">מחיר נוכחי</div>
                         <div className="font-bold text-emerald-700 dark:text-emerald-300 font-mono" dir="ltr">
-                          ${selectedAsset.currentPrice.toLocaleString()}
+                          {selectedAsset.currency === 'USD' ? '$' : '₪'}{selectedAsset.currentPriceNative.toLocaleString()}
                         </div>
+                        {selectedAsset.hasLivePrice && (
+                          <div className="text-xs text-emerald-500 flex items-center justify-center gap-1 mt-1">
+                            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                            Live
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

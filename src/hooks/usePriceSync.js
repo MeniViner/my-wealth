@@ -224,14 +224,37 @@ async function savePricesToFirestoreWithLedger(assets, prices, user) {
                 calculatedChangePct = priceData.change24h || 0;
             }
 
-            // C. Update Current Data
-            updates.currentPrice = priceData.currentPrice;
+            // C. Convert Price to Asset's Currency
+            // CRITICAL FIX: priceData.currentPrice is in priceData.currency (e.g., 'USD')
+            // But we need to store it in asset.currency (e.g., 'USD' or 'ILS')
+            // If they match, no conversion needed. Otherwise, convert.
+            const { convertAmount } = await import('../services/currency');
+            const apiCurrency = priceData.currency || 'USD';
+            const targetCurrency = asset.currency || apiCurrency;
+            
+            let convertedPrice = priceData.currentPrice;
+            if (apiCurrency !== targetCurrency) {
+                try {
+                    convertedPrice = await convertAmount(
+                        priceData.currentPrice,
+                        apiCurrency,
+                        targetCurrency
+                    );
+                    console.log(`[LEDGER] Converted price for ${asset.symbol || asset.name}: ${priceData.currentPrice} ${apiCurrency} → ${convertedPrice.toFixed(2)} ${targetCurrency}`);
+                } catch (error) {
+                    console.error(`[LEDGER] Error converting price for ${asset.symbol}:`, error);
+                    // Fallback: use original price without conversion
+                }
+            }
+
+            // D. Update Current Data
+            updates.currentPrice = convertedPrice;  // Store in asset's currency
             updates.priceChange24h = calculatedChangePct; // OUR calculated change
             updates.lastUpdated = serverTimestamp();
-            updates.currency = priceData.currency || asset.currency || 'USD';
+            updates.currency = targetCurrency;  // Keep asset's currency consistent
             
             // Only update if price actually changed or it's a forced refresh
-            const priceDiff = Math.abs((asset.currentPrice || 0) - priceData.currentPrice);
+            const priceDiff = Math.abs((asset.currentPrice || 0) - convertedPrice);
             if (priceDiff > 0.0001) {
                 batch.update(assetRef, updates);
                 batchCount++;

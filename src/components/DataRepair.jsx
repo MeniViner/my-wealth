@@ -120,11 +120,73 @@ const DataRepair = () => {
         setLoading(false);
     };
 
+    // 🔧 FIX #4: Reset Incorrectly Converted Prices
+    // For assets where currentPrice was saved in wrong currency
+    const fixCurrencyPrices = async () => {
+        if (!user) {
+            alert('No user logged in');
+            return;
+        }
+
+        const confirmAction = window.confirm(
+            'This will RESET all current prices to force re-fetch with correct currency conversion.\n\n' +
+            'After running this, click "Refresh Prices" to get corrected values.\n\n' +
+            'Continue?'
+        );
+
+        if (!confirmAction) return;
+
+        setLoading(true);
+        setLog([]);
+        const newLogs = [];
+
+        try {
+            const assetsRef = collection(db, 'artifacts', appId, 'users', user.uid, 'assets');
+            const snapshot = await getDocs(assetsRef);
+
+            const batch = writeBatch(db);
+            let count = 0;
+
+            snapshot.forEach((docSnap) => {
+                const asset = docSnap.data();
+
+                // Only reset assets that have currentPrice and use live data
+                if (asset.currentPrice && asset.assetMode === 'QUANTITY' && asset.marketDataSource !== 'manual') {
+                    batch.update(docSnap.ref, {
+                        currentPrice: null,
+                        lastUpdated: null,
+                        priceChange24h: null
+                    });
+                    count++;
+                    newLogs.push(`✅ Reset: ${asset.name || asset.symbol} (was ${asset.currentPrice.toFixed(2)} ${asset.currency})`);
+                }
+            });
+
+            if (count > 0) {
+                await batch.commit();
+                newLogs.push(`\n🎉 SUCCESS: Reset ${count} asset prices`);
+                newLogs.push(`\n⚠️ NEXT STEP: Click "Refresh Prices" button to re-fetch with correct conversion`);
+            } else {
+                newLogs.push('ℹ️ No assets needed fixing');
+            }
+
+        } catch (error) {
+            console.error('Error fixing currency prices:', error);
+            newLogs.push(`❌ ERROR: ${error.message}`);
+        }
+
+        setLog(newLogs);
+        setLoading(false);
+    };
+
     return (
         <div className="bg-slate-900 p-6 rounded-xl border border-slate-700 my-6 text-white text-left" dir="ltr">
             <h3 className="text-xl font-bold flex items-center gap-2 mb-4 text-red-400">
-                <Wrench /> Emergency Repair Tool
+                <Wrench /> תיקון נתונים שגוי
             </h3>
+            <p className="text-sm text-gray-400 mb-4">
+                השתמש בפריטים אלה בקפידה. הם יכולים לשנות את הנתונים שלך וגרום לנזק בלתי הפוך.
+            </p>
 
             <div className="flex flex-wrap gap-4 mb-4">
                 {/* כפתור 1: תיקון המטבע */}
@@ -135,6 +197,11 @@ const DataRepair = () => {
                 {/* כפתור 2: חלוקה ב-100 */}
                 <button onClick={fixInflation} disabled={loading} className="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 rounded-lg font-mono text-sm">
                     <RefreshCw size={16} /> Fix Inflation (/100)
+                </button>
+
+                {/* כפתור 2.5: איפוס מחירים עם המרה לא נכונה */}
+                <button onClick={fixCurrencyPrices} disabled={loading} className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg font-mono text-sm">
+                    <RefreshCw size={16} /> Reset Current Prices
                 </button>
 
                 {/* כפתור 3: איפוס מלא (החדש) */}
