@@ -38,6 +38,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
     instrument: initialInstrument,
     platform: initialPlatform,
     category: initialCategory,
+    subcategory: systemData.subcategories[0]?.name || 'אחר',
     currency: initialCategory === 'קריפטו' ? 'USD' : 'ILS',
     originalValue: '',
     tags: '',
@@ -133,6 +134,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         instrument: editAsset.instrument || (systemData.instruments[0]?.name || ''),
         platform: editAsset.platform || (systemData.platforms[0]?.name || ''),
         category: editAsset.category || (systemData.categories[0]?.name || 'אחר'),
+        subcategory: editAsset.subcategory || (systemData.subcategories[0]?.name || 'אחר'),
         currency: editAsset.currency || 'ILS',
         originalValue: editAsset.originalValue || editAsset.value || '',
         tags: editAsset.tags ? editAsset.tags.join(', ') : '',
@@ -155,6 +157,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         instrument: initialInstrument,
         platform: initialPlatform,
         category: initialCategory,
+        subcategory: systemData.subcategories[0]?.name || 'אחר',
         currency: initialCategory === 'קריפטו' ? 'USD' : 'ILS',
         originalValue: '',
         tags: '',
@@ -311,13 +314,24 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
 
   // Fetch current price when asset is selected (for QUANTITY mode)
   const handleFetchCurrentPrice = async () => {
+    console.log('[BUTTON] handleFetchCurrentPrice clicked');
+    console.log('[BUTTON] Form data:', {
+      apiId: formData.apiId,
+      symbol: formData.symbol,
+      marketDataSource: formData.marketDataSource,
+      assetType: formData.assetType,
+      category: formData.category
+    });
+
     if (!formData.apiId && !formData.symbol) {
+      console.error('[BUTTON] Missing apiId and symbol');
       await infoAlert('שגיאה', 'נא לבחור נכס קודם');
       return;
     }
 
     setPriceLoading(true);
     try {
+      console.log('[BUTTON] Calling fetchAssetPrice...');
       const priceData = await fetchAssetPrice({
         apiId: formData.apiId,
         marketDataSource: formData.marketDataSource,
@@ -326,12 +340,21 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         securityId: formData.securityId
       });
 
+      console.log('[BUTTON] Received priceData:', priceData);
+
       // Check if quote is valid: exists, no error, has valid price
       if (priceData &&
         !priceData.error &&
         typeof priceData.currentPrice === 'number' &&
         isFinite(priceData.currentPrice) &&
         priceData.currentPrice > 0) {
+
+        console.log('[BUTTON] ✅ Valid price data received:', {
+          currentPrice: priceData.currentPrice,
+          currency: priceData.currency,
+          source: priceData.source
+        });
+
         setCurrentPriceData(priceData);
         // [FIX #4] The Critical Change:
         // If we are in "Edit Mode" (editAsset exists), DO NOT auto-fill purchase price.
@@ -340,9 +363,12 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         const shouldAutoFill = !editAsset;
 
         if (shouldAutoFill) {
+          console.log('[BUTTON] Auto-filling price fields');
           setNativePrice(priceData.currentPrice);
           setNativeCurrency(priceData.currency || 'USD');
           setIsPriceManual(false);
+        } else {
+          console.log('[BUTTON] Skipping auto-fill (edit mode)');
         }
 
         // Get converted price for toast message
@@ -356,38 +382,55 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         );
       } else {
         // Invalid quote - show error with details
+        console.error('[BUTTON] ❌ Invalid price data:', priceData);
         const errorMsg = priceData?.error
           ? `לא ניתן לשלוף מחיר: ${priceData.error}`
           : 'לא ניתן לשלוף מחיר. נסה שוב או הזן ידנית.';
         await errorAlert('שגיאה', errorMsg);
       }
     } catch (error) {
-      console.error('Error fetching price:', error);
+      console.error('[BUTTON] Error fetching price:', error);
       await errorAlert('שגיאה', `שגיאה בשליפת מחיר: ${error.message || 'שגיאה לא ידועה'}`);
     }
     setPriceLoading(false);
+    console.log('[BUTTON] handleFetchCurrentPrice completed');
   };
 
   // Fetch historical price for the purchase date
   const handleFetchHistoricalPrice = async () => {
+    console.log('[BUTTON] handleFetchHistoricalPrice clicked');
+    console.log('[BUTTON] Form data:', {
+      apiId: formData.apiId,
+      symbol: formData.symbol,
+      marketDataSource: formData.marketDataSource,
+      purchaseDate: formData.purchaseDate,
+      category: formData.category
+    });
+
     if (!formData.apiId && !formData.symbol) {
+      console.error('[BUTTON] Missing apiId and symbol');
       await infoAlert('שגיאה', 'נא לבחור נכס קודם');
       return;
     }
     if (!formData.purchaseDate) {
+      console.error('[BUTTON] Missing purchaseDate');
       await infoAlert('שגיאה', 'נא לבחור תאריך רכישה');
       return;
     }
 
     setPriceLoading(true);
     try {
+      console.log('[BUTTON] Calling fetchAssetHistoricalPrice...');
       const historicalPrice = await fetchAssetHistoricalPrice({
         apiId: formData.apiId,
         marketDataSource: formData.marketDataSource,
         symbol: formData.symbol
       }, formData.purchaseDate);
 
+      console.log('[BUTTON] Received historicalPrice:', historicalPrice);
+
       if (historicalPrice !== null) {
+        console.log('[BUTTON] ✅ Valid historical price:', historicalPrice);
         // Get native currency (from current price data or default)
         const assetNativeCurrency = nativeCurrency || 'USD';
 
@@ -995,6 +1038,24 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
           </div>
         </div>
 
+        {/* Subcategory Selection */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="md:col-span-2">
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">קטגוריית חלוקה</label>
+            <CustomSelect
+              value={formData.subcategory || ''}
+              onChange={(val) => setFormData({ ...formData, subcategory: val })}
+              options={systemData.subcategories.map(sc => ({
+                value: sc.name,
+                label: sc.name,
+                iconColor: sc.color
+              }))}
+              placeholder="בחר קטמגוריית חלוקה"
+              iconColor={systemData.subcategories.find(sc => sc.name === formData.subcategory)?.color || '#8B5CF6'}
+            />
+          </div>
+        </div>
+
         {/* Soft Section Divider */}
         <div className="border-t border-slate-100 dark:border-slate-800 -mx-2 md:-mx-8" />
 
@@ -1027,21 +1088,29 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
 
                       // Ensure apiId has correct prefix format
                       let apiId = asset.id;
-                      if (asset.provider === 'tase-local' || asset.exchange === 'TASE') {
+
+                      // 1. Check for specific provider types first
+                      if (asset.marketDataSource === 'coingecko') {
+                        // For crypto, ensure apiId is in "cg:..." format
+                        if (!apiId.startsWith('cg:')) {
+                          apiId = `cg:${apiId}`;
+                        }
+                      }
+                      // 2. Handle Local TASE assets (Numeric IDs from Funder/Globes)
+                      else if (asset.provider === 'tase-local' || (asset.exchange === 'TASE' && asset.marketDataSource !== 'yahoo')) {
                         // For TASE assets, ensure apiId is in "tase:..." format
                         if (!apiId.startsWith('tase:')) {
                           const securityNumber = asset.securityId || asset.extra?.securityNumber || apiId.replace(/^tase:/, '');
                           apiId = `tase:${securityNumber}`;
                         }
-                      } else if (asset.marketDataSource === 'coingecko') {
-                        // For crypto, ensure apiId is in "cg:..." format
-                        if (!apiId.startsWith('cg:')) {
-                          apiId = `cg:${apiId}`;
-                        }
-                      } else if (apiId && !apiId.includes(':')) {
-                        // For other assets, ensure apiId is in "yahoo:..." format
-                        apiId = `yahoo:${apiId}`;
                       }
+                      // 3. Handle Yahoo assets (including TASE stocks via Yahoo)
+                      else if (asset.marketDataSource === 'yahoo' || (apiId && !apiId.includes(':'))) {
+                        // Remove any existing incorrect prefixes if present (cleanup)
+                        let cleanId = apiId.replace(/^tase:/, '').replace(/^yahoo:/, '');
+                        apiId = `yahoo:${cleanId}`;
+                      }
+
 
                       setFormData({
                         ...formData,

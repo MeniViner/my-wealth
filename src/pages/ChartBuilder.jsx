@@ -10,10 +10,10 @@ import { successAlert, errorAlert, confirmAlert, successToast } from '../utils/a
 import CustomSelect from '../components/CustomSelect';
 import { generatePortfolioContext } from '../utils/aiContext';
 import { callGeminiAI, parseAndValidateChartSuggestions, parseAndValidateSingleChart } from '../services/gemini';
-import { 
-  Save, BarChart3, Filter, X, Eye, PieChart, BarChart, BarChart2, Radar, Gauge, LayoutGrid, 
-  Plus, Trash2, ArrowUp, ArrowDown, Monitor, Smartphone, Edit2, Check, AreaChart, LineChart, 
-  TrendingUp, Grid, Settings, Sparkles, Loader2, ChevronDown, ChevronUp, LucideBarChartHorizontal 
+import {
+  Save, BarChart3, Filter, X, Eye, PieChart, BarChart, BarChart2, Radar, Gauge, LayoutGrid,
+  Plus, Trash2, ArrowUp, ArrowDown, Monitor, Smartphone, Edit2, Check, AreaChart, LineChart,
+  TrendingUp, Grid, Settings, Sparkles, Loader2, ChevronDown, ChevronUp, LucideBarChartHorizontal
 } from 'lucide-react';
 
 const ChartBuilder = () => {
@@ -26,6 +26,7 @@ const ChartBuilder = () => {
     title: '',
     chartType: 'PieChart',
     dataKey: 'category',
+    labelMode: 'symbol', // How to display symbols: 'symbol' | 'name' | 'category'
     aggregationType: 'sum',
     isVisible: true,
     order: 1,
@@ -36,6 +37,7 @@ const ChartBuilder = () => {
       platform: '',
       instrument: '',
       currency: '',
+      subcategory: '',
       tags: []
     }
   });
@@ -74,6 +76,7 @@ const ChartBuilder = () => {
   const translateDataKey = (dataKey) => {
     const translations = {
       'category': 'אפיקי השקעה',
+      'subcategory': 'קטגוריות חלוקה',
       'platform': 'חשבונות וארנקים',
       'instrument': 'מטבעות בסיס',
       'symbol': 'סמל נכס',
@@ -98,6 +101,10 @@ const ChartBuilder = () => {
 
   const uniqueCurrencies = useMemo(() => {
     return [...new Set(assets.map(a => a.currency))].filter(Boolean);
+  }, [assets]);
+
+  const uniqueSubcategories = useMemo(() => {
+    return [...new Set(assets.map(a => a.subcategory))].filter(Boolean);
   }, [assets]);
 
   const allTags = useMemo(() => {
@@ -133,6 +140,9 @@ const ChartBuilder = () => {
         return typeof symbol === 'string' ? '#94a3b8' : symbol.color;
       }
     }
+    if (dataKey === 'subcategory') {
+      return systemData.subcategories?.find(sc => sc.name === name)?.color || '#8B5CF6';
+    }
     // Default colors for other groupings
     const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#6366f1', '#ec4899', '#14b8a6'];
     return colors[Math.abs(name.charCodeAt(0)) % colors.length];
@@ -140,8 +150,9 @@ const ChartBuilder = () => {
 
   // Helper function to get chart data for a chart config
   const getChartDataForConfig = (chartConfig) => {
-    const aggregated = aggregateData(assets, chartConfig.dataKey, chartConfig.filters || {});
-    
+    const aggregated = aggregateData(assets, chartConfig.dataKey, chartConfig.filters || {}, chartConfig.labelMode || 'symbol');
+
+
     if (chartConfig.chartType === 'Treemap') {
       return aggregated.map(item => ({
         name: item.name,
@@ -154,8 +165,8 @@ const ChartBuilder = () => {
 
   // Aggregate data based on current config
   const aggregatedData = useMemo(() => {
-    return aggregateData(assets, config.dataKey, config.filters);
-  }, [assets, config.dataKey, config.filters]);
+    return aggregateData(assets, config.dataKey, config.filters, config.labelMode);
+  }, [assets, config.dataKey, config.filters, config.labelMode]);
 
   // Prepare data for different chart types
   const chartData = useMemo(() => {
@@ -195,12 +206,13 @@ const ChartBuilder = () => {
         await saveChartConfig(user, config);
         await successAlert('הצלחה', 'הגרף נשמר בהצלחה!');
       }
-      
+
       // Reset form
       setConfig({
         title: '',
         chartType: 'PieChart',
         dataKey: 'category',
+        labelMode: 'symbol',
         aggregationType: 'sum',
         isVisible: true,
         order: 1,
@@ -211,6 +223,7 @@ const ChartBuilder = () => {
           platform: '',
           instrument: '',
           currency: '',
+          subcategory: '',
           tags: []
         }
       });
@@ -231,6 +244,7 @@ const ChartBuilder = () => {
       title: chart.title || '',
       chartType: chart.chartType || 'PieChart',
       dataKey: chart.dataKey || 'category',
+      labelMode: chart.labelMode || 'symbol',
       aggregationType: chart.aggregationType || 'sum',
       isVisible: chart.isVisible !== false,
       order: chart.order || 1,
@@ -241,6 +255,7 @@ const ChartBuilder = () => {
         platform: chart.filters?.platform || '',
         instrument: chart.filters?.instrument || '',
         currency: chart.filters?.currency || '',
+        subcategory: chart.filters?.subcategory || '',
         tags: chart.filters?.tags || []
       }
     });
@@ -266,6 +281,7 @@ const ChartBuilder = () => {
         platform: '',
         instrument: '',
         currency: '',
+        subcategory: '',
         tags: []
       }
     }));
@@ -274,7 +290,7 @@ const ChartBuilder = () => {
   // Subscribe to chart configurations
   useEffect(() => {
     if (!user) return;
-    
+
     const unsubscribe = subscribeToChartConfigs(user, (configs) => {
       const sortedCharts = configs.sort((a, b) => (a.order || 0) - (b.order || 0));
       setCharts(sortedCharts);
@@ -293,14 +309,15 @@ const ChartBuilder = () => {
     setLoadingSuggestions(true);
     try {
       const portfolioContext = generatePortfolioContext(assets);
-      
+
       // Get available options for the AI
       const availableChartTypes = ['PieChart', 'BarChart', 'HorizontalBarChart', 'RadialBar', 'Treemap', 'RadarChart', 'AreaChart', 'LineChart', 'ComposedChart'];
-      const availableDataKeys = ['category', 'platform', 'instrument', 'symbol', 'tags', 'currency'];
+      const availableDataKeys = ['category', 'subcategory', 'platform', 'instrument', 'symbol', 'tags', 'currency'];
       const availableCategories = uniqueCategories;
       const availablePlatforms = uniquePlatforms;
       const availableInstruments = uniqueInstruments;
       const availableCurrencies = uniqueCurrencies;
+      const availableSubcategories = uniqueSubcategories;
 
       const prompt = `אתה עוזר ליצירת גרפים עבור תיק השקעות.
 
@@ -310,6 +327,7 @@ ${portfolioContext}
 - סוגי גרפים: ${availableChartTypes.join(', ')}
 - קיבוץ לפי: ${availableDataKeys.join(', ')}
 - קטגוריות: ${availableCategories.join(', ') || 'אין'}
+- קטגוריות חלוקה: ${availableSubcategories.join(', ') || 'אין'}
 - פלטפורמות: ${availablePlatforms.join(', ') || 'אין'}
 - מטבעות בסיס: ${availableInstruments.join(', ') || 'אין'}
 - מטבעות: ${availableCurrencies.join(', ') || 'אין'}
@@ -330,6 +348,7 @@ ${portfolioContext}
         "platform": "",
         "instrument": "",
         "currency": "",
+        "subcategory": "",
         "tags": []
       },
       "size": "medium",
@@ -346,10 +365,10 @@ ${portfolioContext}
 - ודא שהגרף יציג נתונים מעניינים`;
 
       const response = await callGeminiAI(prompt, portfolioContext);
-      
+
       // Parse and validate using Zod schema
       const validation = parseAndValidateChartSuggestions(response);
-      
+
       if (!validation.success) {
         // Use fallback data if validation fails
         if (validation.data) {
@@ -374,12 +393,13 @@ ${portfolioContext}
             platform: availablePlatforms.includes(suggestion.filters?.platform) ? suggestion.filters.platform : '',
             instrument: availableInstruments.includes(suggestion.filters?.instrument) ? suggestion.filters.instrument : '',
             currency: availableCurrencies.includes(suggestion.filters?.currency) ? suggestion.filters.currency : '',
+            subcategory: availableSubcategories.includes(suggestion.filters?.subcategory) ? suggestion.filters.subcategory : '',
             tags: Array.isArray(suggestion.filters?.tags) ? suggestion.filters.tags : []
           }
         }));
-        
+
         setAiSuggestions(validatedSuggestions);
-        
+
         // Save suggestions to localStorage
         try {
           const storageKey = `chartBuilder_aiSuggestions_${user?.uid || 'guest'}`;
@@ -411,13 +431,14 @@ ${portfolioContext}
     setLoadingCustomChart(true);
     try {
       const portfolioContext = generatePortfolioContext(assets);
-      
+
       const availableChartTypes = ['PieChart', 'BarChart', 'HorizontalBarChart', 'RadialBar', 'Treemap', 'RadarChart', 'AreaChart', 'LineChart', 'ComposedChart'];
-      const availableDataKeys = ['category', 'platform', 'instrument', 'symbol', 'tags', 'currency'];
+      const availableDataKeys = ['category', 'subcategory', 'platform', 'instrument', 'symbol', 'tags', 'currency'];
       const availableCategories = uniqueCategories;
       const availablePlatforms = uniquePlatforms;
       const availableInstruments = uniqueInstruments;
       const availableCurrencies = uniqueCurrencies;
+      const availableSubcategories = uniqueSubcategories;
 
       const prompt = `אתה עוזר ליצירת גרף עבור תיק השקעות.
 
@@ -427,6 +448,7 @@ ${portfolioContext}
 - סוגי גרפים: ${availableChartTypes.join(', ')}
 - קיבוץ לפי: ${availableDataKeys.join(', ')}
 - קטגוריות: ${availableCategories.join(', ') || 'אין'}
+- קטגוריות חלוקה: ${availableSubcategories.join(', ') || 'אין'}
 - פלטפורמות: ${availablePlatforms.join(', ') || 'אין'}
 - מטבעות בסיס: ${availableInstruments.join(', ') || 'אין'}
 - מטבעות: ${availableCurrencies.join(', ') || 'אין'}
@@ -444,6 +466,7 @@ ${portfolioContext}
     "platform": "",
     "instrument": "",
     "currency": "",
+    "subcategory": "",
     "tags": []
   },
   "size": "medium",
@@ -457,10 +480,10 @@ ${portfolioContext}
 - השתמש בפילטרים רק אם זה מוסיף ערך`;
 
       const response = await callGeminiAI(prompt, portfolioContext);
-      
+
       // Parse and validate using Zod schema
       const validation = parseAndValidateSingleChart(response);
-      
+
       let chartConfig;
       if (!validation.success) {
         // Use fallback data if validation fails
@@ -498,7 +521,7 @@ ${portfolioContext}
           }
         };
       }
-      
+
       setConfig(chartConfig);
       setCustomPrompt('');
       await successToast('הגרף נוצר בהצלחה!', 2000);
@@ -557,7 +580,7 @@ ${portfolioContext}
 
   const handleSaveChartName = async (chart) => {
     if (!editChartName.trim()) return;
-    
+
     try {
       await saveChartConfig(user, {
         ...chart,
@@ -581,7 +604,7 @@ ${portfolioContext}
   const handleMoveChart = async (chartId, direction) => {
     const currentIndex = charts.findIndex(c => c.id === chartId);
     if (currentIndex === -1) return;
-    
+
     const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
     if (newIndex < 0 || newIndex >= charts.length) return;
 
@@ -630,6 +653,7 @@ ${portfolioContext}
                 title: '',
                 chartType: 'PieChart',
                 dataKey: 'category',
+                labelMode: 'symbol',
                 aggregationType: 'sum',
                 isVisible: true,
                 order: 1,
@@ -646,21 +670,19 @@ ${portfolioContext}
             }
             setActiveTab('create');
           }}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
-            activeTab === 'create'
-              ? 'border-emerald-600 dark:border-emerald-400 text-emerald-600 dark:text-emerald-400'
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
-          }`}
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${activeTab === 'create'
+            ? 'border-emerald-600 dark:border-emerald-400 text-emerald-600 dark:text-emerald-400'
+            : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
         >
           צור גרף חדש
         </button>
         <button
           onClick={() => setActiveTab('manage')}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${
-            activeTab === 'manage'
-              ? 'border-emerald-600 dark:border-emerald-400 text-emerald-600 dark:text-emerald-400'
-              : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
-          }`}
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${activeTab === 'manage'
+            ? 'border-emerald-600 dark:border-emerald-400 text-emerald-600 dark:text-emerald-400'
+            : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
         >
           ניהול גרפים ({charts.length})
         </button>
@@ -682,6 +704,7 @@ ${portfolioContext}
                     title: '',
                     chartType: 'PieChart',
                     dataKey: 'category',
+                    labelMode: 'symbol',
                     aggregationType: 'sum',
                     isVisible: true,
                     order: 1,
@@ -793,7 +816,7 @@ ${portfolioContext}
                         )}
                       </button>
                     </div>
-                    
+
                     {loadingSuggestions ? (
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {[1, 2, 3].map((index) => (
@@ -864,48 +887,47 @@ ${portfolioContext}
             </div>
           )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Configuration Panel - Hidden on mobile, shown in drawer */}
-        <div className="hidden lg:block lg:col-span-1 space-y-4">
-          {/* Chart Type Selector */}
-          <div className="bg-white dark:bg-slate-800 p-4 md:p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-            <label className="block text-xs font-semibold text-slate-600 mb-3 uppercase tracking-wide">
-              סוג גרף
-            </label>
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { value: 'BarChart', label: 'עמודות', icon: BarChart },
-                // { value: 'StackedBarChart', label: 'מוערם', icon: BarChart2 },
-                { value: 'HorizontalBarChart', label: 'אופקי', icon: BarChart2 },
-                { value: 'RadialBar', label: 'רדיאלי', icon: Gauge },
-                { value: 'PieChart', label: 'עוגה', icon: PieChart },
-                { value: 'Treemap', label: 'מפה', icon: LayoutGrid },
-                { value: 'RadarChart', label: 'רדאר', icon: Radar },
-                { value: 'AreaChart', label: 'אזור', icon: AreaChart },
-                { value: 'LineChart', label: 'קו', icon: LineChart },
-                { value: 'ComposedChart', label: 'משולב', icon: TrendingUp },
-              ].map(type => {
-                const IconComponent = type.icon;
-                return (
-                  <button
-                    key={type.value}
-                    onClick={() => setConfig({ ...config, chartType: type.value })}
-                    className={`px-3 py-2.5 text-xs font-medium rounded-lg transition border flex flex-col items-center gap-1 ${
-                      config.chartType === type.value
-                        ? 'bg-emerald-600 dark:bg-emerald-500 text-white border-emerald-600 dark:border-emerald-500'
-                        : 'bg-slate-50 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 hover:border-slate-300 dark:hover:border-slate-500'
-                    }`}
-                  >
-                    <IconComponent size={16} />
-                    {type.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Configuration Panel - Hidden on mobile, shown in drawer */}
+            <div className="hidden lg:block lg:col-span-1 space-y-4">
+              {/* Chart Type Selector */}
+              <div className="bg-white dark:bg-slate-800 p-4 md:p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
+                <label className="block text-xs font-semibold text-slate-600 mb-3 uppercase tracking-wide">
+                  סוג גרף
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: 'BarChart', label: 'עמודות', icon: BarChart },
+                    // { value: 'StackedBarChart', label: 'מוערם', icon: BarChart2 },
+                    { value: 'HorizontalBarChart', label: 'אופקי', icon: BarChart2 },
+                    { value: 'RadialBar', label: 'רדיאלי', icon: Gauge },
+                    { value: 'PieChart', label: 'עוגה', icon: PieChart },
+                    { value: 'Treemap', label: 'מפה', icon: LayoutGrid },
+                    { value: 'RadarChart', label: 'רדאר', icon: Radar },
+                    { value: 'AreaChart', label: 'אזור', icon: AreaChart },
+                    { value: 'LineChart', label: 'קו', icon: LineChart },
+                    { value: 'ComposedChart', label: 'משולב', icon: TrendingUp },
+                  ].map(type => {
+                    const IconComponent = type.icon;
+                    return (
+                      <button
+                        key={type.value}
+                        onClick={() => setConfig({ ...config, chartType: type.value })}
+                        className={`px-3 py-2.5 text-xs font-medium rounded-lg transition border flex flex-col items-center gap-1 ${config.chartType === type.value
+                          ? 'bg-emerald-600 dark:bg-emerald-500 text-white border-emerald-600 dark:border-emerald-500'
+                          : 'bg-slate-50 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 hover:border-slate-300 dark:hover:border-slate-500'
+                          }`}
+                      >
+                        <IconComponent size={16} />
+                        {type.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-          {/* Grid Lines Toggle - Only for charts that support it */}
-          {/* {['BarChart', 'StackedBarChart', 'HorizontalBarChart', 'AreaChart', 'LineChart', 'ComposedChart'].includes(config.chartType) && (
+              {/* Grid Lines Toggle - Only for charts that support it */}
+              {/* {['BarChart', 'StackedBarChart', 'HorizontalBarChart', 'AreaChart', 'LineChart', 'ComposedChart'].includes(config.chartType) && (
             <div className="bg-white dark:bg-slate-800 p-4 md:p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
               <label className="block text-xs font-semibold text-slate-600 mb-3 uppercase tracking-wide">
                 קווי רשת
@@ -931,506 +953,577 @@ ${portfolioContext}
             </div>
           )} */}
 
-          {/* Group By Selector */}
-          <div className="bg-white dark:bg-slate-800 p-4 md:p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-            <label className="block text-xs font-semibold text-slate-600 mb-3 uppercase tracking-wide">
-              קיבוץ לפי
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {[
-                { value: 'category', label: 'אפיקי השקעה' },
-                { value: 'platform', label: 'חשבונות וארנקים' },
-                { value: 'instrument', label: 'מטבעות בסיס' },
-                { value: 'symbol', label: 'סמל' },
-                { value: 'tags', label: 'תגיות' },
-                { value: 'currency', label: 'מטבע' }
-              ].map(group => (
-                <button
-                  key={group.value}
-                  onClick={() => setConfig({ ...config, dataKey: group.value })}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${
-                    config.dataKey === group.value
-                      ? 'bg-emerald-600 dark:bg-emerald-500 text-white'
-                      : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600'
-                  }`}
-                >
-                  {group.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Filters */}
-          <div className="bg-white dark:bg-slate-800 p-4 md:p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                <Filter size={14} />
-                פילטרים
-              </div>
-              {hasActiveFilters && (
-                <button
-                  onClick={clearFilters}
-                  className="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-1"
-                  title="נקה פילטרים"
-                >
-                  <X size={12} />
-                  נקה
-                </button>
-              )}
-            </div>
-            
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">אפיקי השקעה</label>
-                <CustomSelect
-                  value={config.filters.category || ''}
-                  onChange={(val) => setConfig({
-                    ...config,
-                    filters: { ...config.filters, category: val }
-                  })}
-                  options={[
-                    { value: '', label: 'הכל' },
-                    ...uniqueCategories.map(cat => ({
-                      value: cat,
-                      label: cat,
-                      iconColor: systemData?.categories?.find(c => c.name === cat)?.color
-                    }))
-                  ]}
-                  placeholder="הכל"
-                  className="text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">חשבונות וארנקים</label>
-                <CustomSelect
-                  value={config.filters.platform || ''}
-                  onChange={(val) => setConfig({
-                    ...config,
-                    filters: { ...config.filters, platform: val }
-                  })}
-                  options={[
-                    { value: '', label: 'הכל' },
-                    ...uniquePlatforms.map(plat => ({
-                      value: plat,
-                      label: plat,
-                      iconColor: systemData?.platforms?.find(p => p.name === plat)?.color
-                    }))
-                  ]}
-                  placeholder="הכל"
-                  className="text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">מטבע</label>
-                <CustomSelect
-                  value={config.filters.currency || ''}
-                  onChange={(val) => setConfig({
-                    ...config,
-                    filters: { ...config.filters, currency: val }
-                  })}
-                  options={[
-                    { value: '', label: 'הכל' },
-                    ...uniqueCurrencies.map(curr => ({
-                      value: curr,
-                      label: curr
-                    }))
-                  ]}
-                  placeholder="הכל"
-                  className="text-xs"
-                />
-              </div>
-            </div>
-          </div>
-
-        </div>
-
-        {/* Preview Area */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-            {/* Preview Header */}
-            <div className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 md:px-6 py-3 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 flex-1 min-w-0">
-                {/* Chart Title - Editable */}
-                {isEditingTitle ? (
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <input
-                      type="text"
-                      value={config.title}
-                      onChange={(e) => setConfig({ ...config, title: e.target.value })}
-                      onBlur={() => setIsEditingTitle(false)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          setIsEditingTitle(false);
-                        } else if (e.key === 'Escape') {
-                          setIsEditingTitle(false);
-                        }
-                      }}
-                      className="flex-1 px-3 py-1.5 text-base md:text-lg font-semibold text-slate-800 dark:text-white bg-white dark:bg-slate-700 border-2 border-emerald-500 dark:border-emerald-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      placeholder="הזן שם לגרף"
-                      autoFocus
-                    />
+              {/* Group By Selector */}
+              <div className="bg-white dark:bg-slate-800 p-4 md:p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
+                <label className="block text-xs font-semibold text-slate-600 mb-3 uppercase tracking-wide">
+                  קיבוץ לפי
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { value: 'category', label: 'אפיקי השקעה' },
+                    { value: 'subcategory', label: 'קטגוריות חלוקה' },
+                    { value: 'platform', label: 'חשבונות וארנקים' },
+                    { value: 'instrument', label: 'מטבעות בסיס' },
+                    { value: 'symbol', label: 'סמל' },
+                    { value: 'tags', label: 'תגיות' },
+                    { value: 'currency', label: 'מטבע' }
+                  ].map(group => (
                     <button
-                      onClick={() => setIsEditingTitle(false)}
-                      className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300"
-                      aria-label="סיים עריכה"
+                      key={group.value}
+                      onClick={() => setConfig({ ...config, dataKey: group.value })}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${config.dataKey === group.value
+                        ? 'bg-emerald-600 dark:bg-emerald-500 text-white'
+                        : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600'
+                        }`}
                     >
-                      <Check size={18} />
+                      {group.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Label Mode Selector - shown only when grouping by symbol */}
+              {config.dataKey === 'symbol' && (
+                <div className="bg-gradient-to-br from-emerald-50 to-blue-50 dark:from-emerald-900/20 dark:to-blue-900/20 p-4 md:p-5 rounded-2xl shadow-sm border border-emerald-200 dark:border-emerald-800">
+                  <label className="block text-xs font-semibold text-emerald-700 dark:text-emerald-300 mb-3 uppercase tracking-wide">
+                    תצוגת תוויות
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { value: 'symbol', label: 'סמל נכס', icon: '🔤' },
+                      { value: 'name', label: 'שם נכס', icon: '📝' },
+                      { value: 'category', label: 'קטגוריה', icon: '📁' }
+                    ].map(mode => (
+                      <button
+                        key={mode.value}
+                        onClick={() => setConfig({ ...config, labelMode: mode.value })}
+                        className={`px-3 py-2 text-xs font-medium rounded-lg transition flex items-center gap-1.5 ${config.labelMode === mode.value
+                          ? 'bg-emerald-600 dark:bg-emerald-500 text-white shadow-md'
+                          : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-emerald-100 dark:hover:bg-slate-600 border border-emerald-200 dark:border-slate-600'
+                          }`}
+                      >
+                        <span>{mode.icon}</span>
+                        <span>{mode.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-3">
+                    {config.labelMode === 'symbol' && '🔤 יוצג הסמל של הנכס (למשל: AAPL, BTC)'}
+                    {config.labelMode === 'name' && '📝 יוצג שם הנכס המלא (למשל: Apple Inc, Bitcoin)'}
+                    {config.labelMode === 'category' && '📁 יוצג לפי קטגוריית הנכס (מניות, קריפטו וכו\')'}
+                  </p>
+                </div>
+              )}
+
+              {/* Filters */}
+              <div className="bg-white dark:bg-slate-800 p-4 md:p-5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                    <Filter size={14} />
+                    פילטרים
+                  </div>
+                  {hasActiveFilters && (
+                    <button
+                      onClick={clearFilters}
+                      className="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-1"
+                      title="נקה פילטרים"
+                    >
+                      <X size={12} />
+                      נקה
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">אפיקי השקעה</label>
+                    <CustomSelect
+                      value={config.filters.category || ''}
+                      onChange={(val) => setConfig({
+                        ...config,
+                        filters: { ...config.filters, category: val }
+                      })}
+                      options={[
+                        { value: '', label: 'הכל' },
+                        ...uniqueCategories.map(cat => ({
+                          value: cat,
+                          label: cat,
+                          iconColor: systemData?.categories?.find(c => c.name === cat)?.color
+                        }))
+                      ]}
+                      placeholder="הכל"
+                      className="text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">קטגוריות חלוקה</label>
+                    <CustomSelect
+                      value={config.filters.subcategory || ''}
+                      onChange={(val) => setConfig({
+                        ...config,
+                        filters: { ...config.filters, subcategory: val }
+                      })}
+                      options={[
+                        { value: '', label: 'הכל' },
+                        ...uniqueSubcategories.map(subcat => ({
+                          value: subcat,
+                          label: subcat,
+                          iconColor: systemData?.subcategories?.find(sc => sc.name === subcat)?.color
+                        }))
+                      ]}
+                      placeholder="הכל"
+                      className="text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">חשבונות וארנקים</label>
+                    <CustomSelect
+                      value={config.filters.platform || ''}
+                      onChange={(val) => setConfig({
+                        ...config,
+                        filters: { ...config.filters, platform: val }
+                      })}
+                      options={[
+                        { value: '', label: 'הכל' },
+                        ...uniquePlatforms.map(plat => ({
+                          value: plat,
+                          label: plat,
+                          iconColor: systemData?.platforms?.find(p => p.name === plat)?.color
+                        }))
+                      ]}
+                      placeholder="הכל"
+                      className="text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">מטבע</label>
+                    <CustomSelect
+                      value={config.filters.currency || ''}
+                      onChange={(val) => setConfig({
+                        ...config,
+                        filters: { ...config.filters, currency: val }
+                      })}
+                      options={[
+                        { value: '', label: 'הכל' },
+                        ...uniqueCurrencies.map(curr => ({
+                          value: curr,
+                          label: curr
+                        }))
+                      ]}
+                      placeholder="הכל"
+                      className="text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Preview Area */}
+            <div className="lg:col-span-2 space-y-4">
+              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+                {/* Preview Header */}
+                <div className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 md:px-6 py-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    {/* Chart Title - Editable */}
+                    {isEditingTitle ? (
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <input
+                          type="text"
+                          value={config.title}
+                          onChange={(e) => setConfig({ ...config, title: e.target.value })}
+                          onBlur={() => setIsEditingTitle(false)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              setIsEditingTitle(false);
+                            } else if (e.key === 'Escape') {
+                              setIsEditingTitle(false);
+                            }
+                          }}
+                          className="flex-1 px-3 py-1.5 text-base md:text-lg font-semibold text-slate-800 dark:text-white bg-white dark:bg-slate-700 border-2 border-emerald-500 dark:border-emerald-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          placeholder="הזן שם לגרף"
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => setIsEditingTitle(false)}
+                          className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300"
+                          aria-label="סיים עריכה"
+                        >
+                          <Check size={18} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <button
+                          onClick={() => setIsEditingTitle(true)}
+                          className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-500 dark:text-slate-400 transition"
+                          aria-label="ערוך שם"
+                          title="ערוך שם"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <h3
+                          onClick={() => setIsEditingTitle(true)}
+                          className="text-base md:text-lg font-semibold text-slate-800 dark:text-white flex-1 min-w-0 cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400 transition truncate"
+                          title="לחץ לעריכה"
+                        >
+                          {config.title || 'לחץ להוספת שם לגרף'}
+                        </h3>
+                      </div>
+                    )}
+                    {/* Grid Lines Toggle - Only for charts that support it */}
+                    {['BarChart', 'StackedBarChart', 'HorizontalBarChart', 'AreaChart', 'LineChart', 'ComposedChart'].includes(config.chartType) && (
+                      <button
+                        onClick={() => setConfig({ ...config, showGrid: !config.showGrid })}
+                        className={`p-2 rounded-lg transition hidden md:block ${config.showGrid
+                          ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
+                          : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
+                          }`}
+                        title={config.showGrid ? 'הסתר קווי רשת' : 'הצג קווי רשת'}
+                        aria-label={config.showGrid ? 'הסתר קווי רשת' : 'הצג קווי רשת'}
+                      >
+                        <Grid size={18} />
+                      </button>
+                    )}
+                    {/* Mobile Settings Button */}
+                    <button
+                      onClick={() => setIsDrawerOpen(true)}
+                      className="lg:hidden p-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 transition"
+                      aria-label="פתח תפריט עריכה"
+                    >
+                      <Settings size={20} />
                     </button>
                   </div>
-                ) : (
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <div className="flex items-center gap-3">
+                    {/* Desktop Save Button */}
                     <button
-                      onClick={() => setIsEditingTitle(true)}
-                      className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-500 dark:text-slate-400 transition"
-                      aria-label="ערוך שם"
-                      title="ערוך שם"
+                      onClick={handleSave}
+                      disabled={saving || !config.title.trim()}
+                      className="hidden md:flex px-4 py-2 bg-emerald-600 dark:bg-emerald-500 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 dark:hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition items-center gap-2 shadow-sm"
                     >
-                      <Edit2 size={16} />
+                      <Save size={14} />
+                      {saving ? 'שומר...' : editingChartId ? 'עדכן גרף' : 'שמור גרף'}
                     </button>
-                    <h3 
-                      onClick={() => setIsEditingTitle(true)}
-                      className="text-base md:text-lg font-semibold text-slate-800 dark:text-white flex-1 min-w-0 cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400 transition truncate"
-                      title="לחץ לעריכה"
+                  </div>
+                </div>
+
+                {/* Chart Display */}
+                <div className="p-4 md:p-6">
+                  <div className="h-[calc(100vh-280px)] md:h-100 min-h-[380px] md:min-h-[320px]">
+                    <ChartRenderer
+                      config={config}
+                      chartData={chartData}
+                      systemData={systemData}
+                      totalValue={totalValue}
+                    />
+                  </div>
+                </div>
+
+                {/* Mobile Save Button - Below Chart */}
+                {config.title && (
+                  <div className="lg:hidden px-4 pb-4">
+                    <button
+                      onClick={handleSave}
+                      disabled={saving || !config.title.trim()}
+                      className="w-full px-4 py-3 bg-emerald-600 dark:bg-emerald-500 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 dark:hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 shadow-md"
                     >
-                      {config.title || 'לחץ להוספת שם לגרף'}
-                    </h3>
+                      <Save size={18} />
+                      {saving ? 'שומר...' : editingChartId ? 'עדכן גרף' : 'שמור גרף'}
+                    </button>
                   </div>
                 )}
+              </div>
+
+              {/* Data Summary - Desktop only */}
+              <div className="hidden lg:block">
+                <div className="bg-slate-50 dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-700">
+                  <div className="flex items-center gap-2 mb-3">
+                    <BarChart3 size={14} className="text-slate-500 dark:text-slate-400" />
+                    <h3 className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide">סיכום נתונים</h3>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="flex justify-between items-center py-1.5 border-b border-slate-200 dark:border-slate-700">
+                      <span className="text-slate-600 dark:text-slate-300">פריטים בגרף</span>
+                      <span className="font-semibold text-slate-800 dark:text-white">{aggregatedData.length}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-1.5 border-b border-slate-200 dark:border-slate-700">
+                      <span className="text-slate-600 dark:text-slate-300">סה"כ ערך</span>
+                      <span className="font-semibold text-slate-800 dark:text-white">
+                        ₪{aggregatedData.reduce((sum, item) => sum + item.value, 0).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          {/* Mobile Bottom Drawer */}
+          <div
+            className={`lg:hidden fixed inset-0 z-50 transition-transform duration-300 ease-out ${isDrawerOpen ? 'translate-y-0' : 'translate-y-full'
+              }`}
+            onClick={() => setIsDrawerOpen(false)}
+          >
+            {/* Backdrop */}
+            <div className="absolute inset-0 bg-black/50" onClick={() => setIsDrawerOpen(false)} />
+
+            {/* Drawer Content */}
+            <div
+              className="absolute bottom-0 left-0 right-0 bg-white dark:bg-slate-800 rounded-t-3xl shadow-2xl max-h-[85vh] overflow-y-auto"
+              onClick={(e) => e.stopPropagation()}
+              dir="rtl"
+            >
+              {/* Drawer Handle */}
+              <div className="sticky top-0 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 py-3 flex items-center justify-between z-10">
+                <h3 className="text-lg font-bold text-slate-800 dark:text-white">עריכת גרף</h3>
+                <button
+                  onClick={() => setIsDrawerOpen(false)}
+                  className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"
+                  aria-label="סגור"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Drawer Body */}
+              <div className="p-4 space-y-4 pb-8">
+                {/* Chart Type Selector */}
+                <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-3 uppercase tracking-wide">
+                    סוג גרף
+                  </label>
+                  <div className="grid grid-cols-5 gap-2">
+                    {[
+                      { value: 'PieChart', label: 'עוגה', icon: PieChart },
+                      { value: 'BarChart', label: 'עמודות', icon: BarChart3 },
+                      // { value: 'StackedBarChart', label: 'מוערם', icon: BarChart2 },
+                      { value: 'HorizontalBarChart', label: 'אופקי', icon: LucideBarChartHorizontal },
+                      { value: 'AreaChart', label: 'אזור', icon: AreaChart },
+                      { value: 'LineChart', label: 'קו', icon: LineChart },
+                      { value: 'ComposedChart', label: 'משולב', icon: TrendingUp },
+                      { value: 'RadarChart', label: 'רדאר', icon: Radar },
+                      { value: 'RadialBar', label: 'רדיאלי', icon: Gauge },
+                      { value: 'Treemap', label: 'מפה', icon: LayoutGrid }
+                    ].map(type => {
+                      const IconComponent = type.icon;
+                      return (
+                        <button
+                          key={type.value}
+                          onClick={() => setConfig({ ...config, chartType: type.value })}
+                          className={`px-3 py-2.5 text-xs font-medium rounded-lg transition border flex flex-col items-center gap-1 ${config.chartType === type.value
+                            ? 'bg-emerald-600 dark:bg-emerald-500 text-white border-emerald-600 dark:border-emerald-500'
+                            : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 hover:border-slate-300 dark:hover:border-slate-500'
+                            }`}
+                        >
+                          <IconComponent size={16} />
+                          {type.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 {/* Grid Lines Toggle - Only for charts that support it */}
                 {['BarChart', 'StackedBarChart', 'HorizontalBarChart', 'AreaChart', 'LineChart', 'ComposedChart'].includes(config.chartType) && (
-                  <button
-                    onClick={() => setConfig({ ...config, showGrid: !config.showGrid })}
-                    className={`p-2 rounded-lg transition hidden md:block ${
-                      config.showGrid
-                        ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
-                        : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400'
-                    }`}
-                    title={config.showGrid ? 'הסתר קווי רשת' : 'הצג קווי רשת'}
-                    aria-label={config.showGrid ? 'הסתר קווי רשת' : 'הצג קווי רשת'}
-                  >
-                    <Grid size={18} />
-                  </button>
-                )}
-                {/* Mobile Settings Button */}
-                <button
-                  onClick={() => setIsDrawerOpen(true)}
-                  className="lg:hidden p-2 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600 transition"
-                  aria-label="פתח תפריט עריכה"
-                >
-                  <Settings size={20} />
-                </button>
-              </div>
-              <div className="flex items-center gap-3">
-                {/* Desktop Save Button */}
-                <button
-                  onClick={handleSave}
-                  disabled={saving || !config.title.trim()}
-                  className="hidden md:flex px-4 py-2 bg-emerald-600 dark:bg-emerald-500 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 dark:hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition items-center gap-2 shadow-sm"
-                >
-                  <Save size={14} />
-                  {saving ? 'שומר...' : editingChartId ? 'עדכן גרף' : 'שמור גרף'}
-                </button>
-              </div>
-            </div>
-
-            {/* Chart Display */}
-            <div className="p-4 md:p-6">
-              <div className="h-[calc(100vh-280px)] md:h-80 min-h-[380px] md:min-h-[320px]">
-                <ChartRenderer
-                  config={config}
-                  chartData={chartData}
-                  systemData={systemData}
-                  totalValue={totalValue}
-                />
-              </div>
-            </div>
-
-            {/* Mobile Save Button - Below Chart */}
-            {config.title && (
-              <div className="lg:hidden px-4 pb-4">
-                <button
-                  onClick={handleSave}
-                  disabled={saving || !config.title.trim()}
-                  className="w-full px-4 py-3 bg-emerald-600 dark:bg-emerald-500 text-white rounded-lg text-sm font-semibold hover:bg-emerald-700 dark:hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 shadow-md"
-                >
-                  <Save size={18} />
-                  {saving ? 'שומר...' : editingChartId ? 'עדכן גרף' : 'שמור גרף'}
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Data Summary - Desktop only */}
-          <div className="hidden lg:block">
-            <div className="bg-slate-50 dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-700">
-              <div className="flex items-center gap-2 mb-3">
-                <BarChart3 size={14} className="text-slate-500 dark:text-slate-400" />
-                <h3 className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide">סיכום נתונים</h3>
-              </div>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div className="flex justify-between items-center py-1.5 border-b border-slate-200 dark:border-slate-700">
-                  <span className="text-slate-600 dark:text-slate-300">פריטים בגרף</span>
-                  <span className="font-semibold text-slate-800 dark:text-white">{aggregatedData.length}</span>
-                </div>
-                <div className="flex justify-between items-center py-1.5 border-b border-slate-200 dark:border-slate-700">
-                  <span className="text-slate-600 dark:text-slate-300">סה"כ ערך</span>
-                  <span className="font-semibold text-slate-800 dark:text-white">
-                    ₪{aggregatedData.reduce((sum, item) => sum + item.value, 0).toLocaleString()}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-        </div>
-      </div>
-
-      {/* Mobile Bottom Drawer */}
-      <div 
-        className={`lg:hidden fixed inset-0 z-50 transition-transform duration-300 ease-out ${
-          isDrawerOpen ? 'translate-y-0' : 'translate-y-full'
-        }`}
-        onClick={() => setIsDrawerOpen(false)}
-      >
-        {/* Backdrop */}
-        <div className="absolute inset-0 bg-black/50" onClick={() => setIsDrawerOpen(false)} />
-        
-        {/* Drawer Content */}
-        <div 
-          className="absolute bottom-0 left-0 right-0 bg-white dark:bg-slate-800 rounded-t-3xl shadow-2xl max-h-[85vh] overflow-y-auto"
-          onClick={(e) => e.stopPropagation()}
-          dir="rtl"
-        >
-          {/* Drawer Handle */}
-          <div className="sticky top-0 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 py-3 flex items-center justify-between z-10">
-            <h3 className="text-lg font-bold text-slate-800 dark:text-white">עריכת גרף</h3>
-            <button
-              onClick={() => setIsDrawerOpen(false)}
-              className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300"
-              aria-label="סגור"
-            >
-              <X size={20} />
-            </button>
-          </div>
-
-          {/* Drawer Body */}
-          <div className="p-4 space-y-4 pb-8">
-            {/* Chart Type Selector */}
-            <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-3 uppercase tracking-wide">
-                סוג גרף
-              </label>
-              <div className="grid grid-cols-5 gap-2">
-                {[
-                  { value: 'PieChart', label: 'עוגה', icon: PieChart },
-                  { value: 'BarChart', label: 'עמודות', icon: BarChart3 },
-                  // { value: 'StackedBarChart', label: 'מוערם', icon: BarChart2 },
-                  { value: 'HorizontalBarChart', label: 'אופקי', icon: LucideBarChartHorizontal  },
-                  { value: 'AreaChart', label: 'אזור', icon: AreaChart },
-                  { value: 'LineChart', label: 'קו', icon: LineChart },
-                  { value: 'ComposedChart', label: 'משולב', icon: TrendingUp },
-                  { value: 'RadarChart', label: 'רדאר', icon: Radar },
-                  { value: 'RadialBar', label: 'רדיאלי', icon: Gauge },
-                  { value: 'Treemap', label: 'מפה', icon: LayoutGrid }
-                ].map(type => {
-                  const IconComponent = type.icon;
-                  return (
+                  <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-3 uppercase tracking-wide">
+                      קווי רשת
+                    </label>
                     <button
-                      key={type.value}
-                      onClick={() => setConfig({ ...config, chartType: type.value })}
-                      className={`px-3 py-2.5 text-xs font-medium rounded-lg transition border flex flex-col items-center gap-1 ${
-                        config.chartType === type.value
-                          ? 'bg-emerald-600 dark:bg-emerald-500 text-white border-emerald-600 dark:border-emerald-500'
-                          : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 hover:border-slate-300 dark:hover:border-slate-500'
-                      }`}
+                      onClick={() => setConfig({ ...config, showGrid: !config.showGrid })}
+                      className={`w-full px-4 py-3 rounded-lg transition flex items-center justify-between ${config.showGrid
+                        ? 'bg-emerald-50 dark:bg-emerald-900/20 border-2 border-emerald-500 dark:border-emerald-600'
+                        : 'bg-white dark:bg-slate-700 border-2 border-slate-200 dark:border-slate-600'
+                        }`}
                     >
-                      <IconComponent size={16} />
-                      {type.label}
+                      <div className="flex items-center gap-2">
+                        <Grid size={18} className={config.showGrid ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'} />
+                        <span className={`text-sm font-medium ${config.showGrid ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-600 dark:text-slate-300'}`}>
+                          {config.showGrid ? 'מוצגים' : 'מוסתרים'}
+                        </span>
+                      </div>
+                      <div dir='ltr' className={`w-12 h-6 rounded-full transition-colors ${config.showGrid ? 'bg-emerald-500' : 'bg-slate-400'}`}>
+                        <div className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-transform ${config.showGrid ? 'translate-x-6' : 'translate-x-0.5'} mt-0.5`} />
+                      </div>
                     </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Grid Lines Toggle - Only for charts that support it */}
-            {['BarChart', 'StackedBarChart', 'HorizontalBarChart', 'AreaChart', 'LineChart', 'ComposedChart'].includes(config.chartType) && (
-              <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
-                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-3 uppercase tracking-wide">
-                  קווי רשת
-                </label>
-                <button
-                  onClick={() => setConfig({ ...config, showGrid: !config.showGrid })}
-                  className={`w-full px-4 py-3 rounded-lg transition flex items-center justify-between ${
-                    config.showGrid
-                      ? 'bg-emerald-50 dark:bg-emerald-900/20 border-2 border-emerald-500 dark:border-emerald-600'
-                      : 'bg-white dark:bg-slate-700 border-2 border-slate-200 dark:border-slate-600'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <Grid size={18} className={config.showGrid ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'} />
-                    <span className={`text-sm font-medium ${config.showGrid ? 'text-emerald-700 dark:text-emerald-300' : 'text-slate-600 dark:text-slate-300'}`}>
-                      {config.showGrid ? 'מוצגים' : 'מוסתרים'}
-                    </span>
                   </div>
-                  <div dir='ltr' className={`w-12 h-6 rounded-full transition-colors ${config.showGrid ? 'bg-emerald-500' : 'bg-slate-400'}`}>
-                    <div className={`w-5 h-5 bg-white rounded-full shadow-md transform transition-transform ${config.showGrid ? 'translate-x-6' : 'translate-x-0.5'} mt-0.5`} />
-                  </div>
-                </button>
-              </div>
-            )}
-
-            {/* Group By Selector */}
-            <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-3 uppercase tracking-wide">
-                קיבוץ לפי
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { value: 'category', label: 'אפיקי השקעה' },
-                  { value: 'platform', label: 'חשבונות וארנקים' },
-                  { value: 'instrument', label: 'מטבעות בסיס' },
-                  { value: 'symbol', label: 'סמל' },
-                  { value: 'tags', label: 'תגיות' },
-                  { value: 'currency', label: 'מטבע' }
-                ].map(group => (
-                  <button
-                    key={group.value}
-                    onClick={() => setConfig({ ...config, dataKey: group.value })}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${
-                      config.dataKey === group.value
-                        ? 'bg-emerald-600 dark:bg-emerald-500 text-white'
-                        : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600'
-                    }`}
-                  >
-                    {group.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Filters */}
-            <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide">
-                  <Filter size={14} />
-                  פילטרים
-                </div>
-                {hasActiveFilters && (
-                  <button
-                    onClick={clearFilters}
-                    className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center gap-1"
-                    title="נקה פילטרים"
-                  >
-                    <X size={12} />
-                    נקה
-                  </button>
                 )}
-              </div>
-              
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">אפיקי השקעה</label>
-                  <CustomSelect
-                    value={config.filters.category || ''}
-                    onChange={(val) => setConfig({
-                      ...config,
-                      filters: { ...config.filters, category: val }
-                    })}
-                    options={[
-                      { value: '', label: 'הכל' },
-                      ...uniqueCategories.map(cat => ({
-                        value: cat,
-                        label: cat,
-                        iconColor: systemData?.categories?.find(c => c.name === cat)?.color
-                      }))
-                    ]}
-                    placeholder="הכל"
-                    className="text-xs"
-                  />
+
+                {/* Group By Selector */}
+                <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-3 uppercase tracking-wide">
+                    קיבוץ לפי
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { value: 'category', label: 'אפיקי השקעה' },
+                      { value: 'subcategory', label: 'קטגוריות חלוקה' },
+                      { value: 'platform', label: 'חשבונות וארנקים' },
+                      { value: 'instrument', label: 'מטבעות בסיס' },
+                      { value: 'symbol', label: 'סמל' },
+                      { value: 'tags', label: 'תגיות' },
+                      { value: 'currency', label: 'מטבע' }
+                    ].map(group => (
+                      <button
+                        key={group.value}
+                        onClick={() => setConfig({ ...config, dataKey: group.value })}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${config.dataKey === group.value
+                          ? 'bg-emerald-600 dark:bg-emerald-500 text-white'
+                          : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600'
+                          }`}
+                      >
+                        {group.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">חשבונות וארנקים</label>
-                  <CustomSelect
-                    value={config.filters.platform || ''}
-                    onChange={(val) => setConfig({
-                      ...config,
-                      filters: { ...config.filters, platform: val }
-                    })}
-                    options={[
-                      { value: '', label: 'הכל' },
-                      ...uniquePlatforms.map(plat => ({
-                        value: plat,
-                        label: plat,
-                        iconColor: systemData?.platforms?.find(p => p.name === plat)?.color
-                      }))
-                    ]}
-                    placeholder="הכל"
-                    className="text-xs"
-                  />
+                {/* Filters */}
+                <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide">
+                      <Filter size={14} />
+                      פילטרים
+                    </div>
+                    {hasActiveFilters && (
+                      <button
+                        onClick={clearFilters}
+                        className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center gap-1"
+                        title="נקה פילטרים"
+                      >
+                        <X size={12} />
+                        נקה
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">אפיקי השקעה</label>
+                      <CustomSelect
+                        value={config.filters.category || ''}
+                        onChange={(val) => setConfig({
+                          ...config,
+                          filters: { ...config.filters, category: val }
+                        })}
+                        options={[
+                          { value: '', label: 'הכל' },
+                          ...uniqueCategories.map(cat => ({
+                            value: cat,
+                            label: cat,
+                            iconColor: systemData?.categories?.find(c => c.name === cat)?.color
+                          }))
+                        ]}
+                        placeholder="הכל"
+                        className="text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">קטגוריות חלוקה</label>
+                      <CustomSelect
+                        value={config.filters.subcategory || ''}
+                        onChange={(val) => setConfig({
+                          ...config,
+                          filters: { ...config.filters, subcategory: val }
+                        })}
+                        options={[
+                          { value: '', label: 'הכל' },
+                          ...uniqueSubcategories.map(subcat => ({
+                            value: subcat,
+                            label: subcat,
+                            iconColor: systemData?.subcategories?.find(sc => sc.name === subcat)?.color
+                          }))
+                        ]}
+                        placeholder="הכל"
+                        className="text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">חשבונות וארנקים</label>
+                      <CustomSelect
+                        value={config.filters.platform || ''}
+                        onChange={(val) => setConfig({
+                          ...config,
+                          filters: { ...config.filters, platform: val }
+                        })}
+                        options={[
+                          { value: '', label: 'הכל' },
+                          ...uniquePlatforms.map(plat => ({
+                            value: plat,
+                            label: plat,
+                            iconColor: systemData?.platforms?.find(p => p.name === plat)?.color
+                          }))
+                        ]}
+                        placeholder="הכל"
+                        className="text-xs"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">מטבע</label>
+                      <CustomSelect
+                        value={config.filters.currency || ''}
+                        onChange={(val) => setConfig({
+                          ...config,
+                          filters: { ...config.filters, currency: val }
+                        })}
+                        options={[
+                          { value: '', label: 'הכל' },
+                          ...uniqueCurrencies.map(curr => ({
+                            value: curr,
+                            label: curr
+                          }))
+                        ]}
+                        placeholder="הכל"
+                        className="text-xs"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">מטבע</label>
-                  <CustomSelect
-                    value={config.filters.currency || ''}
-                    onChange={(val) => setConfig({
-                      ...config,
-                      filters: { ...config.filters, currency: val }
-                    })}
-                    options={[
-                      { value: '', label: 'הכל' },
-                      ...uniqueCurrencies.map(curr => ({
-                        value: curr,
-                        label: curr
-                      }))
-                    ]}
-                    placeholder="הכל"
-                    className="text-xs"
-                  />
+                {/* Data Summary - Mobile only in drawer */}
+                <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
+                  <div className="flex items-center gap-2 mb-3">
+                    <BarChart3 size={14} className="text-slate-500 dark:text-slate-400" />
+                    <h3 className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide">סיכום נתונים</h3>
+                  </div>
+                  <div className="space-y-2.5 text-sm">
+                    <div className="flex justify-between items-center py-1.5 border-b border-slate-200 dark:border-slate-700">
+                      <span className="text-slate-600 dark:text-slate-300">פריטים בגרף</span>
+                      <span className="font-semibold text-slate-800 dark:text-white">{aggregatedData.length}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-1.5">
+                      <span className="text-slate-600 dark:text-slate-300">סה"כ ערך</span>
+                      <span className="font-semibold text-slate-800 dark:text-white">
+                        ₪{aggregatedData.reduce((sum, item) => sum + item.value, 0).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            {/* Data Summary - Mobile only in drawer */}
-            <div className="bg-slate-50 dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-700">
-              <div className="flex items-center gap-2 mb-3">
-                <BarChart3 size={14} className="text-slate-500 dark:text-slate-400" />
-                <h3 className="text-xs font-semibold text-slate-600 dark:text-slate-300 uppercase tracking-wide">סיכום נתונים</h3>
-              </div>
-              <div className="space-y-2.5 text-sm">
-                <div className="flex justify-between items-center py-1.5 border-b border-slate-200 dark:border-slate-700">
-                  <span className="text-slate-600 dark:text-slate-300">פריטים בגרף</span>
-                  <span className="font-semibold text-slate-800 dark:text-white">{aggregatedData.length}</span>
-                </div>
-                <div className="flex justify-between items-center py-1.5">
-                  <span className="text-slate-600 dark:text-slate-300">סה"כ ערך</span>
-                  <span className="font-semibold text-slate-800 dark:text-white">
-                    ₪{aggregatedData.reduce((sum, item) => sum + item.value, 0).toLocaleString()}
-                  </span>
+                {/* Save Button - Mobile */}
+                <div className="sticky bottom-0 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 -mx-4 px-4 py-4 -mb-4">
+                  <button
+                    onClick={() => {
+                      handleSave();
+                      setIsDrawerOpen(false);
+                    }}
+                    disabled={saving || !config.title.trim()}
+                    className="w-full px-4 py-3 bg-emerald-600 dark:bg-emerald-500 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 dark:hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 shadow-lg"
+                  >
+                    <Save size={18} />
+                    {saving ? 'שומר...' : editingChartId ? 'עדכן גרף' : 'שמור גרף'}
+                  </button>
                 </div>
               </div>
-            </div>
-
-            {/* Save Button - Mobile */}
-            <div className="sticky bottom-0 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 -mx-4 px-4 py-4 -mb-4">
-              <button
-                onClick={() => {
-                  handleSave();
-                  setIsDrawerOpen(false);
-                }}
-                disabled={saving || !config.title.trim()}
-                className="w-full px-4 py-3 bg-emerald-600 dark:bg-emerald-500 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 dark:hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center gap-2 shadow-lg"
-              >
-                <Save size={18} />
-                {saving ? 'שומר...' : editingChartId ? 'עדכן גרף' : 'שמור גרף'}
-              </button>
             </div>
           </div>
-        </div>
-      </div>
         </>
       )}
 
@@ -1471,13 +1564,13 @@ ${portfolioContext}
             <div className="space-y-4">
               {charts.map((chart, index) => {
                 const isEditing = editingChart === chart.id;
-                
+
                 // Calculate chart data for this chart
                 const chartChartData = getChartDataForConfig(chart);
                 const chartTotalValue = chartChartData.reduce((sum, item) => sum + (item.value || item.size || 0), 0);
-                
+
                 return (
-                  <div 
+                  <div
                     key={chart.id}
                     className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all overflow-hidden"
                   >

@@ -232,6 +232,7 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
   const getSourceTypeIcon = (type) => {
     switch (type) {
       case 'categories': return <Tag size={16} className="text-emerald-500" />;
+      case 'subcategories': return <Layers size={16} className="text-emerald-500" />;
       case 'platforms': return <Database size={16} className="text-emerald-500" />;
       case 'instruments': return <Palette size={16} className="text-emerald-500" />;
       case 'symbols': return <Tag size={16} className="text-emerald-500" />;
@@ -242,9 +243,9 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
   const getSourceTypeTitle = (type) => {
     switch (type) {
       case 'categories': return 'אפיקי השקעה';
+      case 'subcategories': return 'קטגוריות חלוקה';
       case 'platforms': return 'חשבונות וארנקים';
       case 'instruments': return 'מטבעות בסיס';
-      // case 'symbols': return 'נכסים למעקב';
       default: return '';
     }
   };
@@ -253,12 +254,12 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
     switch (type) {
       case 'categories':
         return 'חלוקת התיק הראשית';
+      case 'subcategories':
+        return 'חלק נכסים לסקטורים ונושאים';
       case 'platforms':
         return 'איפה הכסף שלך נמצא?';
       case 'instruments':
         return 'סוגי מטבע להערכת שווי';
-      // case 'symbols':
-      //   return 'טיקרים וסמלים ספציפיים';
       default:
         return '';
     }

@@ -474,19 +474,10 @@ async function searchIsraeliStocksFromBrowser(query) {
   // --- STRATEGY 2: SEARCH API (Fallback for names/text) ---
   try {
     const searchUrl = `https://www.funder.co.il/api/search?q=${encodeURIComponent(cleanQuery)}`;
-    // Use the new fetchWithFallbackProxy here too? The user didn't explicitly safeguard it, but it makes sense.
-    // However, to stick to "same as before" I will just paste the old logic but maybe safer to use the new proxy helper if I can?
-    // The user's code block says: `// ... (API Fallback Logic - Same as before) ...`
-    // I will insert the old logic here.
-
-    // Actually, looking at the user's provided code, they want the specific `searchIsraeliStocksFromBrowser` implementation they gave.
-    // I will rewrite the rest of this function body to match the user's intent + existing legacy fallback.
-
     const corsProxyUrl = `https://corsproxy.io/?${encodeURIComponent(searchUrl)}`;
 
-    // Note: The user's snippet for "Same as before" implies I should keeplines 393-428.
-    // I shall include them.
-    const response = await fetch(corsProxyUrl); // Using simple fetch as per old logic or new? Old logic used simple fetch.
+    console.log(`[IL SEARCH] Trying Funder API search for "${cleanQuery}"...`);
+    const response = await fetch(corsProxyUrl);
 
     if (response.ok) {
       const data = await response.json();
@@ -496,27 +487,84 @@ async function searchIsraeliStocksFromBrowser(query) {
       else if (data.results) apiResults = data.results;
       else if (data.data) apiResults = data.data;
 
-      const mapped = apiResults
-        .filter(item => item && (item.securityNumber || item.id))
-        .map(item => {
-          const sid = item.securityNumber || item.id;
-          return {
-            id: `tase:${sid}`,
-            symbol: item.symbol || sid,
-            name: item.name || item.hebrewName || sid,
-            nameHe: item.nameHe || item.name,
-            securityId: sid,
-            marketDataSource: 'tase-local',
-            exchange: 'TASE'
-          };
-        });
+      if (apiResults.length > 0) {
+        const mapped = apiResults
+          .filter(item => item && (item.securityNumber || item.id))
+          .map(item => {
+            const sid = item.securityNumber || item.id;
+            return {
+              id: `tase:${sid}`,
+              symbol: item.symbol || sid,
+              name: item.name || item.hebrewName || sid,
+              nameHe: item.nameHe || item.name,
+              securityId: sid,
+              marketDataSource: 'tase-local',
+              exchange: 'TASE'
+            };
+          });
 
-      results.push(...mapped);
+        results.push(...mapped);
+        console.log(`[IL SEARCH] ✅ Found ${mapped.length} results from Funder API`);
+      }
     }
   } catch (error) {
-    // console.warn...
+    console.warn('[IL SEARCH] Funder API search failed:', error);
   }
 
+  // --- STRATEGY 3: YAHOO FINANCE  FALLBACK (NEW!) ---
+  // Try Yahoo if no results from Funder/Globes
+  if (results.length === 0) {
+    try {
+      console.log(`[IL SEARCH] 🔄 No results from Funder/Globes, trying Yahoo Finance fallback for "${cleanQuery}"...`);
+
+      // Search Yahoo Finance with .TA suffix
+      const yahooQuery = cleanQuery.includes('.TA') ? cleanQuery : `${cleanQuery}.TA`;
+      const targetUrl = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(yahooQuery)}&quotesCount=10&newsCount=0`;
+
+      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+      const response = await fetch(proxyUrl, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+
+        if (data && data.quotes && Array.isArray(data.quotes)) {
+          // Filter for Israeli stocks (.TA suffix)
+          const israeliQuotes = data.quotes.filter(quote =>
+            (quote.symbol || '').endsWith('.TA') &&
+            (quote.quoteType === 'EQUITY' || quote.quoteType === 'ETF')
+          );
+
+          if (israeliQuotes.length > 0) {
+            const yahooResults = israeliQuotes.slice(0, 5).map(quote => ({
+              id: `yahoo:${quote.symbol}`,
+              symbol: quote.symbol,
+              name: quote.shortname || quote.longname || quote.symbol,
+              nameHe: quote.shortname || quote.longname || quote.symbol,
+              image: null,
+              marketDataSource: 'yahoo',
+              provider: 'yahoo',
+              exchange: 'TASE',
+              extra: { source: 'yahoo-fallback' }
+            }));
+
+            results.push(...yahooResults);
+            console.log(`[IL SEARCH] ✅ Found ${yahooResults.length} Israeli stocks from Yahoo Finance fallback`);
+          } else {
+            console.log(`[IL SEARCH] No Israeli (.TA) stocks found in Yahoo results for "${yahooQuery}"`);
+          }
+        }
+      } else {
+        console.warn(`[IL SEARCH] Yahoo fallback HTTP error: ${response.status}`);
+      }
+    } catch (error) {
+      console.warn('[IL SEARCH] Yahoo Finance fallback failed:', error);
+    }
+  }
+
+  console.log(`[IL SEARCH] Total results for "${cleanQuery}": ${results.length}`);
   return results;
 }
 /**

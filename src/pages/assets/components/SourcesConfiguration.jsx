@@ -14,7 +14,7 @@ import {
     sortableKeyboardCoordinates,
     verticalListSortingStrategy
 } from '@dnd-kit/sortable';
-import { FIXED_INSTRUMENTS, FIXED_CATEGORIES } from '../../../constants/defaults';
+import { FIXED_INSTRUMENTS, FIXED_CATEGORIES, FIXED_SUBCATEGORIES } from '../../../constants/defaults';
 import SortableSourceItem from './SortableSourceItem';
 import SourceItemModal from './SourceItemModal';
 
@@ -74,7 +74,7 @@ const SourcesConfiguration = ({ systemData, onAdd, onUpdate, onDelete, onReorder
     };
 
     const toggleAllSections = () => {
-        const allTypes = ['platforms', 'categories', 'instruments'];
+        const allTypes = ['platforms', 'categories', 'subcategories', 'instruments'];
         if (expandedSections.size === allTypes.length) {
             // הכל מורחב, צמצם הכל
             setExpandedSections(new Set());
@@ -87,7 +87,8 @@ const SourcesConfiguration = ({ systemData, onAdd, onUpdate, onDelete, onReorder
     const sourceTypes = [
         { key: 'platforms', order: 1 },
         { key: 'categories', order: 2 },
-        { key: 'instruments', order: 3 }
+        { key: 'subcategories', order: 3 },
+        { key: 'instruments', order: 4 }
     ];
 
     return (
@@ -96,7 +97,7 @@ const SourcesConfiguration = ({ systemData, onAdd, onUpdate, onDelete, onReorder
             <div className="flex justify-between items-center mb-4">
                 <div>
                     <h3 className="text-lg font-semibold text-slate-900 dark:text-white">הגדרת מקורות</h3>
-                    {/* <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">נהל את החשבונות, אפיקי ההשקעה והנכסים למעקב</p> */}
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">נהל את החשבונות, אפיקי ההשקעה והנכסים למעקב</p>
                 </div>
                 <button
                     onClick={toggleAllSections}
@@ -219,7 +220,8 @@ const SourcesConfiguration = ({ systemData, onAdd, onUpdate, onDelete, onReorder
                                                 const itemName = (isSymbols && typeof item === 'string') ? item : item.name;
                                                 const itemColor = (isSymbols && typeof item === 'string') ? '#94a3b8' : item.color;
                                                 const isFixed = (type === 'instruments' && FIXED_INSTRUMENTS.some(fi => fi.name === itemName)) ||
-                                                    (type === 'categories' && FIXED_CATEGORIES.some(fc => fc.name === itemName));
+                                                    (type === 'categories' && FIXED_CATEGORIES.some(fc => fc.name === itemName)) ||
+                                                    (type === 'subcategories' && FIXED_SUBCATEGORIES.some(fsc => fsc.name === itemName));
 
                                                 return (
                                                     <SortableSourceItem

@@ -51,38 +51,105 @@ const setCachedPrice = (key, data) => {
 // ==================== HELPER FUNCTIONS ====================
 
 /**
- * Fetch with Proxy Rotation fallback
- * Tries primary proxy (corsproxy.io), then backup (allorigins.win)
+ * Fetch with Multi-Proxy Rotation (5 proxies)
+ * Tries multiple CORS proxies sequentially to handle production blocking
+ * 
+ * Proxy Priority:
+ * 1. corsproxy.io - Fast, sometimes blocked
+ * 2. api.codetabs.com - Good reliability
+ * 3. api.allorigins.win - Excellent for GET
+ * 4. thingproxy.freeboard.io - Mixed requests
+ * 5. cors.eu.org - Final fallback
  */
-async function fetchWithFallbackProxy(targetUrl, options = {}) {
-  // 1. corsproxy.io (fast, sometimes blocked in production)
-  const proxy1 = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+async function fetchWithProxyRotation(targetUrl, options = {}) {
+  const method = options.method || 'GET';
+  const isPost = method === 'POST';
 
-  // 2. allorigins.win (slower, but very reliable as backup)
-  const proxy2 = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+  // Proxy configurations with capabilities
+  const proxies = [
+    {
+      name: 'corsproxy.io',
+      url: `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
+      supportsPost: true,
+      index: 1
+    },
+    {
+      name: 'codetabs',
+      url: `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`,
+      supportsPost: false,
+      index: 2
+    },
+    {
+      name: 'allorigins',
+      url: `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`,
+      supportsPost: false,
+      requiresUnwrap: true,
+      index: 3
+    },
+    {
+      name: 'thingproxy',
+      url: `https://thingproxy.freeboard.io/fetch/${targetUrl}`,
+      supportsPost: true,
+      index: 4
+    },
+    {
+      name: 'cors.eu.org',
+      url: `https://cors.eu.org/${targetUrl}`,
+      supportsPost: true,
+      index: 5
+    }
+  ];
 
-  try {
-    const res1 = await fetch(proxy1, options);
-    if (res1.ok) return res1;
-    console.warn(`[PROXY] Primary failed for ${targetUrl}, trying backup...`);
-  } catch (e) {
-    console.warn(`[PROXY] Primary error for ${targetUrl}:`, e.message);
-  }
+  // Filter proxies based on request method
+  const viableProxies = proxies.filter(proxy => !isPost || proxy.supportsPost);
 
-  // Backup (GET only) - allorigins supports only GET
-  if (!options.method || options.method === 'GET') {
+  for (const proxy of viableProxies) {
     try {
-      console.log(`[PROXY] Trying backup for ${targetUrl}...`);
-      const res2 = await fetch(proxy2);
-      if (res2.ok) {
-        const json = await res2.json();
-        return new Response(json.contents, { status: 200 });
+      console.log(`[PROXY ${proxy.index}/${proxies.length}] Trying ${proxy.name} for ${targetUrl}...`);
+
+      // Create fetch options for this proxy
+      const proxyOptions = { ...options };
+
+      // Some proxies don't support custom headers/methods in the same way
+      if (!proxy.supportsPost && isPost) {
+        continue; // Skip if POST not supported
       }
-    } catch (e2) {
-      console.error(`[PROXY] Backup failed for ${targetUrl}`);
+
+      // Set timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      proxyOptions.signal = controller.signal;
+
+      const response = await fetch(proxy.url, proxyOptions);
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        console.log(`[PROXY] ✅ Success with ${proxy.name}`);
+
+        // Unwrap response if needed (e.g., allorigins)
+        if (proxy.requiresUnwrap) {
+          const json = await response.json();
+          return new Response(json.contents, {
+            status: 200,
+            headers: { 'Content-Type': 'text/html' }
+          });
+        }
+
+        return response;
+      }
+
+      console.warn(`[PROXY] ${proxy.name} returned ${response.status}`);
+
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        console.warn(`[PROXY] ${proxy.name} timed out`);
+      } else {
+        console.warn(`[PROXY] ${proxy.name} error:`, error.message);
+      }
     }
   }
 
+  console.error(`[PROXY] ❌ All proxies failed for ${targetUrl}`);
   return { ok: false };
 }
 
@@ -114,12 +181,11 @@ export const isAssetPriceStale = (asset, maxAgeMinutes = 5) => {
 async function fetchTasePriceFromGlobes(securityId) {
   try {
     const targetUrl = "https://www.globes.co.il/Portal/Handlers/GTOFeeder.ashx";
-    const proxyUrl = `https://corsproxy.io/?${targetUrl}`;
     const body = `instrumentId=${securityId}&type=49`;
 
     console.log(`[GLOBES] Fetching ${securityId}...`);
 
-    const response = await fetch(proxyUrl, {
+    const response = await fetchWithProxyRotation(targetUrl, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: body
@@ -162,7 +228,7 @@ async function fetchTasePriceFromFunder(securityId) {
     const funderUrl = `https://www.funder.co.il/fund/${securityId}`;
     console.log(`[FUNDER] Fetching ${securityId}...`);
 
-    const response = await fetchWithFallbackProxy(funderUrl);
+    const response = await fetchWithProxyRotation(funderUrl);
     if (!response.ok) return null;
 
     const html = await response.text();
@@ -394,13 +460,21 @@ class CryptoStrategy {
   static async execute(asset) {
     try {
       const internalId = resolveInternalId(asset);
-      if (!internalId) return null;
-
-      if (DEBUG_PRICES) {
-        console.log(`[CRYPTO STRATEGY] Fetching ${internalId}...`);
+      if (!internalId) {
+        console.error('[CRYPTO STRATEGY] No internal ID resolved for asset:', asset);
+        return null;
       }
 
+      console.log(`[CRYPTO STRATEGY] Fetching ${internalId} for asset:`, {
+        symbol: asset.symbol,
+        apiId: asset.apiId,
+        marketDataSource: asset.marketDataSource,
+        assetType: asset.assetType
+      });
+
       const quotes = await getQuotes([internalId]);
+      console.log(`[CRYPTO STRATEGY] Raw quotes received for ${internalId}:`, quotes);
+
       const validQuotes = quotes.filter(q =>
         q &&
         !q.error &&
@@ -409,27 +483,40 @@ class CryptoStrategy {
         q.price > 0
       );
 
+      console.log(`[CRYPTO STRATEGY] Valid quotes count: ${validQuotes.length}`);
+
       if (validQuotes.length === 0) {
         const errorQuote = quotes.find(q => q && q.error);
-        if (errorQuote && DEBUG_PRICES) {
-          console.warn(`[CRYPTO STRATEGY] Quote error for ${internalId}:`, errorQuote.error);
+        if (errorQuote) {
+          console.error(`[CRYPTO STRATEGY] Quote error for ${internalId}:`, errorQuote.error);
+        } else {
+          console.error(`[CRYPTO STRATEGY] No valid quotes for ${internalId}. All quotes:`, quotes);
         }
         return null;
       }
 
       const quote = validQuotes[0];
+      console.log(`[CRYPTO STRATEGY] Selected quote for ${internalId}:`, {
+        id: quote.id,
+        price: quote.price,
+        currency: quote.currency,
+        timestamp: quote.timestamp
+      });
 
-      return {
+      const result = {
         symbol: asset.symbol || asset.apiId || '',
         name: asset.name || asset.symbol,
-        currentPrice: quote.price,      // As-Is
-        currency: 'USD',                 // Always USD
+        currentPrice: quote.price,      // As-Is - NO MANIPULATION
+        currency: 'USD',                 // Always USD for crypto
         change24h: quote.changePct || 0,
         changeAmount: (quote.price * (quote.changePct || 0)) / 100,
         lastUpdated: new Date(quote.timestamp || Date.now()),
         source: 'coingecko',
         assetType: 'CRYPTO',
       };
+
+      console.log(`[CRYPTO STRATEGY] ✅ Final result for ${internalId}:`, result);
+      return result;
     } catch (error) {
       console.error('[CRYPTO STRATEGY] Error fetching price:', error);
       return null;

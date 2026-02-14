@@ -18,27 +18,24 @@ const MobileAssetCard = ({ asset, onClick }) => {
                 </div>
                 <div className="text-right flex-shrink-0">
                     <p className="font-bold text-slate-900 dark:text-white" dir="ltr">
-                        ₪{asset.value.toLocaleString()}
+                        ₪{Math.round(asset.value).toLocaleString()}
                     </p>
                     {asset.currency && asset.originalValue && (
                         <p className="text-xs text-slate-400 dark:text-slate-500" dir="ltr">
-                            בקניה: {asset.currency === 'USD' ? '$' : '₪'}{(asset.originalValue || 0).toLocaleString()}
+                            בקניה: {asset.currency === 'USD' ? '$' : '₪'}{Math.round(asset.originalValue || 0).toLocaleString()}
                         </p>
                     )}
                 </div>
             </div>
 
             {/* Metadata Row */}
-            <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
-                {/* Platform */}
-                <span className="px-2 py-1 bg-slate-100 dark:bg-slate-700 rounded">
-                    {asset.platform}
-                </span>
+            <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400" dir="ltr">
 
-                {/* Category */}
-                <span className="px-2 py-1 bg-slate-100 dark:bg-slate-700 rounded">
-                    {asset.category}
-                </span>
+
+                {/* Live Price Indicator */}
+                {asset.hasLivePrice && (
+                    <span className="text-emerald-500 text-xs">● Live</span>
+                )}
 
                 {/* P/L */}
                 {asset.profitLoss !== null && asset.profitLoss !== undefined && (
@@ -50,11 +47,6 @@ const MobileAssetCard = ({ asset, onClick }) => {
                     >
                         {asset.profitLoss >= 0 ? '↑' : '↓'} {Math.abs(asset.profitLossPercent || 0).toFixed(1)}%
                     </span>
-                )}
-
-                {/* Live Price Indicator */}
-                {asset.hasLivePrice && (
-                    <span className="text-emerald-500 text-xs">● Live</span>
                 )}
             </div>
 

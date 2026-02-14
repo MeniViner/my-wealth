@@ -62,7 +62,7 @@ export const translateTag = (tag) => {
   // Check if tag is already in Hebrew (contains Hebrew characters)
   const hasHebrew = /[\u0590-\u05FF]/.test(tag);
   if (hasHebrew) return tag;
-  
+
   // Try to find translation
   const lowerTag = tag.toLowerCase().trim();
   return TAG_TRANSLATIONS[lowerTag] || tag;
@@ -130,14 +130,15 @@ export const truncateText = (text, maxLength) => {
  * @param {Array} assets - Array of asset objects
  * @param {string} groupBy - Field to group by ('category', 'platform', 'instrument', 'tags', 'currency', 'symbol')
  * @param {Object} filters - Optional filters object
+ * @param {string} labelMode - Display mode when groupBy is 'symbol': 'symbol' | 'name' | 'category' (default: 'symbol')
  * @returns {Array} Aggregated data in format [{ name, value }]
  */
-export const aggregateData = (assets, groupBy, filters = {}) => {
+export const aggregateData = (assets, groupBy, filters = {}, labelMode = 'symbol') => {
   if (!assets || assets.length === 0) return [];
-  
+
   // Apply filters first
   let filteredAssets = assets;
-  
+
   if (filters.category) {
     filteredAssets = filteredAssets.filter(a => a.category === filters.category);
   }
@@ -150,14 +151,17 @@ export const aggregateData = (assets, groupBy, filters = {}) => {
   if (filters.currency) {
     filteredAssets = filteredAssets.filter(a => a.currency === filters.currency);
   }
+  if (filters.subcategory) {
+    filteredAssets = filteredAssets.filter(a => a.subcategory === filters.subcategory);
+  }
   if (filters.tags && filters.tags.length > 0) {
-    filteredAssets = filteredAssets.filter(a => 
+    filteredAssets = filteredAssets.filter(a =>
       a.tags && a.tags.some(tag => filters.tags.includes(tag))
     );
   }
 
   const map = {};
-  
+
   if (groupBy === 'tags') {
     // Special handling for tags - assets can have multiple tags
     filteredAssets.forEach(asset => {
@@ -172,9 +176,29 @@ export const aggregateData = (assets, groupBy, filters = {}) => {
       }
     });
   } else if (groupBy === 'symbol') {
-    // Special handling for symbol - fallback to name if symbol doesn't exist
+    // Special handling for symbol - use labelMode to determine display key
     filteredAssets.forEach(asset => {
-      const key = asset.symbol || asset.name || 'ללא סמל';
+      let key;
+      switch (labelMode) {
+        case 'name':
+          // Display by asset name
+          key = asset.name || asset.symbol || 'ללא שם';
+          break;
+        case 'category':
+          // Display by category
+          key = asset.category || 'אחר';
+          break;
+        case 'symbol':
+        default:
+          // Display by symbol (default)
+          key = asset.symbol || asset.name || 'ללא סמל';
+      }
+      map[key] = (map[key] || 0) + asset.value;
+    });
+  } else if (groupBy === 'subcategory') {
+    // Group by subcategory
+    filteredAssets.forEach(asset => {
+      const key = asset.subcategory || 'אחר';
       map[key] = (map[key] || 0) + asset.value;
     });
   } else {
@@ -202,7 +226,7 @@ export const getColorForItem = (name, dataKey, systemData) => {
     // Fallback to palette
     return CHART_COLORS[Math.abs(name?.charCodeAt(0) || 0) % CHART_COLORS.length];
   }
-  
+
   if (dataKey === 'category') {
     const category = systemData.categories?.find(c => c.name === name);
     return category?.color || '#3b82f6';
@@ -224,7 +248,11 @@ export const getColorForItem = (name, dataKey, systemData) => {
       return symbol.color || '#94a3b8';
     }
   }
-  
+  if (dataKey === 'subcategory') {
+    const subcategory = systemData.subcategories?.find(sc => sc.name === name);
+    return subcategory?.color || '#8B5CF6';
+  }
+
   // Default: use color palette based on name hash
   return CHART_COLORS[Math.abs(name?.charCodeAt(0) || 0) % CHART_COLORS.length];
 };
@@ -233,8 +261,8 @@ export const getColorForItem = (name, dataKey, systemData) => {
  * Common axis props for RTL charts
  */
 export const getRTLAxisProps = () => ({
-  tick: { 
-    fontSize: 11, 
+  tick: {
+    fontSize: 11,
     fontFamily: HEBREW_FONT,
     fill: '#64748b',
   },
@@ -267,7 +295,7 @@ export const shouldShowContent = (width, height, contentType = 'text') => {
     value: { width: 70, height: 50 },
     both: { width: 80, height: 60 },
   };
-  
+
   const dims = MIN_DIMS[contentType] || MIN_DIMS.text;
   return width >= dims.width && height >= dims.height;
 };

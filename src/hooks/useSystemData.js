@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { doc, onSnapshot, getDoc, setDoc } from 'firebase/firestore';
 import { db, appId } from '../services/firebase';
-import { DEFAULT_SYSTEM_DATA, FIXED_INSTRUMENTS, FIXED_CATEGORIES } from '../constants/defaults';
+import { DEFAULT_SYSTEM_DATA, FIXED_INSTRUMENTS, FIXED_CATEGORIES, FIXED_SUBCATEGORIES } from '../constants/defaults';
 
 // Helper to ensure fixed data is always present
 const ensureFixedData = (data) => {
@@ -15,10 +15,16 @@ const ensureFixedData = (data) => {
   const fixedCategories = FIXED_CATEGORIES.filter(fc => !existingCategoryNames.includes(fc.name));
   const categories = [...(data.categories || []), ...fixedCategories];
 
+  // Ensure fixed subcategories are present
+  const existingSubcategoryNames = (data.subcategories || []).map(sc => sc.name);
+  const fixedSubcategories = FIXED_SUBCATEGORIES.filter(fsc => !existingSubcategoryNames.includes(fsc.name));
+  const subcategories = [...(data.subcategories || []), ...fixedSubcategories];
+
   return {
     ...data,
     instruments,
-    categories
+    categories,
+    subcategories
   };
 };
 
@@ -27,6 +33,7 @@ const EMPTY_SYSTEM_DATA = {
   platforms: [],
   instruments: [...FIXED_INSTRUMENTS],
   categories: [...FIXED_CATEGORIES],
+  subcategories: [...FIXED_SUBCATEGORIES],
   symbols: []
 };
 
@@ -49,14 +56,14 @@ export const useSystemData = (user) => {
     let unsubscribe = null;
 
     const configRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'config');
-    
+
     // First, try to get the document quickly
     const initSystemData = async () => {
       try {
         const docSnap = await getDoc(configRef);
-        
+
         if (!isMounted) return;
-        
+
         if (docSnap.exists()) {
           // Document exists - use its data (user has already customized or initialized)
           const data = docSnap.data();
@@ -68,7 +75,7 @@ export const useSystemData = (user) => {
           // Create document with empty data immediately to prevent race conditions
           await setDoc(configRef, EMPTY_SYSTEM_DATA);
         }
-        
+
         // Now set up real-time listener
         unsubscribe = onSnapshot(configRef, (snapshot) => {
           if (!isMounted) return;
