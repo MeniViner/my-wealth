@@ -191,8 +191,8 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
     let updates = {};
 
     // If switching between מניות and קריפטו, reset related fields
-    if (!id &&(prevCategory === 'מניות' && currentCategory === 'קריפטו') ||
-      (prevCategory === 'קריפטו' && currentCategory === 'מניות')) {
+    if (!id &&((prevCategory === 'מניות' && currentCategory === 'קריפטו') ||
+      (prevCategory === 'קריפטו' && currentCategory === 'מניות'))) {
       updates = {
         name: '',
         symbol: '',
@@ -1068,6 +1068,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
               {(formData.category === 'מניות' || formData.category === 'קריפטו') ? (
                 // Smart Ticker Search with Category Selector
                 <TickerSearch
+                  allowedCategories={formData.category === 'קריפטו' ? ['crypto'] : ['us-stock', 'il-stock', 'index']}
                   type={formData.category === 'קריפטו' ? 'crypto' : 'us-stock'} // Default type (will be overridden by selector)
                   value={formData.symbol || ''}
                   displayValue={formData.displayName || formData.name || ''} // Show Hebrew name
