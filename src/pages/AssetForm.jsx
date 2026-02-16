@@ -191,7 +191,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
     let updates = {};
 
     // If switching between מניות and קריפטו, reset related fields
-    if ((prevCategory === 'מניות' && currentCategory === 'קריפטו') ||
+    if (!id &&(prevCategory === 'מניות' && currentCategory === 'קריפטו') ||
       (prevCategory === 'קריפטו' && currentCategory === 'מניות')) {
       updates = {
         name: '',
