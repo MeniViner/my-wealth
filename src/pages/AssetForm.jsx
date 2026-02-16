@@ -1068,6 +1068,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
               {(formData.category === 'מניות' || formData.category === 'קריפטו') ? (
                 // Smart Ticker Search with Category Selector
                 <TickerSearch
+                  isEditing={!!id}
                   allowedCategories={formData.category === 'קריפטו' ? ['crypto'] : ['us-stock', 'il-stock', 'index']}
                   type={formData.category === 'קריפטו' ? 'crypto' : 'us-stock'} // Default type (will be overridden by selector)
                   value={formData.symbol || ''}
