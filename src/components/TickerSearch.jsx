@@ -24,6 +24,7 @@ const TickerSearch = ({
   allowManual = true,
   showCategorySelector = true,
   allowedCategories = ['us-stock', 'il-stock', 'index', 'crypto'] // Default: show all
+  isEditing = false
 }) => {
   // Category selector state - set initial to first allowed category
   const getInitialCategory = () => {
@@ -137,7 +138,10 @@ const TickerSearch = ({
     setShowDropdown(false);
     setSelectedIndex(-1);
     setSelectedAsset(null);
-    onSelect(null); // Clear selection when switching categories
+    // onSelect(null); // Clear selection when switching categories
+    if (!isEditing) {
+      onSelect(null);
+    }
   };
 
   // Handle input change with debouncing
