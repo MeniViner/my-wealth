@@ -119,12 +119,12 @@ const TickerSearch = ({
       if (allowedCategories.length > 0 && !allowedCategories.includes(selectedCategory)) {
         const firstAllowed = allowedCategories[0];
         setSelectedCategory(firstAllowed);
-        setQuery('');
+       // setQuery('');
         setResults([]);
         setShowDropdown(false);
         setSelectedIndex(-1);
         setSelectedAsset(null);
-        onSelect(null);
+      //  onSelect(null);
       }
     }
   }, [allowedCategories, selectedCategory, onSelect]);
