@@ -23,7 +23,7 @@ const TickerSearch = ({
   placeholder = 'חפש טיקר...',
   allowManual = true,
   showCategorySelector = true,
-  allowedCategories = ['us-stock', 'il-stock', 'index', 'crypto'] // Default: show all
+  allowedCategories = ['us-stock', 'il-stock', 'index', 'crypto'], // Default: show all
   isEditing = false
 }) => {
   // Category selector state - set initial to first allowed category
