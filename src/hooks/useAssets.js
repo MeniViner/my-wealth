@@ -105,7 +105,7 @@ export const useAssets = (user, currencyRate) => {
           if (!localStorage.getItem(migKey)) {
             updateDoc(docSnap.ref, { apiId: normalized.apiId })
               .then(() => localStorage.setItem(migKey, 'true'))
-              .catch(() => {});
+              .catch(() => { });
           }
         }
       });
@@ -197,8 +197,18 @@ export const useAssets = (user, currencyRate) => {
       if (asset.assetMode !== 'QUANTITY') return false;
       if (!asset.apiId && !asset.symbol) return false;
       if (asset.marketDataSource === 'manual') return false;
-      if (asset.marketDataSource && asset.marketDataSource !== 'manual') return true;
+
+      // Include TASE assets (browser scraping via Funder/Globes)
+      if (asset.marketDataSource === 'tase-local') return true;
+      if (asset.apiId?.startsWith('tase:')) return true;
+      if (asset.symbol?.endsWith('.TA') && !asset.apiId?.startsWith('yahoo:')) return true;
+
+      // Include crypto assets
       if (asset.assetType === 'CRYPTO' || asset.category === 'קריפטו' || asset.apiId?.startsWith('cg:')) return true;
+
+      // Include other non-manual assets
+      if (asset.marketDataSource && asset.marketDataSource !== 'manual') return true;
+
       return false;
     });
 
