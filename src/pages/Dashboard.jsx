@@ -9,6 +9,7 @@ import { fetchPriceHistory } from '../services/priceService';
 import { resolveInternalId } from '../services/internalIds';
 import { confirmAlert } from '../utils/alerts';
 import { usePriceSync } from '../hooks/usePriceSync';
+import { usePortfolioHistory } from '../hooks/usePortfolioHistory';
 
 // Hebrew font stack
 const HEBREW_FONT = "'Assistant', 'Heebo', 'Rubik', sans-serif";
@@ -163,7 +164,7 @@ const ChartLoader = () => (
   </div>
 );
 
-const Dashboard = ({ assets, systemData, currencyRate, isLoading = false }) => {
+const Dashboard = ({ assets, systemData, currencyRate, isLoading = false, user }) => {
   const { demoAssets, isActive: isDemoActive, demoSystemData, clearDemoAssets, refreshInterval } = useDemoData();
 
   // Use demo assets if tour is active, otherwise use real assets
@@ -409,6 +410,9 @@ const Dashboard = ({ assets, systemData, currencyRate, isLoading = false }) => {
   // State for timeframe selection
   const [timeRange, setTimeRange] = useState('1M');
 
+  // Fetch portfolio history from snapshots (preferred method)
+  const { history: snapshotHistory, loading: snapshotLoading } = usePortfolioHistory(user, timeRange);
+
   // State for portfolio history data
   const [portfolioHistory, setPortfolioHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -457,10 +461,19 @@ const Dashboard = ({ assets, systemData, currencyRate, isLoading = false }) => {
     }
   };
 
-  // Fetch portfolio history
+  // Use portfolio snapshots if available, otherwise calculate from asset histories
   useEffect(() => {
+    // Priority 1: Use saved snapshots (fast, accurate, includes all assets)
+    if (snapshotHistory && snapshotHistory.length > 0 && !isDemoActive) {
+      setPortfolioHistory(snapshotHistory);
+      setHistoryLoading(snapshotLoading);
+      return;
+    }
+
+    // Priority 2: Fallback to calculating from individual asset histories
     if (!hasData || !displayAssets || displayAssets.length === 0) {
       setPortfolioHistory([]);
+      setHistoryLoading(false);
       return;
     }
 
@@ -536,19 +549,22 @@ const Dashboard = ({ assets, systemData, currencyRate, isLoading = false }) => {
           trackableAssets.map(async (asset) => {
             try {
               // Use resolveInternalId to get correct ID format
-              const priceHistory = await fetchPriceHistory(asset, days);
+              const priceHistory = await fetchPriceHistory(asset, timeRange);
 
-              if (!priceHistory || priceHistory.length === 0) {
+              if (!priceHistory || !priceHistory.points || priceHistory.points.length === 0) {
                 return null;
               }
 
               // Convert prices to ILS if needed and multiply by quantity
-              return priceHistory.map(({ date, price }) => {
-                const priceInILS = asset.currency === 'USD' ? price * rate : price;
+              // History format: { points: [{ t: timestamp_ms, v: price }], currency: 'USD'|'ILS' }
+              const assetCurrency = priceHistory.currency || asset.currency || 'USD';
+              return priceHistory.points.map((point) => {
+                const priceInILS = assetCurrency === 'USD' ? point.v * rate : point.v;
                 const assetValue = asset.quantity * priceInILS;
+                const date = new Date(point.t);
                 return {
                   date: date.toISOString().split('T')[0],
-                  timestamp: new Date(date).getTime(),
+                  timestamp: point.t,
                   value: assetValue
                 };
               });
@@ -659,7 +675,7 @@ const Dashboard = ({ assets, systemData, currencyRate, isLoading = false }) => {
     };
 
     calculatePortfolioHistory();
-  }, [displayAssets, timeRange, currencyRate, totalWealth, hasData, isDemoActive]);
+  }, [displayAssets, timeRange, currencyRate, totalWealth, hasData, isDemoActive, snapshotHistory, snapshotLoading]);
 
   // Update history in real-time for demo mode
   useEffect(() => {

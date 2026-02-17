@@ -9,7 +9,7 @@ import DataRepair from '../components/DataRepair';
 import AssetCostReset from '../components/AssetCostReset';
 
 
-const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, onRefreshCurrency, onResetOnboarding, onStartCoachmarks, assets, onUpdateAsset, assetsLoading, pricesLoading }) => {
+const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, onRefreshCurrency, onResetOnboarding, onStartCoachmarks, assets, onUpdateAsset, assetsLoading, pricesLoading, onRefreshPrices }) => {
   const [activeSection, setActiveSection] = useState('appearance');
   const [isRefreshingCurrency, setIsRefreshingCurrency] = useState(false);
   const { isDarkMode, toggleDarkMode } = useDarkMode();
@@ -252,8 +252,7 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
               {/* כיבוי עדכון מחירים אוטומטי */}
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 p-4 md:p-5 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-700/50 dark:to-slate-800/50 border border-blue-200 dark:border-blue-800">
                 <div className="flex items-center gap-3 md:gap-4 flex-1">
-                  <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0 ${
-                    settings.disableLivePriceUpdates
+                  <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0 ${settings.disableLivePriceUpdates
                       ? 'bg-gradient-to-br from-slate-400 to-slate-600 shadow-slate-500/20'
                       : 'bg-gradient-to-br from-blue-400 to-blue-600 shadow-blue-500/20'
                     }`}>
@@ -287,17 +286,15 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
                       );
                     }}
                     disabled={settingsLoading}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${
-                      !settings.disableLivePriceUpdates ? 'bg-blue-600' : 'bg-slate-300'
-                    } ${settingsLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${!settings.disableLivePriceUpdates ? 'bg-blue-600' : 'bg-slate-300'
+                      } ${settingsLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                     role="switch"
                     aria-checked={!settings.disableLivePriceUpdates}
                     aria-label="עדכון מחירים אוטומטי"
                   >
                     <span
-                      className={`absolute h-4 w-4 rounded-full bg-white transition-all ${
-                        !settings.disableLivePriceUpdates ? 'left-1' : 'right-1'
-                      }`}
+                      className={`absolute h-4 w-4 rounded-full bg-white transition-all ${!settings.disableLivePriceUpdates ? 'left-1' : 'right-1'
+                        }`}
                     />
                   </button>
                 </div>
@@ -344,10 +341,12 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
               </p>
             </div>
             <div className="p-6">
-              <AssetCostReset 
-                assets={assets || []} 
+              <AssetCostReset
+                assets={assets || []}
                 onUpdateAsset={onUpdateAsset}
                 isLoading={assetsLoading || pricesLoading}
+                currencyRate={currencyRate}
+                onRefreshPrices={onRefreshPrices}
               />
             </div>
           </div>

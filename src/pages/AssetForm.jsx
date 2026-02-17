@@ -314,24 +314,34 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
 
   // Fetch current price when asset is selected (for QUANTITY mode)
   const handleFetchCurrentPrice = async () => {
-    console.log('[BUTTON] handleFetchCurrentPrice clicked');
-    console.log('[BUTTON] Form data:', {
+    console.log('[ASSET FORM] ========== FETCH PRICE START ==========');
+    console.log('[ASSET FORM] Button clicked - handleFetchCurrentPrice');
+    console.log('[ASSET FORM] Form data:', {
       apiId: formData.apiId,
       symbol: formData.symbol,
       marketDataSource: formData.marketDataSource,
       assetType: formData.assetType,
-      category: formData.category
+      category: formData.category,
+      securityId: formData.securityId
     });
 
     if (!formData.apiId && !formData.symbol) {
-      console.error('[BUTTON] Missing apiId and symbol');
+      console.error('[ASSET FORM] ❌ Missing apiId and symbol - cannot fetch price');
       await infoAlert('שגיאה', 'נא לבחור נכס קודם');
       return;
     }
 
     setPriceLoading(true);
+    const startTime = Date.now();
     try {
-      console.log('[BUTTON] Calling fetchAssetPrice...');
+      console.log('[ASSET FORM] 📞 Calling fetchAssetPrice with asset object:', {
+        apiId: formData.apiId,
+        marketDataSource: formData.marketDataSource,
+        symbol: formData.symbol,
+        assetType: formData.assetType,
+        securityId: formData.securityId
+      });
+
       const priceData = await fetchAssetPrice({
         apiId: formData.apiId,
         marketDataSource: formData.marketDataSource,
@@ -340,19 +350,33 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         securityId: formData.securityId
       });
 
-      console.log('[BUTTON] Received priceData:', priceData);
+      const duration = Date.now() - startTime;
+      console.log('[ASSET FORM] ⏱️ Fetch completed in', duration, 'ms');
+      console.log('[ASSET FORM] 📥 Received priceData:', priceData);
 
       // Check if quote is valid: exists, no error, has valid price
+      console.log('[ASSET FORM] 🔍 Validating price data...');
+      console.log('[ASSET FORM] Validation checks:', {
+        hasPriceData: !!priceData,
+        hasError: !!priceData?.error,
+        hasCurrentPrice: typeof priceData?.currentPrice === 'number',
+        isFinite: isFinite(priceData?.currentPrice),
+        isPositive: priceData?.currentPrice > 0,
+        currentPrice: priceData?.currentPrice
+      });
+
       if (priceData &&
         !priceData.error &&
         typeof priceData.currentPrice === 'number' &&
         isFinite(priceData.currentPrice) &&
         priceData.currentPrice > 0) {
 
-        console.log('[BUTTON] ✅ Valid price data received:', {
+        console.log('[ASSET FORM] ✅ VALID price data received:', {
           currentPrice: priceData.currentPrice,
           currency: priceData.currency,
-          source: priceData.source
+          source: priceData.source,
+          symbol: priceData.symbol,
+          change24h: priceData.change24h
         });
 
         setCurrentPriceData(priceData);
@@ -382,18 +406,37 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         );
       } else {
         // Invalid quote - show error with details
-        console.error('[BUTTON] ❌ Invalid price data:', priceData);
+        console.error('[ASSET FORM] ❌ INVALID price data - validation failed');
+        console.error('[ASSET FORM] Price data details:', {
+          priceData,
+          error: priceData?.error,
+          currentPrice: priceData?.currentPrice,
+          type: typeof priceData?.currentPrice,
+          isNull: priceData === null,
+          isUndefined: priceData === undefined
+        });
+
         const errorMsg = priceData?.error
           ? `לא ניתן לשלוף מחיר: ${priceData.error}`
-          : 'לא ניתן לשלוף מחיר. נסה שוב או הזן ידנית.';
+          : priceData === null
+            ? 'לא התקבל מחיר מהשרת. בדוק את החיבור או נסה שוב.'
+            : 'לא ניתן לשלוף מחיר. נסה שוב או הזן ידנית.';
+
+        console.error('[ASSET FORM] Showing error alert:', errorMsg);
         await errorAlert('שגיאה', errorMsg);
       }
     } catch (error) {
-      console.error('[BUTTON] Error fetching price:', error);
+      const duration = Date.now() - startTime;
+      console.error('[ASSET FORM] ❌ EXCEPTION during price fetch (after', duration, 'ms):', {
+        error: error.message,
+        stack: error.stack,
+        name: error.name
+      });
       await errorAlert('שגיאה', `שגיאה בשליפת מחיר: ${error.message || 'שגיאה לא ידועה'}`);
+    } finally {
+      setPriceLoading(false);
+      console.log('[ASSET FORM] ========== FETCH PRICE END ==========');
     }
-    setPriceLoading(false);
-    console.log('[BUTTON] handleFetchCurrentPrice completed');
   };
 
   // Fetch historical price for the purchase date
@@ -424,7 +467,9 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
       const historicalPrice = await fetchAssetHistoricalPrice({
         apiId: formData.apiId,
         marketDataSource: formData.marketDataSource,
-        symbol: formData.symbol
+        symbol: formData.symbol,
+        assetType: formData.assetType, // FIX: Pass assetType
+        category: formData.category    // FIX: Pass category for fallback
       }, formData.purchaseDate);
 
       console.log('[BUTTON] Received historicalPrice:', historicalPrice);
@@ -540,7 +585,9 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         const historicalPrice = await fetchAssetHistoricalPrice({
           apiId: formData.apiId,
           marketDataSource: formData.marketDataSource,
-          symbol: formData.symbol
+          symbol: formData.symbol,
+          assetType: formData.assetType, // FIX: Pass assetType
+          category: formData.category    // FIX: Pass category for fallback
         }, formData.purchaseDate);
 
         if (historicalPrice !== null && historicalPrice > 0) {

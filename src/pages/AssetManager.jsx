@@ -563,27 +563,24 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                   const isExpanded = expandedGroups.has(key);
 
                   return (
-                    <div key={key} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+                    <div key={key} className={`rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden transition-all ${!isExpanded ? 'bg-surface-light dark:bg-surface-dark' : 'bg-white dark:bg-slate-800'}`}>
                       {/* Group Header */}
                       <div
-                        className="px-4 md:px-6 py-2.5 md:py-4 border-b border-slate-100 dark:border-slate-700 hover:bg-slate-50/50 dark:hover:bg-slate-700/30 transition-colors"
-                        style={{ borderRight: `4px solid ${groupColor}` }}
+                        className={`px-4 md:px-6 py-3 cursor-pointer transition-colors ${!isExpanded
+                          ? 'bg-slate-50 dark:bg-slate-800/50 hover:bg-slate-100 dark:hover:bg-slate-800'
+                          : 'bg-white dark:bg-slate-800 border-b border-slate-100 dark:border-slate-700'
+                          }`}
+                        onClick={() => toggleGroup(key)}
                       >
                         {/* Mobile Layout - Clean Row + Expanded Action */}
                         <div className="flex flex-col md:hidden">
                           {/* Main Row: Toggle + Info + Value */}
-                          <div
-                            className="flex items-center justify-between gap-3 cursor-pointer"
-                            onClick={() => toggleGroup(key)}
-                          >
-                            {/* Left: Checkbox & Name */}
+                          <div className="flex items-center justify-between gap-3">
+                            {/* Left: Checkbox & Name - Icon Removed */}
                             <div className="flex items-center gap-3 flex-1 min-w-0">
-                              <div className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${isExpanded ? 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300' : 'text-slate-400 dark:text-slate-500'}`}>
-                                {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-                              </div>
-
+                              {/* Icon removed per user request */}
                               <div className="flex flex-col min-w-0">
-                                <h3 className="text-base font-bold text-slate-800 dark:text-white truncate leading-tight">
+                                <h3 className="text-base font-bold text-slate-900 dark:text-white truncate leading-tight">
                                   {key}
                                 </h3>
                                 <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
@@ -597,14 +594,23 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                               <div className="text-base font-bold text-slate-900 dark:text-white leading-tight">
                                 ₪{Math.round(totalValue).toLocaleString()}
                               </div>
-                              <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50 px-1.5 py-0.5 rounded inline-block mt-0.5" dir="ltr">
-                                {((totalValue / sortedAssets.reduce((sum, a) => sum + (a.value || 0), 0)) * 100).toFixed(1)}%
+                              <div className="flex items-center justify-end gap-1 mt-0.5">
+                                <div className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded" dir="ltr">
+                                  {((totalValue / sortedAssets.reduce((sum, a) => sum + (a.value || 0), 0)) * 100).toFixed(1)}%
+                                </div>
+                                <div className={`text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+                                  <ChevronDown size={20} />
+                                </div>
                               </div>
                             </div>
                           </div>
 
+                          {/* Expanded Content: Add Button (Moved to top of list area logically, but visually here is fine if styled right) */}
+                          {/* Actually in Stitch design, the add button is at the TOP of the list or bottom? 
+                              Asset List v2 HTML shows it at the top of the list: <div className="px-4 py-3"><button...></div> 
+                              So let's keep it here but style it correctly. */}
                           {isExpanded && (
-                            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/50 animate-slide-down">
+                            <div className="pt-3 pb-1">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -618,10 +624,10 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                                   }
                                   navigate(`/assets/add?${params.toString()}`);
                                 }}
-                                className="w-full bg-emerald-50 dark:bg-emerald-900/10 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/30 p-2.5 rounded-lg flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                                className="w-full py-2.5 rounded-xl border border-dashed border-emerald-500/40 bg-emerald-500/5 hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-sm font-bold flex justify-center items-center gap-2 transition-colors"
                               >
                                 <Plus size={16} />
-                                <span className="text-sm font-semibold">הוסף נכס ל-{key}</span>
+                                <span className="text-sm font-bold">הוסף נכס ל-{key}</span>
                               </button>
                             </div>
                           )}
@@ -629,34 +635,16 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
 
                         {/* Desktop Layout - Single Row */}
                         <div className="hidden md:flex items-center justify-between gap-4">
-                          {/* שמאל: הרחב/צמצם */}
-                          <div className="flex items-center gap-3 flex-shrink-0">
-                            <button
-                              onClick={() => toggleGroup(key)}
-                              className="p-1.5 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-all"
-                              title={isExpanded ? 'צמצם' : 'הרחב'}
-                            >
-                              {isExpanded ? (
-                                <ChevronUp size={20} />
-                              ) : (
-                                <ChevronDown size={20} />
-                              )}
-                            </button>
-                          </div>
-
-                          {/* Center: Group Info */}
-                          <button
-                            onClick={() => toggleGroup(key)}
-                            className="flex items-center gap-3 flex-1 min-w-0 text-right hover:opacity-80 transition-opacity"
-                          >
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            {/* Icon removed per user request */}
                             <div className="flex-1 min-w-0">
                               <h3 className="text-lg font-semibold text-slate-900 dark:text-white truncate">{key}</h3>
                               <span className="text-xs text-slate-500 dark:text-slate-400">{items.length} נכסים</span>
                             </div>
-                          </button>
+                          </div>
 
                           {/* Right: Value Info + Plus Button */}
-                          <div className="flex items-center gap-3 flex-shrink-0">
+                          <div className="flex items-center gap-4 flex-shrink-0">
                             <div className="text-right min-w-[100px]">
                               <div className="text-lg font-bold text-slate-900 dark:text-white">
                                 ₪{totalValue.toLocaleString()}
@@ -664,6 +652,9 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                               <div className="text-xs text-slate-500 dark:text-slate-400">
                                 {((totalValue / sortedAssets.reduce((sum, a) => sum + (a.value || 0), 0)) * 100).toFixed(1)}%
                               </div>
+                            </div>
+                            <div className={`p-1.5 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+                              <ChevronDown size={20} />
                             </div>
                             <button
                               onClick={(e) => {
@@ -690,8 +681,8 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                       {/* Assets List - Conditional Mobile/Desktop Rendering */}
                       {isExpanded && (
                         <>
-                          {/* Mobile: Card Layout */}
-                          <div className="md:hidden space-y-3 p-4">
+                          {/* Mobile: List Layout (No Spacing) */}
+                          <div className="md:hidden px-4 pb-2">
                             {items.map(asset => (
                               <MobileAssetCard
                                 key={asset.id}
@@ -924,11 +915,14 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                         {selectedAsset.currency === 'USD' ? '$' : '₪'}{(selectedAsset.purchasePrice || 0).toLocaleString()}
                       </div>
                     </div>
-                    {selectedAsset.currentPriceNative && (
+                    {(typeof selectedAsset.currentPriceNative === 'number' && selectedAsset.currentPriceNative > 0) ||
+                      (typeof selectedAsset.currentPrice === 'number' && selectedAsset.currentPrice > 0) ? (
                       <div className="bg-emerald-50 dark:bg-emerald-900/20 p-3 rounded-lg text-center">
                         <div className="text-sm md:text-xs text-emerald-600 dark:text-emerald-400">מחיר נוכחי</div>
                         <div className="font-bold text-emerald-700 dark:text-emerald-300 font-mono" dir="ltr">
-                          {selectedAsset.currency === 'USD' ? '$' : '₪'}{selectedAsset.currentPriceNative.toLocaleString()}
+                          {typeof selectedAsset.currentPriceNative === 'number' && selectedAsset.currentPriceNative > 0
+                            ? `${selectedAsset.currency === 'USD' ? '$' : '₪'}${selectedAsset.currentPriceNative.toLocaleString()}`
+                            : `₪${(selectedAsset.currentPrice || 0).toLocaleString()}`}
                         </div>
                         {selectedAsset.hasLivePrice && (
                           <div className="text-xs text-emerald-500 flex items-center justify-center gap-1 mt-1">
@@ -937,7 +931,7 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                           </div>
                         )}
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 )}
 

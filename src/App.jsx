@@ -370,7 +370,7 @@ const AppWithDemo = ({
                   title="שגיאה בטעינת הדשבורד"
                   message="אירעה שגיאה בטעינת הדשבורד. חלק מהגרפים עלולים לא להיטען, אך שאר האפליקציה תמשיך לעבוד."
                 >
-                  <Dashboard assets={displayAssets} systemData={displaySystemData} currencyRate={currencyRate} isLoading={pricesLoading || assetsLoading} />
+                  <Dashboard assets={displayAssets} systemData={displaySystemData} currencyRate={currencyRate} isLoading={pricesLoading || assetsLoading} user={user} />
                 </ErrorBoundary>
               }
             />
@@ -457,6 +457,7 @@ const AppWithDemo = ({
                     onStartCoachmarks={startCoachmarks}
                     assets={displayAssets}
                     onUpdateAsset={updateAsset}
+                    onRefreshPrices={refreshPrices}
                     assetsLoading={assetsLoading}
                     pricesLoading={pricesLoading}
                   />

@@ -16,7 +16,7 @@ const AssetKPIs = ({ assets }) => {
                     </div>
                     <div className="flex-1 min-w-0">
                         <p className="text-[10px] md:text-xs font-medium text-slate-500 dark:text-slate-400">שווי כולל</p>
-                        <p className="text-sm md:text-xl font-bold text-slate-900 dark:text-white truncate" dir="ltr">
+                        <p className="text-sm md:text-xl font-bold text-slate-900 dark:text-white " dir="ltr">
                             ₪ {Math.round(totalValue).toLocaleString()}
                         </p>
                     </div>
