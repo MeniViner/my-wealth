@@ -65,18 +65,21 @@ async function fetchWithProxyRotation(targetUrl, options = {}) {
   const method = options.method || 'GET';
   const isPost = method === 'POST';
 
-  // Proxy configurations with capabilities
+  // Proxy configurations - ordered by reliability in production
+  // cors.eu.org first (works best in production), then corsproxy.io, then allorigins
   const proxies = [
+    {
+      name: 'cors.eu.org',
+      url: `https://cors.eu.org/${targetUrl}`,
+      supportsPost: true,
+      timeout: 5000, // 5 seconds
+      index: 1
+    },
     {
       name: 'corsproxy.io',
       url: `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
       supportsPost: true,
-      index: 1
-    },
-    {
-      name: 'codetabs',
-      url: `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`,
-      supportsPost: false,
+      timeout: 3000, // 3 seconds
       index: 2
     },
     {
@@ -84,19 +87,8 @@ async function fetchWithProxyRotation(targetUrl, options = {}) {
       url: `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`,
       supportsPost: false,
       requiresUnwrap: true,
+      timeout: 5000, // 5 seconds
       index: 3
-    },
-    {
-      name: 'thingproxy',
-      url: `https://thingproxy.freeboard.io/fetch/${targetUrl}`,
-      supportsPost: true,
-      index: 4
-    },
-    {
-      name: 'cors.eu.org',
-      url: `https://cors.eu.org/${targetUrl}`,
-      supportsPost: true,
-      index: 5
     }
   ];
 
@@ -105,7 +97,7 @@ async function fetchWithProxyRotation(targetUrl, options = {}) {
 
   for (const proxy of viableProxies) {
     try {
-      console.log(`[PROXY ${proxy.index}/${proxies.length}] Trying ${proxy.name} for ${targetUrl}...`);
+      console.log(`[PROXY ${proxy.index}/${proxies.length}] Trying ${proxy.name}...`);
 
       // Create fetch options for this proxy
       const proxyOptions = { ...options };
@@ -115,9 +107,9 @@ async function fetchWithProxyRotation(targetUrl, options = {}) {
         continue; // Skip if POST not supported
       }
 
-      // Set timeout
+      // Set timeout (shorter for faster failure)
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), proxy.timeout);
       proxyOptions.signal = controller.signal;
 
       const response = await fetch(proxy.url, proxyOptions);
@@ -131,7 +123,7 @@ async function fetchWithProxyRotation(targetUrl, options = {}) {
           const json = await response.json();
           return new Response(json.contents, {
             status: 200,
-            headers: { 'Content-Type': 'text/html' }
+            headers: { 'Content-Type': 'application/json' }
           });
         }
 

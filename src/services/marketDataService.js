@@ -38,30 +38,67 @@ const setCachedResult = (key, data) => {
 // ==================== PROXY HELPER (PRODUCTION FIX) ====================
 
 async function fetchWithFallbackProxy(targetUrl, options = {}) {
-  // 1. corsproxy.io - מהיר, תומך POST, אבל לפעמים נחסם בשרתים
-  const proxy1 = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+  const isGet = !options.method || options.method === 'GET';
 
-  // 2. allorigins.win - אמין יותר כגיבוי, אבל תומך רק ב-GET
-  const proxy2 = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
-
-  try {
-    const res1 = await fetch(proxy1, options);
-    if (res1.ok) return res1;
-    console.warn(`[PROXY] Primary failed for ${targetUrl}, trying backup...`);
-  } catch (e) {
-    console.warn(`[PROXY] Primary error for ${targetUrl}:`, e.message);
+  // 1. cors.eu.org - עובד הכי טוב בפרודקשן
+  if (isGet) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      const res = await fetch(`https://cors.eu.org/${targetUrl}`, {
+        ...options,
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        console.log(`[PROXY] ✅ Success with cors.eu.org`);
+        return res;
+      }
+    } catch (e) {
+      if (e.name !== 'AbortError') {
+        console.warn(`[PROXY] cors.eu.org error:`, e.message);
+      }
+    }
   }
 
-  // גיבוי (רק אם זו בקשת GET)
-  if (!options.method || options.method === 'GET') {
+  // 2. corsproxy.io - מהיר, תומך POST, אבל לפעמים נחסם בפרודקשן
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
+    const res1 = await fetch(`https://corsproxy.io/?${encodeURIComponent(targetUrl)}`, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if (res1.ok) {
+      console.log(`[PROXY] ✅ Success with corsproxy.io`);
+      return res1;
+    }
+    console.warn(`[PROXY] corsproxy.io failed, trying backup...`);
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      console.warn(`[PROXY] corsproxy.io error:`, e.message);
+    }
+  }
+
+  // 3. allorigins.win - אמין יותר כגיבוי, אבל תומך רק ב-GET
+  if (isGet) {
     try {
-      const res2 = await fetch(proxy2);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      const res2 = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
       if (res2.ok) {
         const json = await res2.json();
+        console.log(`[PROXY] ✅ Success with allorigins`);
         return new Response(json.contents, { status: 200 });
       }
     } catch (e) {
-      console.error(`[PROXY] Backup failed for ${targetUrl}`);
+      if (e.name !== 'AbortError') {
+        console.error(`[PROXY] allorigins failed for ${targetUrl}`);
+      }
     }
   }
 
@@ -98,113 +135,17 @@ async function getNameFromGlobes(securityId) {
 }
 
 /**
- * Fetch with Multi-Proxy Rotation (5 proxies) - Same as priceService
- * Tries multiple CORS proxies sequentially to handle production blocking
- */
-async function fetchWithProxyRotation(targetUrl, options = {}) {
-  const method = options.method || 'GET';
-  const isPost = method === 'POST';
-
-  // Proxy configurations with capabilities
-  const proxies = [
-    {
-      name: 'corsproxy.io',
-      url: `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
-      supportsPost: true,
-      index: 1
-    },
-    {
-      name: 'codetabs',
-      url: `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`,
-      supportsPost: false,
-      index: 2
-    },
-    {
-      name: 'allorigins',
-      url: `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`,
-      supportsPost: false,
-      requiresUnwrap: true,
-      index: 3
-    },
-    {
-      name: 'thingproxy',
-      url: `https://thingproxy.freeboard.io/fetch/${targetUrl}`,
-      supportsPost: true,
-      index: 4
-    },
-    {
-      name: 'cors.eu.org',
-      url: `https://cors.eu.org/${targetUrl}`,
-      supportsPost: true,
-      index: 5
-    }
-  ];
-
-  // Filter proxies based on request method
-  const viableProxies = proxies.filter(proxy => !isPost || proxy.supportsPost);
-
-  for (const proxy of viableProxies) {
-    try {
-      console.log(`[PROXY ${proxy.index}/${proxies.length}] Trying ${proxy.name} for ${targetUrl}...`);
-
-      // Create fetch options for this proxy
-      const proxyOptions = { ...options };
-
-      // Some proxies don't support custom headers/methods in the same way
-      if (!proxy.supportsPost && isPost) {
-        continue; // Skip if POST not supported
-      }
-
-      // Set timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-      proxyOptions.signal = controller.signal;
-
-      const response = await fetch(proxy.url, proxyOptions);
-      clearTimeout(timeoutId);
-
-      if (response.ok) {
-        console.log(`[PROXY] ✅ Success with ${proxy.name}`);
-
-        // Unwrap response if needed (e.g., allorigins)
-        if (proxy.requiresUnwrap) {
-          const json = await response.json();
-          return new Response(json.contents, {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-
-        return response;
-      }
-
-      console.warn(`[PROXY] ${proxy.name} returned ${response.status}`);
-
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        console.warn(`[PROXY] ${proxy.name} timed out`);
-      } else {
-        console.warn(`[PROXY] ${proxy.name} error:`, error.message);
-      }
-    }
-  }
-
-  console.error(`[PROXY] ❌ All proxies failed for ${targetUrl}`);
-  return { ok: false };
-}
-
-/**
- * Search crypto assets directly from CoinGecko via browser (with proxy rotation)
+ * Search crypto assets directly from CoinGecko via browser (with proxy fallback)
  * @param {string} query - Search query
  * @returns {Promise<Array>} Array of asset objects with { id, symbol, name, image }
  */
 async function searchCryptoAssetsFromBrowser(query) {
   try {
     const targetUrl = `https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(query.trim())}`;
-    
+
     console.log(`[COINGECKO SEARCH] Searching for "${query}"...`);
 
-    const response = await fetchWithProxyRotation(targetUrl, {
+    const response = await fetchWithFallbackProxy(targetUrl, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' }
     });
