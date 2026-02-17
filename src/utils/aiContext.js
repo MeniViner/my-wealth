@@ -39,13 +39,13 @@ export const generatePortfolioContext = (assets) => {
     const value = asset.value || 0;
     const allocation = totalValue > 0 ? ((value / totalValue) * 100).toFixed(2) : '0.00';
 
-    // Format: Symbol | Category | Value | Allocation%
-    return `${symbol} | ${category} | ₪${value.toLocaleString('he-IL')} | ${allocation}%`;
+    // Format: Symbol | Category | Subcategory | Value | Allocation%
+    return `${symbol} | ${category} | ${asset.subcategory || 'אחר'} | ₪${value.toLocaleString('he-IL')} | ${allocation}%`;
   });
 
   // Format the context string (no user metadata, no IDs, no PII)
   const context = `CURRENT PORTFOLIO CONTEXT:
-Format: Symbol | Category | Current Value | Allocation%
+Format: Symbol | Category | Subcategory | Current Value | Allocation%
 ${assetLines.join('\n')}
 Total Value: ₪${totalValue.toLocaleString('he-IL')}
 Total Assets: ${assets.length}`;

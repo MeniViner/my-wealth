@@ -80,6 +80,7 @@ const ChartBuilder = () => {
       'platform': 'חשבונות וארנקים',
       'instrument': 'מטבעות בסיס',
       'symbol': 'סמל נכס',
+      'name': 'שם נכס',
       'tags': 'תגיות נכסים',
       'currency': 'מטבע נכס'
     };
@@ -312,7 +313,7 @@ const ChartBuilder = () => {
 
       // Get available options for the AI
       const availableChartTypes = ['PieChart', 'BarChart', 'HorizontalBarChart', 'RadialBar', 'Treemap', 'RadarChart', 'AreaChart', 'LineChart', 'ComposedChart'];
-      const availableDataKeys = ['category', 'subcategory', 'platform', 'instrument', 'symbol', 'tags', 'currency'];
+      const availableDataKeys = ['category', 'subcategory', 'platform', 'instrument', 'symbol', 'name', 'tags', 'currency'];
       const availableCategories = uniqueCategories;
       const availablePlatforms = uniquePlatforms;
       const availableInstruments = uniqueInstruments;
@@ -433,7 +434,7 @@ ${portfolioContext}
       const portfolioContext = generatePortfolioContext(assets);
 
       const availableChartTypes = ['PieChart', 'BarChart', 'HorizontalBarChart', 'RadialBar', 'Treemap', 'RadarChart', 'AreaChart', 'LineChart', 'ComposedChart'];
-      const availableDataKeys = ['category', 'subcategory', 'platform', 'instrument', 'symbol', 'tags', 'currency'];
+      const availableDataKeys = ['category', 'subcategory', 'platform', 'instrument', 'symbol', 'name', 'tags', 'currency'];
       const availableCategories = uniqueCategories;
       const availablePlatforms = uniquePlatforms;
       const availableInstruments = uniqueInstruments;
@@ -965,6 +966,7 @@ ${portfolioContext}
                     { value: 'platform', label: 'חשבונות וארנקים' },
                     { value: 'instrument', label: 'מטבעות בסיס' },
                     { value: 'symbol', label: 'סמל' },
+                    { value: 'name', label: 'שם נכס' },
                     { value: 'tags', label: 'תגיות' },
                     { value: 'currency', label: 'מטבע' }
                   ].map(group => (
