@@ -191,7 +191,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
     let updates = {};
 
     // If switching between מניות and קריפטו, reset related fields
-    if (!id &&((prevCategory === 'מניות' && currentCategory === 'קריפטו') ||
+    if (!id && ((prevCategory === 'מניות' && currentCategory === 'קריפטו') ||
       (prevCategory === 'קריפטו' && currentCategory === 'מניות'))) {
       updates = {
         name: '',
@@ -585,7 +585,8 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         const priceData = await fetchAssetPrice({
           apiId: formData.apiId,
           marketDataSource: formData.marketDataSource,
-          symbol: formData.symbol
+          symbol: formData.symbol,
+          assetType: formData.assetType // Include assetType for proper strategy selection
         });
 
         if (priceData) {
@@ -607,7 +608,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
     // Debounce to avoid too many API calls
     const timeoutId = setTimeout(fetchNativePrice, 300);
     return () => clearTimeout(timeoutId);
-  }, [formData.apiId, formData.symbol, formData.marketDataSource, formData.assetMode, isPriceManual]);
+  }, [formData.apiId, formData.symbol, formData.marketDataSource, formData.assetMode, formData.assetType, isPriceManual]);
 
   // Effect B: Fetch/update exchange rate when needed
   useEffect(() => {
@@ -819,6 +820,7 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
       instrument: formData.instrument,
       platform: formData.platform,
       category: formData.category,
+      subcategory: formData.subcategory || 'אחר',
       currency: formData.currency,
       tags: formData.tags.split(',').map(t => t.trim()).filter(t => t),
       assetType: formData.assetType,
@@ -1157,13 +1159,6 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
                   }}
                   allowManual={true}
                   showCategorySelector={true}
-                  allowedCategories={
-                    formData.category === 'מניות'
-                      ? ['us-stock', 'il-stock', 'index'] // Stocks: show US, IL, and Indices
-                      : formData.category === 'קריפטו'
-                        ? ['crypto'] // Crypto: show only Crypto
-                        : ['us-stock', 'il-stock', 'index', 'crypto'] // Default: show all
-                  }
                 />
               ) : (
                 // Manual input for Real Estate and Other categories

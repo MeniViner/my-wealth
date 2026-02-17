@@ -439,11 +439,61 @@ class GlobalStrategy {
   }
 }
 
+// ==================== CRYPTO DATA FETCHER (BROWSER-BASED) ====================
+
+/**
+ * Fetch crypto price directly from CoinGecko via browser (with proxy rotation)
+ * @param {string} coinId - CoinGecko coin ID (e.g., "bitcoin", "ethereum")
+ * @returns {Promise<{price: number, changePct: number, timestamp: number}|null>}
+ */
+async function fetchCryptoPriceFromBrowser(coinId) {
+  try {
+    // CoinGecko API endpoint
+    const targetUrl = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(coinId)}&vs_currencies=usd&include_24hr_change=true&include_last_updated_at=true`;
+
+    console.log(`[COINGECKO BROWSER] Fetching ${coinId}...`);
+
+    const response = await fetchWithProxyRotation(targetUrl, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (!response.ok) {
+      console.warn(`[COINGECKO BROWSER] HTTP error ${response.status} for ${coinId}`);
+      return null;
+    }
+
+    const json = await response.json();
+    const coinData = json[coinId];
+
+    if (!coinData || typeof coinData.usd !== 'number') {
+      console.warn(`[COINGECKO BROWSER] Invalid data structure for ${coinId}`);
+      return null;
+    }
+
+    const price = coinData.usd;
+    const changePct = coinData.usd_24h_change || 0;
+    const timestamp = coinData.last_updated_at ? coinData.last_updated_at * 1000 : Date.now();
+
+    console.log(`[COINGECKO BROWSER] ✅ Success for ${coinId}: $${price} (${changePct > 0 ? '+' : ''}${changePct.toFixed(2)}%)`);
+
+    return {
+      price,
+      changePct,
+      timestamp,
+      currency: 'USD'
+    };
+  } catch (error) {
+    console.warn(`[COINGECKO BROWSER] Fetch failed for ${coinId}:`, error.message);
+    return null;
+  }
+}
+
 /**
  * Crypto Strategy - Cryptocurrency Assets
  * 
  * Rules:
- * - Data source: Backend API (CoinGecko)
+ * - Data source: Browser (CoinGecko via proxy)
  * - Price: As-Is (no normalization)
  * - Currency: Always USD
  */
@@ -453,6 +503,7 @@ class CryptoStrategy {
     return (
       asset.marketDataSource === 'coingecko' ||
       asset.assetType === 'CRYPTO' ||
+      asset.category === 'קריפטו' ||
       internalId?.startsWith('cg:')
     );
   }
@@ -465,57 +516,100 @@ class CryptoStrategy {
         return null;
       }
 
-      console.log(`[CRYPTO STRATEGY] Fetching ${internalId} for asset:`, {
+      // Extract coinId from internalId (e.g., "cg:bitcoin" -> "bitcoin")
+      let coinId = internalId;
+      if (coinId.startsWith('cg:')) {
+        coinId = coinId.substring(3);
+      }
+      // Fallback to apiId or symbol if internalId doesn't have coinId
+      if (!coinId || coinId === internalId) {
+        coinId = asset.apiId || asset.symbol || '';
+        // Remove cg: prefix if present
+        if (coinId.startsWith('cg:')) {
+          coinId = coinId.substring(3);
+        }
+      }
+
+      if (!coinId) {
+        console.error('[CRYPTO STRATEGY] No coin ID found for asset:', asset);
+        return null;
+      }
+
+      console.log(`[CRYPTO STRATEGY] Fetching ${coinId} from browser for asset:`, {
         symbol: asset.symbol,
         apiId: asset.apiId,
         marketDataSource: asset.marketDataSource,
         assetType: asset.assetType
       });
 
-      const quotes = await getQuotes([internalId]);
-      console.log(`[CRYPTO STRATEGY] Raw quotes received for ${internalId}:`, quotes);
+      let coinData = await fetchCryptoPriceFromBrowser(coinId);
 
-      const validQuotes = quotes.filter(q =>
-        q &&
-        !q.error &&
-        typeof q.price === 'number' &&
-        !isNaN(q.price) &&
-        q.price > 0
-      );
+      // Fallback: If coinId doesn't work and we have a symbol, try to find the full coinId by searching CoinGecko
+      if ((!coinData || !coinData.price) && asset.symbol && coinId.toUpperCase() === asset.symbol.toUpperCase()) {
+        console.log(`[CRYPTO STRATEGY] CoinId "${coinId}" failed, trying to find full ID by symbol "${asset.symbol}"...`);
 
-      console.log(`[CRYPTO STRATEGY] Valid quotes count: ${validQuotes.length}`);
+        try {
+          // Search CoinGecko directly to find the full coinId
+          const searchUrl = `https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(asset.symbol)}`;
+          const searchResponse = await fetchWithProxyRotation(searchUrl, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' }
+          });
 
-      if (validQuotes.length === 0) {
-        const errorQuote = quotes.find(q => q && q.error);
-        if (errorQuote) {
-          console.error(`[CRYPTO STRATEGY] Quote error for ${internalId}:`, errorQuote.error);
-        } else {
-          console.error(`[CRYPTO STRATEGY] No valid quotes for ${internalId}. All quotes:`, quotes);
+          if (searchResponse.ok) {
+            let searchJson;
+            try {
+              const responseText = await searchResponse.text();
+              searchJson = JSON.parse(responseText);
+              // Handle allorigins wrapped format
+              if (searchJson.contents) {
+                searchJson = JSON.parse(searchJson.contents);
+              }
+            } catch (parseError) {
+              console.warn(`[CRYPTO STRATEGY] Failed to parse search response:`, parseError);
+            }
+
+            if (searchJson && searchJson.coins && Array.isArray(searchJson.coins)) {
+              // Find exact match by symbol (case-insensitive)
+              const exactMatch = searchJson.coins.find(coin =>
+                coin.symbol && coin.symbol.toUpperCase() === asset.symbol.toUpperCase()
+              );
+
+              if (exactMatch && exactMatch.id) {
+                console.log(`[CRYPTO STRATEGY] Found full coinId: "${exactMatch.id}" for symbol "${asset.symbol}"`);
+                coinData = await fetchCryptoPriceFromBrowser(exactMatch.id);
+              }
+            }
+          }
+        } catch (searchError) {
+          console.warn(`[CRYPTO STRATEGY] Failed to search for coinId:`, searchError);
         }
+      }
+
+      if (!coinData || !coinData.price) {
+        console.error(`[CRYPTO STRATEGY] Failed to fetch price for ${coinId}`);
         return null;
       }
 
-      const quote = validQuotes[0];
-      console.log(`[CRYPTO STRATEGY] Selected quote for ${internalId}:`, {
-        id: quote.id,
-        price: quote.price,
-        currency: quote.currency,
-        timestamp: quote.timestamp
+      console.log(`[CRYPTO STRATEGY] ✅ Received data for ${coinId}:`, {
+        price: coinData.price,
+        changePct: coinData.changePct,
+        timestamp: coinData.timestamp
       });
 
       const result = {
-        symbol: asset.symbol || asset.apiId || '',
-        name: asset.name || asset.symbol,
-        currentPrice: quote.price,      // As-Is - NO MANIPULATION
-        currency: 'USD',                 // Always USD for crypto
-        change24h: quote.changePct || 0,
-        changeAmount: (quote.price * (quote.changePct || 0)) / 100,
-        lastUpdated: new Date(quote.timestamp || Date.now()),
-        source: 'coingecko',
+        symbol: asset.symbol || asset.apiId || coinId,
+        name: asset.name || asset.symbol || coinId,
+        currentPrice: coinData.price,      // As-Is - NO MANIPULATION
+        currency: 'USD',                   // Always USD for crypto
+        change24h: coinData.changePct || 0,
+        changeAmount: (coinData.price * (coinData.changePct || 0)) / 100,
+        lastUpdated: new Date(coinData.timestamp || Date.now()),
+        source: 'coingecko-browser',
         assetType: 'CRYPTO',
       };
 
-      console.log(`[CRYPTO STRATEGY] ✅ Final result for ${internalId}:`, result);
+      console.log(`[CRYPTO STRATEGY] ✅ Final result for ${coinId}:`, result);
       return result;
     } catch (error) {
       console.error('[CRYPTO STRATEGY] Error fetching price:', error);
@@ -598,7 +692,7 @@ export const fetchAssetPricesBatch = async (assets, options = {}) => {
           changeAmount: (asset.currentPrice * (asset.priceChange24h || 0)) / 100,
           lastUpdated: asset.lastUpdated,
           source: asset.marketDataSource === 'tase-local' ? 'funder-browser' :
-            (asset.assetType === 'CRYPTO' ? 'coingecko' : 'yahoo'),
+            (asset.assetType === 'CRYPTO' ? 'coingecko-browser' : 'yahoo'),
           assetType: asset.assetType || 'STOCK',
           cached: true
         };
@@ -628,7 +722,19 @@ export const fetchAssetPricesBatch = async (assets, options = {}) => {
 
   assetsToFetch.forEach(asset => {
     const internalId = resolveInternalId(asset);
-    if (!internalId) return;
+    if (!internalId) {
+      if (DEBUG_PRICES) {
+        console.warn(`[STRATEGY ROUTING] No internal ID for asset:`, {
+          name: asset.name,
+          symbol: asset.symbol,
+          apiId: asset.apiId,
+          marketDataSource: asset.marketDataSource,
+          assetType: asset.assetType,
+          category: asset.category
+        });
+      }
+      return;
+    }
 
     assetMap.set(internalId, asset);
 
@@ -636,6 +742,17 @@ export const fetchAssetPricesBatch = async (assets, options = {}) => {
     if (strategy === TASEStrategy) {
       taseAssets.push({ asset, internalId });
     } else if (strategy === CryptoStrategy) {
+      if (DEBUG_PRICES) {
+        console.log(`[STRATEGY ROUTING] ✅ Crypto asset identified:`, {
+          name: asset.name,
+          symbol: asset.symbol,
+          apiId: asset.apiId,
+          internalId: internalId,
+          marketDataSource: asset.marketDataSource,
+          assetType: asset.assetType,
+          category: asset.category
+        });
+      }
       cryptoAssets.push({ asset, internalId });
     } else {
       globalAssets.push({ asset, internalId });
@@ -669,7 +786,27 @@ export const fetchAssetPricesBatch = async (assets, options = {}) => {
 
   const taseResults = await Promise.all(tasePromises);
 
-  // Step 3: WATERFALL FALLBACK - Retry failed TASE with Global strategy
+  // Step 3: Execute Crypto strategy (browser-based)
+  const cryptoPromises = cryptoAssets.map(async ({ asset, internalId }) => {
+    const data = await CryptoStrategy.execute(asset);
+
+    if (!data) {
+      return {
+        key: internalId,
+        failed: true,
+        asset: asset
+      };
+    }
+
+    return {
+      key: internalId,
+      data: data
+    };
+  });
+
+  const cryptoResults = await Promise.all(cryptoPromises);
+
+  // Step 4: WATERFALL FALLBACK - Retry failed TASE with Global strategy
   const failedTaseAssets = taseResults.filter(r => r && r.failed);
   const retryBucket = [];
 
@@ -706,8 +843,8 @@ export const fetchAssetPricesBatch = async (assets, options = {}) => {
     });
   }
 
-  // Step 4: Execute Global and Crypto strategies (backend API)
-  const backendAssets = [...globalAssets, ...cryptoAssets, ...retryBucket];
+  // Step 5: Execute Global strategy (backend API only)
+  const backendAssets = [...globalAssets, ...retryBucket];
   let backendQuotes = [];
 
   if (backendAssets.length > 0) {
@@ -721,7 +858,7 @@ export const fetchAssetPricesBatch = async (assets, options = {}) => {
       }
 
       if (DEBUG_PRICES) {
-        console.log(`[BACKEND API] Fetching ${backendIds.length} assets in ${batches.length} batches...`);
+        console.log(`[BACKEND API] Fetching ${backendIds.length} Global assets in ${batches.length} batches...`);
       }
 
       for (let i = 0; i < batches.length; i++) {
@@ -734,9 +871,16 @@ export const fetchAssetPricesBatch = async (assets, options = {}) => {
     }
   }
 
-  // Step 5: Merge results
+  // Step 6: Merge results
   // Add successful TASE results
   taseResults.forEach(result => {
+    if (result && result.key && result.data) {
+      results[result.key] = result.data;
+    }
+  });
+
+  // Add successful Crypto results
+  cryptoResults.forEach(result => {
     if (result && result.key && result.data) {
       results[result.key] = result.data;
     }

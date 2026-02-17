@@ -34,6 +34,7 @@ export const FIXED_SUBCATEGORIES = [
   { name: "נדלן", color: "#8B5CF6", isFixed: true },
   { name: "סחורות", color: "#EC4899", isFixed: true },
   { name: "מדדים רחבים", color: "#6366F1", isFixed: true },
+  { name: "קריפטו", color: "#F59E0B", isFixed: true },
   { name: "אחר", color: "#94A3B8", isFixed: true }
 ];
 

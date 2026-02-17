@@ -186,12 +186,31 @@ export const useAssets = (user, currencyRate) => {
     if (rawAssets.length === 0) return;
 
     // Filter assets that can have live prices
-    const trackableAssets = rawAssets.filter(asset =>
-      asset.assetMode === 'QUANTITY' &&
-      asset.marketDataSource &&
-      asset.marketDataSource !== 'manual' &&
-      (asset.apiId || asset.symbol)
-    );
+    // Include crypto assets even if marketDataSource is not set (will be identified by resolveInternalId)
+    const trackableAssets = rawAssets.filter(asset => {
+      // Must be in QUANTITY mode
+      if (asset.assetMode !== 'QUANTITY') return false;
+      
+      // Must have apiId or symbol
+      if (!asset.apiId && !asset.symbol) return false;
+      
+      // Exclude manual assets
+      if (asset.marketDataSource === 'manual') return false;
+      
+      // Include if has marketDataSource (and not manual)
+      if (asset.marketDataSource && asset.marketDataSource !== 'manual') return true;
+      
+      // Include crypto assets even without marketDataSource (identified by assetType, category, or apiId format)
+      if (asset.assetType === 'CRYPTO' || 
+          asset.category === 'קריפטו' ||
+          (asset.apiId && asset.apiId.startsWith('cg:')) ||
+          (asset.apiId && !asset.apiId.includes(':') && asset.category === 'קריפטו')) {
+        return true;
+      }
+      
+      // Include other assets only if they have marketDataSource
+      return false;
+    });
 
     if (trackableAssets.length === 0) return;
 

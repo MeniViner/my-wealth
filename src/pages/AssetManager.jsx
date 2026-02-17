@@ -968,6 +968,12 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                       </span>
                     </div>
                   )}
+                  {selectedAsset.subcategory && (
+                    <div className="flex border-b border-slate-100 dark:border-slate-700 pb-2">
+                      <span className="w-2/5 text-base md:text-sm text-slate-500 dark:text-slate-400">קטגוריית חלוקה</span>
+                      <span className="font-medium  text-base md:text-sm text-slate-800 dark:text-white">{selectedAsset.subcategory}</span>
+                    </div>
+                  )}
 
                   {/* {selectedAsset.assetType && (
                     <div className="flex border-b border-slate-100 dark:border-slate-700 pb-2">

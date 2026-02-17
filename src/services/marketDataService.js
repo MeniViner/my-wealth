@@ -98,7 +98,65 @@ async function getNameFromGlobes(securityId) {
 }
 
 /**
- * Search crypto assets using backend API
+ * Search crypto assets directly from CoinGecko via browser (with proxy rotation)
+ * @param {string} query - Search query
+ * @returns {Promise<Array>} Array of asset objects with { id, symbol, name, image }
+ */
+async function searchCryptoAssetsFromBrowser(query) {
+  try {
+    const targetUrl = `https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(query.trim())}`;
+    
+    console.log(`[COINGECKO SEARCH] Searching for "${query}"...`);
+
+    const response = await fetchWithFallbackProxy(targetUrl, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (!response.ok) {
+      console.warn(`[COINGECKO SEARCH] HTTP error ${response.status} for "${query}"`);
+      return [];
+    }
+
+    // Parse response - handle both direct JSON and allorigins wrapped format
+    let json;
+    try {
+      const responseText = await response.text();
+      try {
+        json = JSON.parse(responseText);
+        // If allorigins wrapped the response, unwrap it
+        if (json.contents) {
+          json = JSON.parse(json.contents);
+        }
+      } catch (parseError) {
+        console.warn(`[COINGECKO SEARCH] Failed to parse JSON:`, parseError);
+        return [];
+      }
+    } catch (error) {
+      console.warn(`[COINGECKO SEARCH] Failed to read response:`, error);
+      return [];
+    }
+
+    const coins = (json.coins || []).slice(0, 10); // Limit to 10 results
+
+    const results = coins.map(coin => ({
+      id: coin.id, // CoinGecko ID (e.g., "bitcoin")
+      symbol: coin.symbol?.toUpperCase() || coin.id,
+      name: coin.name || coin.id,
+      image: coin.thumb || coin.large || null,
+      marketDataSource: 'coingecko'
+    }));
+
+    console.log(`[COINGECKO SEARCH] ✅ Found ${results.length} results for "${query}"`);
+    return results;
+  } catch (error) {
+    console.warn(`[COINGECKO SEARCH] Fetch failed for "${query}":`, error.message);
+    return [];
+  }
+}
+
+/**
+ * Search crypto assets using browser (CoinGecko via proxy)
  * @param {string} query - Search query
  * @returns {Promise<Array>} Array of asset objects with { id, symbol, name, image }
  */
@@ -114,18 +172,7 @@ export const searchCryptoAssets = async (query) => {
   }
 
   try {
-    const results = await backendSearchAssets(query);
-
-    // Filter for crypto only and map to our format
-    const cryptoResults = results
-      .filter(r => r.type === 'crypto')
-      .map(result => ({
-        id: result.id.replace('cg:', ''), // Remove prefix for backward compatibility
-        symbol: result.symbol,
-        name: result.name,
-        image: result.extra?.image || null,
-        marketDataSource: 'coingecko'
-      }));
+    const cryptoResults = await searchCryptoAssetsFromBrowser(query);
 
     setCachedResult(cacheKey, cryptoResults);
     return cryptoResults;
