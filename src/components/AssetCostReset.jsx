@@ -204,26 +204,58 @@ const AssetCostReset = ({ assets, onUpdateAsset, isLoading = false }) => {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-col">
-                          {isLoading && !asset.currentPrice ? (
-                            <div className="animate-pulse flex items-center gap-2">
-                              <div className="w-16 h-5 bg-slate-200 dark:bg-slate-700 rounded"></div>
-                            </div>
-                          ) : (
-                            <span className="font-medium text-slate-900 dark:text-slate-100">
-                              {asset.currentPrice ? `₪${asset.currentPrice.toFixed(2)}` : 'לא זמין'}
-                            </span>
-                          )}
-                          {!isLoading && asset.hasLivePrice && (
-                            <span className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                              <Check size={12} /> מחיר לייב
-                            </span>
-                          )}
+                          <span className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                            {isLoading && (!asset.quantity || !asset.currentPrice) ? (
+                              <div className="animate-pulse flex items-center gap-2">
+                                <div className="w-20 h-6 bg-slate-200 dark:bg-slate-700 rounded"></div>
+                              </div>
+                            ) : asset.currentPrice ? (
+                              `₪${(asset.value || (asset.quantity || 0) * (asset.currentPrice || 0)).toFixed(2)}`
+                            ) : (
+                              'לא זמין'
+                            )}
+                          </span>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {isLoading && !asset.currentPrice ? (
+                              <div className="animate-pulse flex items-center gap-2">
+                                <div className="w-16 h-3 bg-slate-200 dark:bg-slate-700 rounded"></div>
+                              </div>
+                            ) : asset.currentPrice ? (
+                              <>
+                                <span className="text-xs text-slate-500 dark:text-slate-400">
+                                  ₪{asset.currentPrice.toFixed(2)} למניה
+                                </span>
+                                {asset.hasLivePrice && (
+                                  <span className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                                    <Check size={10} /> לייב
+                                  </span>
+                                )}
+                              </>
+                            ) : null}
+                          </div>
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="font-medium text-slate-700 dark:text-slate-300">
-                          ₪{asset.purchasePrice.toFixed(2)}
-                        </span>
+                        <div className="flex flex-col">
+                          <span className="text-lg font-bold text-slate-900 dark:text-slate-100">
+                            {isLoading && (!asset.quantity || !asset.purchasePrice) ? (
+                              <div className="animate-pulse flex items-center gap-2">
+                                <div className="w-20 h-6 bg-slate-200 dark:bg-slate-700 rounded"></div>
+                              </div>
+                            ) : (
+                              `₪${(asset.originalValue || (asset.quantity || 0) * (asset.purchasePrice || 0)).toFixed(2)}`
+                            )}
+                          </span>
+                          <span className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            {isLoading && !asset.purchasePrice ? (
+                              <div className="animate-pulse flex items-center gap-2">
+                                <div className="w-16 h-3 bg-slate-200 dark:bg-slate-700 rounded"></div>
+                              </div>
+                            ) : (
+                              `₪${asset.purchasePrice.toFixed(2)} למניה`
+                            )}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-col">
