@@ -9,7 +9,7 @@ import DataRepair from '../components/DataRepair';
 import AssetCostReset from '../components/AssetCostReset';
 
 
-const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, onRefreshCurrency, onResetOnboarding, onStartCoachmarks, assets, onUpdateAsset }) => {
+const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, onRefreshCurrency, onResetOnboarding, onStartCoachmarks, assets, onUpdateAsset, assetsLoading, pricesLoading }) => {
   const [activeSection, setActiveSection] = useState('appearance');
   const [isRefreshingCurrency, setIsRefreshingCurrency] = useState(false);
   const { isDarkMode, toggleDarkMode } = useDarkMode();
@@ -108,7 +108,7 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
             : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
             }`}
         >
-          מחירים
+          עדכוני לייב
         </button>
         <button
           onClick={() => setActiveSection('assets-reset')}
@@ -347,6 +347,7 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
               <AssetCostReset 
                 assets={assets || []} 
                 onUpdateAsset={onUpdateAsset}
+                isLoading={assetsLoading || pricesLoading}
               />
             </div>
           </div>

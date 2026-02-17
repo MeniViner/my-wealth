@@ -457,6 +457,8 @@ const AppWithDemo = ({
                     onStartCoachmarks={startCoachmarks}
                     assets={displayAssets}
                     onUpdateAsset={updateAsset}
+                    assetsLoading={assetsLoading}
+                    pricesLoading={pricesLoading}
                   />
                 </ErrorBoundary>
               }

@@ -5,7 +5,7 @@ import { confirmAlert, successToast } from '../utils/alerts';
 /**
  * רכיב לניהול ושחזור עלויות מקוריות של נכסים
  */
-const AssetCostReset = ({ assets, onUpdateAsset }) => {
+const AssetCostReset = ({ assets, onUpdateAsset, isLoading = false }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [resettingAssets, setResettingAssets] = useState(new Set());
 
@@ -75,13 +75,17 @@ const AssetCostReset = ({ assets, onUpdateAsset }) => {
 
   // חישוב סטטיסטיקות
   const stats = useMemo(() => {
+    if (isLoading) {
+      return { total: null, withLivePrice: null, withProfit: null, withLoss: null };
+    }
+    
     const total = quantityAssets.length;
     const withLivePrice = quantityAssets.filter(a => a.hasLivePrice).length;
     const withProfit = quantityAssets.filter(a => (a.profitLoss || 0) > 0).length;
     const withLoss = quantityAssets.filter(a => (a.profitLoss || 0) < 0).length;
 
     return { total, withLivePrice, withProfit, withLoss };
-  }, [quantityAssets]);
+  }, [quantityAssets, isLoading]);
 
   if (quantityAssets.length === 0) {
     return (
@@ -100,19 +104,51 @@ const AssetCostReset = ({ assets, onUpdateAsset }) => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 border border-blue-200 dark:border-blue-800">
           <div className="text-sm text-blue-600 dark:text-blue-400 font-medium">סה"כ נכסים</div>
-          <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">{stats.total}</div>
+          <div className="text-2xl font-bold text-blue-700 dark:text-blue-300 h-8 flex items-center">
+            {isLoading || stats.total === null ? (
+              <div className="animate-pulse flex items-center gap-2">
+                <div className="w-6 h-6 bg-blue-300 dark:bg-blue-600 rounded"></div>
+              </div>
+            ) : (
+              stats.total
+            )}
+          </div>
         </div>
         <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-3 border border-emerald-200 dark:border-emerald-800">
-          <div className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">עם מחיר חי</div>
-          <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">{stats.withLivePrice}</div>
+          <div className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">עם מחיר לייב</div>
+          <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-300 h-8 flex items-center">
+            {isLoading || stats.withLivePrice === null ? (
+              <div className="animate-pulse flex items-center gap-2">
+                <div className="w-6 h-6 bg-emerald-300 dark:bg-emerald-600 rounded"></div>
+              </div>
+            ) : (
+              stats.withLivePrice
+            )}
+          </div>
         </div>
         <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-3 border border-green-200 dark:border-green-800">
           <div className="text-sm text-green-600 dark:text-green-400 font-medium">ברווח</div>
-          <div className="text-2xl font-bold text-green-700 dark:text-green-300">{stats.withProfit}</div>
+          <div className="text-2xl font-bold text-green-700 dark:text-green-300 h-8 flex items-center">
+            {isLoading || stats.withProfit === null ? (
+              <div className="animate-pulse flex items-center gap-2">
+                <div className="w-6 h-6 bg-green-300 dark:bg-green-600 rounded"></div>
+              </div>
+            ) : (
+              stats.withProfit
+            )}
+          </div>
         </div>
         <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3 border border-red-200 dark:border-red-800">
           <div className="text-sm text-red-600 dark:text-red-400 font-medium">בהפסד</div>
-          <div className="text-2xl font-bold text-red-700 dark:text-red-300">{stats.withLoss}</div>
+          <div className="text-2xl font-bold text-red-700 dark:text-red-300 h-8 flex items-center">
+            {isLoading || stats.withLoss === null ? (
+              <div className="animate-pulse flex items-center gap-2">
+                <div className="w-6 h-6 bg-red-300 dark:bg-red-600 rounded"></div>
+              </div>
+            ) : (
+              stats.withLoss
+            )}
+          </div>
         </div>
       </div>
 
@@ -168,12 +204,18 @@ const AssetCostReset = ({ assets, onUpdateAsset }) => {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-col">
-                          <span className="font-medium text-slate-900 dark:text-slate-100">
-                            {asset.currentPrice ? `₪${asset.currentPrice.toFixed(2)}` : 'לא זמין'}
-                          </span>
-                          {asset.hasLivePrice && (
+                          {isLoading && !asset.currentPrice ? (
+                            <div className="animate-pulse flex items-center gap-2">
+                              <div className="w-16 h-5 bg-slate-200 dark:bg-slate-700 rounded"></div>
+                            </div>
+                          ) : (
+                            <span className="font-medium text-slate-900 dark:text-slate-100">
+                              {asset.currentPrice ? `₪${asset.currentPrice.toFixed(2)}` : 'לא זמין'}
+                            </span>
+                          )}
+                          {!isLoading && asset.hasLivePrice && (
                             <span className="text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                              <Check size={12} /> מחיר חי
+                              <Check size={12} /> מחיר לייב
                             </span>
                           )}
                         </div>
@@ -185,24 +227,32 @@ const AssetCostReset = ({ assets, onUpdateAsset }) => {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-col">
-                          <span className={`font-medium ${
-                            isProfit 
-                              ? 'text-green-600 dark:text-green-400' 
-                              : isLoss 
-                              ? 'text-red-600 dark:text-red-400'
-                              : 'text-slate-600 dark:text-slate-400'
-                          }`}>
-                            {profitLoss > 0 ? '+' : ''}₪{profitLoss.toFixed(2)}
-                          </span>
-                          <span className={`text-xs ${
-                            isProfit 
-                              ? 'text-green-600 dark:text-green-400' 
-                              : isLoss 
-                              ? 'text-red-600 dark:text-red-400'
-                              : 'text-slate-600 dark:text-slate-400'
-                          }`}>
-                            {profitLossPercent > 0 ? '+' : ''}{profitLossPercent.toFixed(2)}%
-                          </span>
+                          {isLoading && (asset.profitLoss === null || asset.profitLoss === undefined) ? (
+                            <div className="animate-pulse flex items-center gap-2">
+                              <div className="w-20 h-5 bg-slate-200 dark:bg-slate-700 rounded"></div>
+                            </div>
+                          ) : (
+                            <>
+                              <span className={`font-medium ${
+                                isProfit 
+                                  ? 'text-green-600 dark:text-green-400' 
+                                  : isLoss 
+                                  ? 'text-red-600 dark:text-red-400'
+                                  : 'text-slate-600 dark:text-slate-400'
+                              }`}>
+                                {profitLoss > 0 ? '+' : ''}₪{profitLoss.toFixed(2)}
+                              </span>
+                              <span className={`text-xs ${
+                                isProfit 
+                                  ? 'text-green-600 dark:text-green-400' 
+                                  : isLoss 
+                                  ? 'text-red-600 dark:text-red-400'
+                                  : 'text-slate-600 dark:text-slate-400'
+                              }`}>
+                                {profitLossPercent > 0 ? '+' : ''}{profitLossPercent.toFixed(2)}%
+                              </span>
+                            </>
+                          )}
                         </div>
                       </td>
                       <td className="px-4 py-3">
