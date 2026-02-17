@@ -98,6 +98,102 @@ async function getNameFromGlobes(securityId) {
 }
 
 /**
+ * Fetch with Multi-Proxy Rotation (5 proxies) - Same as priceService
+ * Tries multiple CORS proxies sequentially to handle production blocking
+ */
+async function fetchWithProxyRotation(targetUrl, options = {}) {
+  const method = options.method || 'GET';
+  const isPost = method === 'POST';
+
+  // Proxy configurations with capabilities
+  const proxies = [
+    {
+      name: 'corsproxy.io',
+      url: `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
+      supportsPost: true,
+      index: 1
+    },
+    {
+      name: 'codetabs',
+      url: `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`,
+      supportsPost: false,
+      index: 2
+    },
+    {
+      name: 'allorigins',
+      url: `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`,
+      supportsPost: false,
+      requiresUnwrap: true,
+      index: 3
+    },
+    {
+      name: 'thingproxy',
+      url: `https://thingproxy.freeboard.io/fetch/${targetUrl}`,
+      supportsPost: true,
+      index: 4
+    },
+    {
+      name: 'cors.eu.org',
+      url: `https://cors.eu.org/${targetUrl}`,
+      supportsPost: true,
+      index: 5
+    }
+  ];
+
+  // Filter proxies based on request method
+  const viableProxies = proxies.filter(proxy => !isPost || proxy.supportsPost);
+
+  for (const proxy of viableProxies) {
+    try {
+      console.log(`[PROXY ${proxy.index}/${proxies.length}] Trying ${proxy.name} for ${targetUrl}...`);
+
+      // Create fetch options for this proxy
+      const proxyOptions = { ...options };
+
+      // Some proxies don't support custom headers/methods in the same way
+      if (!proxy.supportsPost && isPost) {
+        continue; // Skip if POST not supported
+      }
+
+      // Set timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      proxyOptions.signal = controller.signal;
+
+      const response = await fetch(proxy.url, proxyOptions);
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        console.log(`[PROXY] ✅ Success with ${proxy.name}`);
+
+        // Unwrap response if needed (e.g., allorigins)
+        if (proxy.requiresUnwrap) {
+          const json = await response.json();
+          return new Response(json.contents, {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+
+        return response;
+      }
+
+      console.warn(`[PROXY] ${proxy.name} returned ${response.status}`);
+
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        console.warn(`[PROXY] ${proxy.name} timed out`);
+      } else {
+        console.warn(`[PROXY] ${proxy.name} error:`, error.message);
+      }
+    }
+  }
+
+  console.error(`[PROXY] ❌ All proxies failed for ${targetUrl}`);
+  return { ok: false };
+}
+
+/**
  * Search crypto assets directly from CoinGecko via browser (with proxy rotation)
  * @param {string} query - Search query
  * @returns {Promise<Array>} Array of asset objects with { id, symbol, name, image }
@@ -108,7 +204,7 @@ async function searchCryptoAssetsFromBrowser(query) {
     
     console.log(`[COINGECKO SEARCH] Searching for "${query}"...`);
 
-    const response = await fetchWithFallbackProxy(targetUrl, {
+    const response = await fetchWithProxyRotation(targetUrl, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' }
     });
