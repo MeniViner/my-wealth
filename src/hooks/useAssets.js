@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, writeBatch, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, writeBatch, getDocs, getDoc } from 'firebase/firestore';
 import { db, appId } from '../services/firebase';
 import { INITIAL_ASSETS_SEED } from '../constants/defaults';
 import { fetchAssetPricesBatch } from '../services/priceService';
@@ -18,7 +18,29 @@ export const useAssets = (user, currencyRate) => {
   const [pricesLoading, setPricesLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [lastPriceUpdate, setLastPriceUpdate] = useState(null);
+  const [disableLivePriceUpdates, setDisableLivePriceUpdates] = useState(false);
   const priceRefreshTimeoutRef = useRef(null);
+
+  // Load settings to check if live price updates are disabled
+  useEffect(() => {
+    if (!user || !db) return;
+
+    const loadSettings = async () => {
+      try {
+        const settingsRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'preferences');
+        const settingsSnap = await getDoc(settingsRef);
+        
+        if (settingsSnap.exists()) {
+          const settings = settingsSnap.data();
+          setDisableLivePriceUpdates(settings.disableLivePriceUpdates || false);
+        }
+      } catch (error) {
+        console.error('Error loading price settings:', error);
+      }
+    };
+
+    loadSettings();
+  }, [user]);
 
   // Listen to assets collection
   useEffect(() => {
@@ -183,6 +205,12 @@ export const useAssets = (user, currencyRate) => {
 
   // Fetch live prices for all trackable assets
   const refreshPrices = useCallback(async () => {
+    // אם עדכון מחירים אוטומטי כבוי, לא לעדכן
+    if (disableLivePriceUpdates) {
+      console.log('[PRICE UPDATE] Live price updates are disabled by user setting');
+      return;
+    }
+
     if (rawAssets.length === 0) return;
 
     // Filter assets that can have live prices
@@ -223,18 +251,18 @@ export const useAssets = (user, currencyRate) => {
       console.error('Error fetching live prices:', error);
     }
     setPricesLoading(false);
-  }, [rawAssets]);
+  }, [rawAssets, disableLivePriceUpdates]);
 
   // Auto-refresh prices when rawAssets change (initial load)
   useEffect(() => {
-    if (rawAssets.length > 0) {
+    if (rawAssets.length > 0 && !disableLivePriceUpdates) {
       refreshPrices();
     }
-  }, [rawAssets.length]); // Only trigger on length change, not content
+  }, [rawAssets.length, disableLivePriceUpdates]); // Only trigger on length change or settings change, not content
 
-  // Optional: Auto-refresh prices every 5 minutes
+  // Optional: Auto-refresh prices every 5 minutes (only if not disabled)
   useEffect(() => {
-    if (rawAssets.length === 0) return;
+    if (rawAssets.length === 0 || disableLivePriceUpdates) return;
 
     // Clear existing timeout
     if (priceRefreshTimeoutRef.current) {
@@ -256,7 +284,7 @@ export const useAssets = (user, currencyRate) => {
         clearTimeout(priceRefreshTimeoutRef.current);
       }
     };
-  }, [rawAssets.length, refreshPrices]);
+  }, [rawAssets.length, refreshPrices, disableLivePriceUpdates]);
 
   const addAsset = async (assetData) => {
     if (!user || !db) return;

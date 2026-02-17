@@ -455,6 +455,8 @@ const AppWithDemo = ({
                     onRefreshCurrency={refreshCurrencyRate}
                     onResetOnboarding={resetOnboarding}
                     onStartCoachmarks={startCoachmarks}
+                    assets={displayAssets}
+                    onUpdateAsset={updateAsset}
                   />
                 </ErrorBoundary>
               }
