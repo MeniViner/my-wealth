@@ -5,7 +5,7 @@ import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db, appId } from '../services/firebase';
 import { successToast } from '../utils/alerts';
 import { Sparkles, Settings, X, Eye, EyeOff, ChevronDown, HelpCircle } from 'lucide-react';
-import { GROQ_MODELS } from '../services/gemini';
+import { GROQ_MODELS, GEMINI_MODELS } from '../services/gemini';
 
 /**
  * AI Advisor Page - Mobile-First Chat Layout
@@ -30,9 +30,11 @@ const AIAdvisor = ({ assets, totalWealth, user, portfolioContext = "", aiConfig:
     historyLimit: 10,
     contextEnabled: true
   });
-  const [groqConfig, setGroqConfig] = useState({
-    model: 'llama-3.3-70b-versatile',
-    customApiKey: ''
+  const [modelConfig, setModelConfig] = useState({
+    provider: 'gemini',
+    model: 'gemini-3-flash-preview',
+    geminiApiKey: '',
+    groqApiKey: ''
   });
   const [showApiKey, setShowApiKey] = useState(false);
   const [showApiKeyHelp, setShowApiKeyHelp] = useState(false);
@@ -105,50 +107,73 @@ const AIAdvisor = ({ assets, totalWealth, user, portfolioContext = "", aiConfig:
     }
   };
 
-  // Load Groq Config from Firestore
+  // Load Model Config from Firestore
   useEffect(() => {
     if (!user || !db) return;
 
-    const groqConfigRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'groqConfig');
+    const modelConfigRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'modelConfig');
+    const legacyConfigRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'groqConfig');
 
-    const loadGroqConfig = async () => {
+    const loadModelConfig = async () => {
       try {
-        const docSnap = await getDoc(groqConfigRef);
+        // Try new config first
+        const docSnap = await getDoc(modelConfigRef);
         if (docSnap.exists()) {
-          setGroqConfig(docSnap.data());
+          setModelConfig(docSnap.data());
         } else {
-          // Create default config
-          const defaultConfig = { model: 'llama-3.3-70b-versatile', customApiKey: '' };
-          await setDoc(groqConfigRef, defaultConfig);
-          setGroqConfig(defaultConfig);
+          // Try legacy config
+          const legacySnap = await getDoc(legacyConfigRef);
+          if (legacySnap.exists()) {
+            const data = legacySnap.data();
+            // Migrate legacy data
+            const newConfig = {
+              provider: 'groq',
+              model: data.model || 'llama-3.3-70b-versatile',
+              groqApiKey: data.customApiKey || '',
+              geminiApiKey: ''
+            };
+            setModelConfig(newConfig);
+            // Save to new location
+            await setDoc(modelConfigRef, newConfig);
+          } else {
+            // Create default config (Gemini)
+            const defaultConfig = {
+              provider: 'gemini',
+              model: 'gemini-3-flash-preview',
+              geminiApiKey: '',
+              groqApiKey: ''
+            };
+            await setDoc(modelConfigRef, defaultConfig);
+            setModelConfig(defaultConfig);
+          }
         }
       } catch (error) {
-        console.error('Error loading Groq config:', error);
+        console.error('Error loading AI model config:', error);
       }
     };
 
-    loadGroqConfig();
+    loadModelConfig();
 
     // Listen for changes
-    const unsubscribe = onSnapshot(groqConfigRef, (snapshot) => {
+    const unsubscribe = onSnapshot(modelConfigRef, (snapshot) => {
       if (snapshot.exists()) {
-        setGroqConfig(snapshot.data());
+        setModelConfig(snapshot.data());
       }
     });
 
     return () => unsubscribe();
   }, [user]);
 
-  // Save Groq Config to Firestore
-  const saveGroqConfig = async (newConfig) => {
+  // Save Model Config to Firestore
+  const saveModelConfig = async (newConfig) => {
     if (!user || !db) return;
     try {
-      const groqConfigRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'groqConfig');
-      await setDoc(groqConfigRef, newConfig);
-      await successToast('הגדרות Groq נשמרו', 1500);
+      const modelConfigRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'modelConfig');
+      await setDoc(modelConfigRef, newConfig);
+      await successToast('הגדרות המודל נשמרו', 1500);
     } catch (error) {
-      console.error('Error saving Groq config:', error);
-      await successToast('שגיאה בשמירת הגדרות Groq', 2000);
+      console.error('Error saving AI model config:', error);
+      await successToast('שגיאה בשמירת הגדרות', 2000);
     }
   };
 
@@ -212,7 +237,7 @@ const AIAdvisor = ({ assets, totalWealth, user, portfolioContext = "", aiConfig:
                 </div>
               </div>
 
-                            {/* החלף הפעלת הקשר */}
+              {/* החלף הפעלת הקשר */}
               <div className="flex items-center justify-between pt-4 border-t border-slate-200 dark:border-slate-700">
                 <div>
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-100">
@@ -241,29 +266,72 @@ const AIAdvisor = ({ assets, totalWealth, user, portfolioContext = "", aiConfig:
                 </button>
               </div>
 
-              {/* Groq Configuration Section */}
+              {/* Model Configuration Section */}
               <div className="pt-4 border-t border-slate-200 dark:border-slate-700 space-y-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Sparkles size={16} className="text-emerald-600 dark:text-emerald-400" />
-                  <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-100">הגדרות Groq AI</h4>
+                  <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-100">הגדרות מודל AI</h4>
+                </div>
+
+                {/* Provider Selector */}
+                <div>
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-100 block mb-2">
+                    ספק AI
+                  </label>
+                  <div className="flex bg-slate-100 dark:bg-slate-700 rounded-lg p-1">
+                    <button
+                      onClick={() => {
+                        const newConfig = {
+                          ...modelConfig,
+                          provider: 'gemini',
+                          model: 'gemini-3-flash-preview' // Default for Gemini
+                        };
+                        setModelConfig(newConfig);
+                        saveModelConfig(newConfig);
+                      }}
+                      className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${modelConfig.provider === 'gemini'
+                        ? 'bg-white dark:bg-slate-600 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'
+                        }`}
+                    >
+                      Google Gemini
+                    </button>
+                    <button
+                      onClick={() => {
+                        const newConfig = {
+                          ...modelConfig,
+                          provider: 'groq',
+                          model: 'llama-3.3-70b-versatile' // Default for Groq
+                        };
+                        setModelConfig(newConfig);
+                        saveModelConfig(newConfig);
+                      }}
+                      className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${modelConfig.provider === 'groq'
+                        ? 'bg-white dark:bg-slate-600 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'
+                        }`}
+                    >
+                      Groq
+                    </button>
+                  </div>
                 </div>
 
                 {/* Model Selector */}
                 <div>
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-100 block mb-2">
-                    בחירת מודל AI
+                    מודל
                   </label>
                   <div className="relative">
                     <select
-                      value={groqConfig.model}
+                      value={modelConfig.model}
                       onChange={(e) => {
-                        const newConfig = { ...groqConfig, model: e.target.value };
-                        setGroqConfig(newConfig);
-                        saveGroqConfig(newConfig);
+                        const newConfig = { ...modelConfig, model: e.target.value };
+                        setModelConfig(newConfig);
+                        saveModelConfig(newConfig);
                       }}
                       className="w-full px-4 py-2.5 pr-10 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500 appearance-none cursor-pointer"
                     >
-                      {Object.entries(GROQ_MODELS).map(([value, label]) => (
+                      {Object.entries(modelConfig.provider === 'gemini' ? GEMINI_MODELS : GROQ_MODELS).map(([value, label]) => (
                         <option key={value} value={value}>
                           {label}
                         </option>
@@ -271,9 +339,6 @@ const AIAdvisor = ({ assets, totalWealth, user, portfolioContext = "", aiConfig:
                     </select>
                     <ChevronDown size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                   </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
-                    מודל ברירת מחדל: Llama 3.3 70B
-                  </p>
                 </div>
 
                 {/* Custom API Key */}
@@ -284,13 +349,16 @@ const AIAdvisor = ({ assets, totalWealth, user, portfolioContext = "", aiConfig:
                   <div className="relative">
                     <input
                       type={showApiKey ? "text" : "password"}
-                      value={groqConfig.customApiKey}
+                      value={modelConfig.provider === 'gemini' ? modelConfig.geminiApiKey : modelConfig.groqApiKey}
                       onChange={(e) => {
-                        const newConfig = { ...groqConfig, customApiKey: e.target.value };
-                        setGroqConfig(newConfig);
+                        const newConfig = {
+                          ...modelConfig,
+                          [modelConfig.provider === 'gemini' ? 'geminiApiKey' : 'groqApiKey']: e.target.value
+                        };
+                        setModelConfig(newConfig);
                       }}
-                      onBlur={() => saveGroqConfig(groqConfig)}
-                      placeholder="הכנס מפתח Groq API..."
+                      onBlur={() => saveModelConfig(modelConfig)}
+                      placeholder={`הכנס מפתח ${modelConfig.provider === 'gemini' ? 'Gemini' : 'Groq'} API...`}
                       className="w-full px-4 py-2.5 pr-10 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
                     <button
@@ -324,15 +392,30 @@ const AIAdvisor = ({ assets, totalWealth, user, portfolioContext = "", aiConfig:
                   </button>
                   {showApiKeyHelp && (
                     <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-600 space-y-2 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                      <p className="font-medium">שלבים לקבלת מפתח API של Groq:</p>
-                      <ol className="list-decimal list-inside space-y-1 mr-2">
-                        <li>כנס ל-<a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="text-emerald-600 dark:text-emerald-400 underline">console.groq.com/keys</a></li>
-                        <li>התחבר או הירשם לחשבון Groq (חינם)</li>
-                        <li>לחץ על "Create API Key" (צור מפתח)</li>
-                        <li>תן שם למפתח (לדוגמה: "MyWealth App")</li>
-                        <li>העתק את המפתח שנוצר</li>
-                        <li>הדבק אותו בשדה למעלה</li>
-                      </ol>
+                      {modelConfig.provider === 'gemini' ? (
+                        <>
+                          <p className="font-medium">שלבים לקבלת מפתח Google Gemini:</p>
+                          <ol className="list-decimal list-inside space-y-1 mr-2">
+                            <li>כנס ל-<a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-emerald-600 dark:text-emerald-400 underline">aistudio.google.com</a></li>
+                            <li>התחבר עם חשבון Google שלך</li>
+                            <li>לחץ על "Create API Key"</li>
+                            <li>בחר ב-"Create API key in new project"</li>
+                            <li>העתק את המפתח שנוצר והדבק אותו למעלה</li>
+                          </ol>
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-medium">שלבים לקבלת מפתח API של Groq:</p>
+                          <ol className="list-decimal list-inside space-y-1 mr-2">
+                            <li>כנס ל-<a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" className="text-emerald-600 dark:text-emerald-400 underline">console.groq.com/keys</a></li>
+                            <li>התחבר או הירשם לחשבון Groq (חינם)</li>
+                            <li>לחץ על "Create API Key" (צור מפתח)</li>
+                            <li>תן שם למפתח (לדוגמה: "MyWealth App")</li>
+                            <li>העתק את המפתח שנוצר</li>
+                            <li>הדבק אותו בשדה למעלה</li>
+                          </ol>
+                        </>
+                      )}
                       <p className="text-amber-600 dark:text-amber-400 mt-2">
                         ⚠️ אל תשתף את המפתח עם אחרים!
                       </p>
@@ -391,7 +474,10 @@ const AIAdvisor = ({ assets, totalWealth, user, portfolioContext = "", aiConfig:
             chatId={activeChatId}
             portfolioContext={portfolioContext}
             aiConfig={aiConfig}
-            groqConfig={groqConfig}
+            groqConfig={{
+              model: modelConfig.model,
+              customApiKey: modelConfig.provider === 'gemini' ? modelConfig.geminiApiKey : modelConfig.groqApiKey
+            }}
             onCreateNewChat={handleCreateNewChat}
             onToggleHistory={() => setHistoryDrawerOpen(!historyDrawerOpen)}
             historyDrawerOpen={historyDrawerOpen}

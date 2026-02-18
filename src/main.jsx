@@ -4,10 +4,14 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App.jsx'
 import './index.css'
 
+import { InstallPromptProvider } from './contexts/InstallPromptContext';
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
-      <App />
+      <InstallPromptProvider>
+        <App />
+      </InstallPromptProvider>
     </BrowserRouter>
   </React.StrictMode>,
 )

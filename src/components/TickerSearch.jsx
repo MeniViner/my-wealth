@@ -23,7 +23,8 @@ const TickerSearch = ({
   placeholder = 'חפש טיקר...',
   allowManual = true,
   showCategorySelector = true,
-  allowedCategories = ['us-stock', 'il-stock', 'index', 'crypto'] // Default: show all
+  allowedCategories = ['us-stock', 'il-stock', 'index', 'crypto'], // Default: show all
+  isEditing = false
 }) => {
   // Category selector state - set initial to first allowed category
   const getInitialCategory = () => {
@@ -33,7 +34,8 @@ const TickerSearch = ({
     return 'us-stock';
   };
   const [selectedCategory, setSelectedCategory] = useState(getInitialCategory());
-  const [query, setQuery] = useState(value || '');
+  const [query, setQuery] = useState(displayValue && displayValue !== value ? `${displayValue} (${value})` : value || '');
+  //const [query, setQuery] = useState(value || '');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -118,12 +120,12 @@ const TickerSearch = ({
       if (allowedCategories.length > 0 && !allowedCategories.includes(selectedCategory)) {
         const firstAllowed = allowedCategories[0];
         setSelectedCategory(firstAllowed);
-        setQuery('');
+       // setQuery('');
         setResults([]);
         setShowDropdown(false);
         setSelectedIndex(-1);
         setSelectedAsset(null);
-        onSelect(null);
+      //  onSelect(null);
       }
     }
   }, [allowedCategories, selectedCategory, onSelect]);
@@ -136,7 +138,10 @@ const TickerSearch = ({
     setShowDropdown(false);
     setSelectedIndex(-1);
     setSelectedAsset(null);
-    onSelect(null); // Clear selection when switching categories
+    // onSelect(null); // Clear selection when switching categories
+    if (!isEditing) {
+      onSelect(null);
+    }
   };
 
   // Handle input change with debouncing
@@ -253,11 +258,15 @@ const TickerSearch = ({
   useEffect(() => {
     if (value) {
       // If we have a displayValue, show it with the symbol
-      if (displayValue && displayValue !== value) {
-        setQuery(`${displayValue} (${value})`);
-      } else if (!query || !query.includes(value)) {
-        setQuery(value);
-      }
+     // if (displayValue && displayValue !== value) {
+       // setQuery(`${displayValue} (${value})`);
+    //  } else if (!query || !query.includes(value)) {
+      //  setQuery(value);
+     // }
+      const expectedQuery = displayValue && displayValue !== value ? `${displayValue} (${value})` : value;
+if (query !== expectedQuery) {
+  setQuery(expectedQuery);
+}
     } else {
       // If value is empty (e.g. cleared by parent), clear the query
       // check if query is not already empty to avoid infinite loops or unnecessary renders

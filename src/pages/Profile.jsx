@@ -11,20 +11,20 @@ const Profile = ({ user, assets, totalWealth, systemData }) => {
   const { signOut } = useAuth();
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
-  
+
   // Load wealth visibility from localStorage
   const [isWealthVisible, setIsWealthVisible] = useState(() => {
     const saved = localStorage.getItem('wealthVisibility');
     return saved !== null ? saved === 'true' : true;
   });
-  
+
   // Save wealth visibility to localStorage when it changes
   useEffect(() => {
     localStorage.setItem('wealthVisibility', isWealthVisible.toString());
     // Dispatch custom event to sync with other components
     window.dispatchEvent(new Event('wealthVisibilityChange'));
   }, [isWealthVisible]);
-  
+
   // Listen for changes from other components
   useEffect(() => {
     const handleStorageChange = () => {
@@ -33,12 +33,12 @@ const Profile = ({ user, assets, totalWealth, systemData }) => {
         setIsWealthVisible(saved === 'true');
       }
     };
-    
+
     // Listen to custom event
     window.addEventListener('wealthVisibilityChange', handleStorageChange);
     // Listen to storage event (for cross-tab sync)
     window.addEventListener('storage', handleStorageChange);
-    
+
     return () => {
       window.removeEventListener('wealthVisibilityChange', handleStorageChange);
       window.removeEventListener('storage', handleStorageChange);
@@ -48,11 +48,11 @@ const Profile = ({ user, assets, totalWealth, systemData }) => {
   useEffect(() => {
     const loadUserData = async () => {
       if (!user || !db) return;
-      
+
       try {
         const userRef = doc(db, 'artifacts', appId, 'users', user.uid);
         const userSnap = await getDoc(userRef);
-        
+
         if (userSnap.exists()) {
           setUserData(userSnap.data());
         }
@@ -72,7 +72,7 @@ const Profile = ({ user, assets, totalWealth, systemData }) => {
     const categoriesCount = new Set(assets.map(a => a.category)).size;
     const platformsCount = new Set(assets.map(a => a.platform)).size;
     const instrumentsCount = new Set(assets.map(a => a.instrument)).size;
-    
+
     // Calculate distribution by category
     const categoryDistribution = assets.reduce((acc, asset) => {
       acc[asset.category] = (acc[asset.category] || 0) + asset.value;
@@ -90,14 +90,14 @@ const Profile = ({ user, assets, totalWealth, systemData }) => {
           const costBasis = asset.quantity * (asset.purchasePrice || 0);
           return sum + (asset.currency === 'USD' ? costBasis * 3.65 : costBasis);
         } else if (asset.originalValue) {
-          const originalValueInILS = asset.currency === 'USD' 
-            ? asset.originalValue * 3.65 
+          const originalValueInILS = asset.currency === 'USD'
+            ? asset.originalValue * 3.65
             : asset.originalValue;
           return sum + originalValueInILS;
         }
         return sum;
       }, 0);
-      
+
       if (totalCostBasis > 0) {
         totalProfitLossPercent = ((totalWealth - totalCostBasis) / totalCostBasis) * 100;
       }
@@ -107,7 +107,7 @@ const Profile = ({ user, assets, totalWealth, systemData }) => {
     const avgValuePerAsset = totalAssets > 0 ? totalWealth / totalAssets : 0;
 
     // Find largest asset
-    const largestAsset = assets.length > 0 
+    const largestAsset = assets.length > 0
       ? assets.reduce((max, asset) => asset.value > max.value ? asset : max, assets[0])
       : null;
 
@@ -203,7 +203,7 @@ const Profile = ({ user, assets, totalWealth, systemData }) => {
           })
           .filter(Boolean)
           .filter(date => !isNaN(date.getTime()));
-        
+
         if (assetDates.length > 0) {
           const earliestDate = new Date(Math.min(...assetDates.map(d => d.getTime())));
           const now = new Date();
@@ -270,8 +270,8 @@ const Profile = ({ user, assets, totalWealth, systemData }) => {
       {/* Header */}
       <header className="flex items-center justify-between gap-4 mb-4">
         <div className="flex items-center gap-3">
-          <button 
-            onClick={() => navigate(-1)} 
+          <button
+            onClick={() => navigate(-1)}
             className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
           >
             <ArrowRight size={20} className="text-slate-600 dark:text-slate-400" />
@@ -294,9 +294,9 @@ const Profile = ({ user, assets, totalWealth, systemData }) => {
             {/* Avatar */}
             <div className="flex-shrink-0">
               {user?.photoURL ? (
-                <img 
-                  src={user.photoURL} 
-                  alt={user.displayName || 'משתמש'} 
+                <img
+                  src={user.photoURL}
+                  alt={user.displayName || 'משתמש'}
                   className="w-24 h-24 md:w-28 md:h-28 rounded-2xl ring-2 ring-emerald-400/60 dark:ring-emerald-500/50 shadow-lg shadow-emerald-500/15 dark:shadow-emerald-500/20 object-cover"
                 />
               ) : (
@@ -394,7 +394,7 @@ const Profile = ({ user, assets, totalWealth, systemData }) => {
                 {isWealthVisible ? `₪${totalWealth.toLocaleString()}` : '••••••'}
               </div>
             </div>
-            
+
             {/* Secondary stats - Grid of 3 on mobile, 3 columns on desktop */}
             <div className="grid grid-cols-3 md:col-span-3 gap-2 md:gap-4">
               <div className="p-2 md:p-5 bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-700 rounded-xl">
@@ -408,7 +408,7 @@ const Profile = ({ user, assets, totalWealth, systemData }) => {
                   {stats.totalAssets}
                 </div>
               </div>
-              
+
               <div className="p-2 md:p-5 bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-700 rounded-xl">
                 <div className="flex items-center gap-1.5 md:gap-2 mb-2 md:mb-3">
                   <div className="p-1  md:p-2 bg-slate-200 dark:bg-slate-700 rounded-lg">
@@ -420,7 +420,7 @@ const Profile = ({ user, assets, totalWealth, systemData }) => {
                   {stats.categoriesCount}
                 </div>
               </div>
-              
+
               <div className="p-2 md:p-5 bg-slate-50 dark:bg-slate-900/30 border border-slate-200 dark:border-slate-700 rounded-xl">
                 <div className="flex items-center gap-1.5 md:gap-2 mb-2 md:mb-3">
                   <div className="p-1 md:p-2 bg-slate-200 dark:bg-slate-700 rounded-lg">

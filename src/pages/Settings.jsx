@@ -1,18 +1,23 @@
 import { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, DollarSign, Moon, Sun, Palette, Rocket, GraduationCap, RefreshCw, TestTube, Clock, Bomb } from 'lucide-react';
+import { Settings as SettingsIcon, DollarSign, Moon, Sun, Palette, Rocket, GraduationCap, RefreshCw, TestTube, Clock, Bomb, TrendingUp, RotateCcw, Download, CheckCircle, Smartphone } from 'lucide-react';
 import { confirmAlert, successToast } from '../utils/alerts';
 import { useDarkMode } from '../hooks/useDarkMode';
 import { useDemoData } from '../contexts/DemoDataContext';
+import { useInstallPrompt } from '../contexts/InstallPromptContext';
 import { useAdmin } from '../hooks/useAdmin';
+import { useSettings } from '../hooks/useSettings';
 import DataRepair from '../components/DataRepair';
+import AssetCostReset from '../components/AssetCostReset';
 
 
-const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, onRefreshCurrency, onResetOnboarding, onStartCoachmarks }) => {
+const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, onRefreshCurrency, onResetOnboarding, onStartCoachmarks, assets, onUpdateAsset, assetsLoading, pricesLoading, onRefreshPrices }) => {
   const [activeSection, setActiveSection] = useState('appearance');
   const [isRefreshingCurrency, setIsRefreshingCurrency] = useState(false);
   const { isDarkMode, toggleDarkMode } = useDarkMode();
   const { isActive: isDemoActive, refreshInterval, updateRefreshInterval, toggleDemoMode } = useDemoData();
   const { isAdmin } = useAdmin(user);
+  const { settings, updateSettings, loading: settingsLoading } = useSettings(user);
+  const { deferredPrompt, isAppInstalled, promptInstall } = useInstallPrompt();
 
   // Read hash from URL to set active section
   useEffect(() => {
@@ -88,10 +93,10 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
       </header>
 
       {/* Section Tabs */}
-      <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700">
+      <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700 overflow-x-auto">
         <button
           onClick={() => setActiveSection('appearance')}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${activeSection === 'appearance'
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${activeSection === 'appearance'
             ? 'border-emerald-600 dark:border-emerald-400 text-emerald-600 dark:text-emerald-400'
             : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
             }`}
@@ -99,8 +104,35 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
           כללי
         </button>
         <button
+          onClick={() => setActiveSection('installation')}
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${activeSection === 'installation'
+            ? 'border-emerald-600 dark:border-emerald-400 text-emerald-600 dark:text-emerald-400'
+            : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
+        >
+          התקנה
+        </button>
+        <button
+          onClick={() => setActiveSection('prices')}
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${activeSection === 'prices'
+            ? 'border-blue-600 dark:border-blue-400 text-blue-600 dark:text-blue-400'
+            : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
+        >
+          עדכוני לייב
+        </button>
+        <button
+          onClick={() => setActiveSection('assets-reset')}
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${activeSection === 'assets-reset'
+            ? 'border-purple-600 dark:border-purple-400 text-purple-600 dark:text-purple-400'
+            : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
+        >
+          שחזור עלויות
+        </button>
+        <button
           onClick={() => setActiveSection('demo')}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${activeSection === 'demo'
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${activeSection === 'demo'
             ? 'border-amber-600 dark:border-amber-400 text-amber-600 dark:text-amber-400'
             : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
             }`}
@@ -109,7 +141,7 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
         </button>
         <button
           onClick={() => setActiveSection('onboarding')}
-          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 ${activeSection === 'onboarding'
+          className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 whitespace-nowrap ${activeSection === 'onboarding'
             ? 'border-emerald-600 dark:border-emerald-400 text-emerald-600 dark:text-emerald-400'
             : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
             }`}
@@ -215,6 +247,121 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
           {isAdmin && <DataRepair />}
         </div>
 
+      )}
+
+      {/* Prices Section */}
+      {activeSection === 'prices' && (
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50">
+              <div className="flex items-center gap-2.5">
+                <TrendingUp size={18} className="text-blue-600 dark:text-blue-400" />
+                <h3 className="text-base font-semibold text-slate-700 dark:text-slate-100">הגדרות עדכון מחירים</h3>
+              </div>
+            </div>
+            <div className="p-6">
+              {/* כיבוי עדכון מחירים אוטומטי */}
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 p-4 md:p-5 rounded-xl bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-700/50 dark:to-slate-800/50 border border-blue-200 dark:border-blue-800">
+                <div className="flex items-center gap-3 md:gap-4 flex-1">
+                  <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0 ${settings.disableLivePriceUpdates
+                    ? 'bg-gradient-to-br from-slate-400 to-slate-600 shadow-slate-500/20'
+                    : 'bg-gradient-to-br from-blue-400 to-blue-600 shadow-blue-500/20'
+                    }`}>
+                    <TrendingUp size={20} className="md:w-6 md:h-6 text-white" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-base font-semibold text-slate-800 dark:text-white mb-1">
+                      כיבוי עדכון מחירים בזמן אמת
+                    </h4>
+                    <p className="text-sm text-slate-600 dark:text-slate-300">
+                      {settings.disableLivePriceUpdates
+                        ? 'עדכון מחירים אוטומטי כבוי - המחירים המקוריים לא ישתנו'
+                        : 'עדכון מחירים אוטומטי פעיל - מחירים מתעדכנים בזמן אמת'
+                      }
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      כאשר מכובה, המחירים המקוריים שהזנת לא ישתנו גם כאשר מגיעים נתוני מחיר חדשים מהשרת
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-end md:justify-start md:flex-shrink-0">
+                  <button
+                    onClick={async () => {
+                      const newValue = !settings.disableLivePriceUpdates;
+                      await updateSettings({ disableLivePriceUpdates: newValue });
+                      await successToast(
+                        newValue
+                          ? 'עדכון מחירים אוטומטי כובה - המחירים המקוריים לא ישתנו'
+                          : 'עדכון מחירים אוטומטי הופעל',
+                        2000
+                      );
+                    }}
+                    disabled={settingsLoading}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${!settings.disableLivePriceUpdates ? 'bg-blue-600' : 'bg-slate-300'
+                      } ${settingsLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    role="switch"
+                    aria-checked={!settings.disableLivePriceUpdates}
+                    aria-label="עדכון מחירים אוטומטי"
+                  >
+                    <span
+                      className={`absolute h-4 w-4 rounded-full bg-white transition-all ${!settings.disableLivePriceUpdates ? 'left-1' : 'right-1'
+                        }`}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {/* הודעת הסבר */}
+              <div className="mt-4 p-4 rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700">
+                <div className="flex items-start gap-3">
+                  <div className="w-5 h-5 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <span className="text-slate-600 dark:text-slate-400 text-xs font-medium">ℹ</span>
+                  </div>
+                  <div className="text-sm text-slate-600 dark:text-slate-400 space-y-2 flex-1">
+                    <p className="font-medium text-slate-700 dark:text-slate-300">למה לכבות עדכון מחירים?</p>
+                    <div className="space-y-2 pr-2">
+                      <div>
+                        <strong className="text-slate-700 dark:text-slate-200">שמירת מחירים מקוריים:</strong> כאשר מכובה, המחירים שהזנת ידנית לא ישתנו, גם אם מגיעים נתוני מחיר חדשים מהשרת.
+                      </div>
+                      <div>
+                        <strong className="text-slate-700 dark:text-slate-200">שליטה מלאה:</strong> אידיאלי למשתמשים שרוצים לשלוט בדיוק באיזה מחיר מוצג לכל נכס.
+                      </div>
+                      <div>
+                        <strong className="text-slate-700 dark:text-slate-200">הערה:</strong> אפשר תמיד לעדכן מחירים ידנית או להפעיל מחדש את העדכון האוטומטי.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Assets Cost Reset Section */}
+      {activeSection === 'assets-reset' && (
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50">
+              <div className="flex items-center gap-2.5">
+                <RotateCcw size={18} className="text-purple-600 dark:text-purple-400" />
+                <h3 className="text-base font-semibold text-slate-700 dark:text-slate-100">שחזור עלויות מקוריות</h3>
+              </div>
+              <p className="text-sm text-slate-500 dark:text-slate-300 mt-1">
+                לכל נכס ניתן לשחזר את העלות המקורית שלו בעת הזנה ראשונית
+              </p>
+            </div>
+            <div className="p-6">
+              <AssetCostReset
+                assets={assets || []}
+                onUpdateAsset={onUpdateAsset}
+                isLoading={assetsLoading || pricesLoading}
+                currencyRate={currencyRate}
+                onRefreshPrices={onRefreshPrices}
+              />
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Demo Mode Section */}
@@ -445,6 +592,74 @@ const Settings = ({ systemData, setSystemData, currencyRate, user, onResetData, 
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Installation Section */}
+      {activeSection === 'installation' && (
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+            <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50">
+              <div className="flex items-center gap-2.5">
+                <Smartphone size={18} className="text-emerald-600 dark:text-emerald-400" />
+                <h3 className="text-base font-semibold text-slate-700 dark:text-slate-100">התקנת האפליקציה</h3>
+              </div>
+            </div>
+            <div className="p-6">
+              <div className="flex flex-col md:flex-row gap-6 items-center">
+                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg ${isAppInstalled
+                  ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                  }`}>
+                  {isAppInstalled ? <CheckCircle size={32} /> : <Download size={32} />}
+                </div>
+
+                <div className="flex-1 text-center md:text-right">
+                  <h4 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
+                    {isAppInstalled ? 'האפליקציה מותקנת' : 'התקן את MyWealth'}
+                  </h4>
+                  <p className="text-slate-600 dark:text-slate-300 max-w-md">
+                    {isAppInstalled
+                      ? 'האפליקציה כבר מותקנת על המכשיר שלך. ניתן לפתוח אותה ממסך הבית.'
+                      : 'התקן את האפליקציה לגישה מהירה, עבודה ללא חיבור לאינטרנט וחוויית שימוש משופרת.'}
+                  </p>
+                </div>
+
+                <div>
+                  {!isAppInstalled && (
+                    <button
+                      onClick={promptInstall}
+                      disabled={!deferredPrompt}
+                      className={`px-6 py-3 rounded-lg font-semibold flex items-center gap-2 transition-all ${deferredPrompt
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg hover:shadow-emerald-500/25 transform hover:-translate-y-0.5'
+                        : 'bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed'
+                        }`}
+                    >
+                      <Download size={20} />
+                      {deferredPrompt ? 'התקן עכשיו' : 'לא זמין להורדה'}
+                    </button>
+                  )}
+                  {isAppInstalled && (
+                    <button
+                      disabled
+                      className="px-6 py-3 rounded-lg font-semibold flex items-center gap-2 bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 cursor-default"
+                    >
+                      <CheckCircle size={20} />
+                      מותקן
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {!isAppInstalled && !deferredPrompt && (
+                <div className="mt-6 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-700">
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    <span className="font-bold">הערה:</span> אם כפתור ההתקנה אינו זמין, ייתכן שהדפדפן שלך אינו תומך בהתקנה או שהאפליקציה כבר הותקנה. באייפון (iOS), יש ללחוץ על כפתור השיתוף ולבחור "הוסף למסך הבית".
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -213,11 +213,12 @@ export async function getQuotes(ids) {
 
         const url = useGet ? getUrl : `${API_BASE}/quote`;
 
-        // Debug: Log POST payload in development
-        const DEBUG_PRICES = import.meta.env.DEV;
-        if (DEBUG_PRICES && !useGet) {
-          console.log('[BACKEND API DEBUG] POST /api/quote payload:', { ids: uncachedIds });
-        }
+        console.log('[BACKEND API] 📤 Fetching quotes:', {
+          method: useGet ? 'GET' : 'POST',
+          url: useGet ? getUrl : `${API_BASE}/quote`,
+          ids: uncachedIds,
+          count: uncachedIds.length
+        });
 
         const response = await fetch(url, {
           method: useGet ? 'GET' : 'POST',
@@ -225,36 +226,49 @@ export async function getQuotes(ids) {
           ...(useGet ? {} : { body: JSON.stringify({ ids: uncachedIds }) }),
         });
 
+        console.log('[BACKEND API] 📥 Response status:', response.status, response.statusText);
+
         if (response.ok) {
           const data = await response.json();
+          console.log('[BACKEND API] ✅ Response data received:', {
+            type: Array.isArray(data) ? 'array' : typeof data,
+            length: Array.isArray(data) ? data.length : 'N/A',
+            preview: Array.isArray(data) ? data.slice(0, 2) : data
+          });
 
           // Normalize to array (handles both single object and array responses)
           const quotes = normalizeToArray(data);
-
-          // Debug: Log first few returned quote IDs in development
-          const DEBUG_PRICES = import.meta.env.DEV;
-          if (DEBUG_PRICES && quotes.length > 0) {
-            const quoteIds = quotes.slice(0, 3).map(q => q?.id).filter(Boolean);
-            console.log('[BACKEND API DEBUG] First few returned quote.id values:', quoteIds);
-          }
+          console.log('[BACKEND API] Normalized quotes:', {
+            count: quotes.length,
+            quotes: quotes.map(q => ({
+              id: q?.id,
+              price: q?.price,
+              error: q?.error,
+              source: q?.source
+            }))
+          });
 
           // Cache each result (only if valid quote with id)
+          let cachedCount = 0;
           for (const quote of quotes) {
             if (quote && quote.id) {
               const cacheKey = getCacheKey('quote', quote.id);
               const ttl = getTTL('quote');
               await setCache(cacheKey, quote, ttl);
+              cachedCount++;
             }
           }
+          console.log('[BACKEND API] Cached', cachedCount, 'quotes');
 
           allResults.push(...quotes);
+          console.log('[BACKEND API] ✅ Total results after merge:', allResults.length);
         } else {
           // Log diagnostic info for failed requests
           const requestId = response.headers.get('x-vercel-id') || response.headers.get('x-request-id') || 'unknown';
           const bodyText = await response.text().catch(() => '');
           const bodyPreview = bodyText.length > 200 ? bodyText.substring(0, 200) : bodyText;
 
-          console.error('Quote API error:', {
+          console.error('[BACKEND API] ❌ Quote API error:', {
             url,
             status: response.status,
             statusText: response.statusText,
@@ -264,12 +278,15 @@ export async function getQuotes(ids) {
         }
       } catch (error) {
         // Log diagnostic info for network errors
-        console.error('Error fetching quotes:', {
+        console.error('[BACKEND API] ❌ Network error fetching quotes:', {
           batchIds: uncachedIds,
           error: error.message,
-          stack: error.stack
+          stack: error.stack,
+          name: error.name
         });
       }
+    } else {
+      console.log('[BACKEND API] All quotes were cached, skipping fetch');
     }
 
     // Add cached results

@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { Cloud, Eye, EyeOff, Wallet, Calendar, TrendingUp, ChevronDown, ChevronUp, XCircle, History } from 'lucide-react';
+import { Cloud, Eye, EyeOff, Wallet, Calendar, TrendingUp, ChevronDown, ChevronUp, XCircle, History, PieChart as PieChartIcon, LayoutGrid, Layers, Coins } from 'lucide-react';
 import TreemapChart from '../components/TreemapChart';
 import ChartRenderer from '../components/ChartRenderer';
 import SummaryCard from '../components/SummaryCard';
@@ -9,6 +9,7 @@ import { fetchPriceHistory } from '../services/priceService';
 import { resolveInternalId } from '../services/internalIds';
 import { confirmAlert } from '../utils/alerts';
 import { usePriceSync } from '../hooks/usePriceSync';
+import { usePortfolioHistory } from '../hooks/usePortfolioHistory';
 
 // Hebrew font stack
 const HEBREW_FONT = "'Assistant', 'Heebo', 'Rubik', sans-serif";
@@ -163,7 +164,13 @@ const ChartLoader = () => (
   </div>
 );
 
-const Dashboard = ({ assets, systemData, currencyRate, isLoading = false }) => {
+const Dashboard = ({ assets, systemData, currencyRate, isLoading = false, user }) => {
+  // Debug check
+  useEffect(() => {
+    console.log('XXX DASHBOARD MOUNTED XXX');
+    // window.alert('Dashboard Mounted'); // Commented out to be less annoying, but let's see if console logs appear
+  }, []);
+
   const { demoAssets, isActive: isDemoActive, demoSystemData, clearDemoAssets, refreshInterval } = useDemoData();
 
   // Use demo assets if tour is active, otherwise use real assets
@@ -354,6 +361,17 @@ const Dashboard = ({ assets, systemData, currencyRate, isLoading = false }) => {
       .sort((a, b) => b.value - a.value);
   }, [displayAssets]);
 
+  const dataBySubcategory = useMemo(() => {
+    const map = {};
+    displayAssets.forEach(a => {
+      const key = a.subcategory || 'אחר';
+      map[key] = (map[key] || 0) + a.value;
+    });
+    return Object.keys(map)
+      .map(name => ({ name, value: map[name] }))
+      .sort((a, b) => b.value - a.value);
+  }, [displayAssets]);
+
   const topAssets = useMemo(() => {
     return [...displayAssets]
       .sort((a, b) => b.value - a.value)
@@ -409,9 +427,14 @@ const Dashboard = ({ assets, systemData, currencyRate, isLoading = false }) => {
   // State for timeframe selection
   const [timeRange, setTimeRange] = useState('1M');
 
+  // Fetch portfolio history from snapshots (preferred method)
+  const { history: snapshotHistory, loading: snapshotLoading } = usePortfolioHistory(user, timeRange);
+
   // State for portfolio history data
   const [portfolioHistory, setPortfolioHistory] = useState([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
+  // State for Chart 2 (Distribution) configuration
+  const [distributionView, setDistributionView] = useState('graph'); // 'graph' | 'map'
+  const [distributionGroup, setDistributionGroup] = useState('category'); // 'category' | 'subcategory' | 'platform' | 'instrument'
 
   // Handle turning off demo mode
   const handleTurnOffDemo = async () => {
@@ -457,10 +480,19 @@ const Dashboard = ({ assets, systemData, currencyRate, isLoading = false }) => {
     }
   };
 
-  // Fetch portfolio history
+  // Use portfolio snapshots if available, otherwise calculate from asset histories
   useEffect(() => {
+    // Priority 1: Use saved snapshots (fast, accurate, includes all assets)
+    if (snapshotHistory && snapshotHistory.length > 0 && !isDemoActive) {
+      setPortfolioHistory(snapshotHistory);
+      setHistoryLoading(snapshotLoading);
+      return;
+    }
+
+    // Priority 2: Fallback to calculating from individual asset histories
     if (!hasData || !displayAssets || displayAssets.length === 0) {
       setPortfolioHistory([]);
+      setHistoryLoading(false);
       return;
     }
 
@@ -536,19 +568,22 @@ const Dashboard = ({ assets, systemData, currencyRate, isLoading = false }) => {
           trackableAssets.map(async (asset) => {
             try {
               // Use resolveInternalId to get correct ID format
-              const priceHistory = await fetchPriceHistory(asset, days);
+              const priceHistory = await fetchPriceHistory(asset, timeRange);
 
-              if (!priceHistory || priceHistory.length === 0) {
+              if (!priceHistory || !priceHistory.points || priceHistory.points.length === 0) {
                 return null;
               }
 
               // Convert prices to ILS if needed and multiply by quantity
-              return priceHistory.map(({ date, price }) => {
-                const priceInILS = asset.currency === 'USD' ? price * rate : price;
+              // History format: { points: [{ t: timestamp_ms, v: price }], currency: 'USD'|'ILS' }
+              const assetCurrency = priceHistory.currency || asset.currency || 'USD';
+              return priceHistory.points.map((point) => {
+                const priceInILS = assetCurrency === 'USD' ? point.v * rate : point.v;
                 const assetValue = asset.quantity * priceInILS;
+                const date = new Date(point.t);
                 return {
                   date: date.toISOString().split('T')[0],
-                  timestamp: new Date(date).getTime(),
+                  timestamp: point.t,
                   value: assetValue
                 };
               });
@@ -659,7 +694,7 @@ const Dashboard = ({ assets, systemData, currencyRate, isLoading = false }) => {
     };
 
     calculatePortfolioHistory();
-  }, [displayAssets, timeRange, currencyRate, totalWealth, hasData, isDemoActive]);
+  }, [displayAssets, timeRange, currencyRate, totalWealth, hasData, isDemoActive, snapshotHistory, snapshotLoading]);
 
   // Update history in real-time for demo mode
   useEffect(() => {
@@ -855,27 +890,139 @@ const Dashboard = ({ assets, systemData, currencyRate, isLoading = false }) => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-        {/* Pie Chart - Category Distribution */}
+        {/* Pie/Treemap Chart - Dynamic Distribution */}
         <ErrorBoundary
-          title="שגיאה בטעינת גרף הקטגוריות"
+          title="שגיאה בטעינת השינויים"
           message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
         >
-          <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-visible">
-            <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white mb-4 md:mb-6">פיזור לפי קטגוריות</h3>
+          {console.log('Rendering Dynamic Distribution Chart', { distributionView, distributionGroup, hasData })}
+          <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border-2 border-red-500 dark:border-slate-700 overflow-visible relative">
+            <div className="absolute top-0 right-0 bg-red-500 text-white text-xs px-2 py-1 rounded-bl-lg">Debug Mode</div>
+            {/* Header with controls */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+              <div className="flex items-center gap-3">
+                {/* View Toggle (Graph/Map) - Right Side */}
+                <div className="flex bg-slate-100 dark:bg-slate-700 rounded-lg p-1">
+                  <button
+                    onClick={() => setDistributionView('graph')}
+                    className={`p-1.5 rounded-md transition-all ${distributionView === 'graph'
+                      ? 'bg-white dark:bg-slate-600 shadow-sm text-emerald-600 dark:text-emerald-400'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                      }`}
+                    title="תצוגת גרף"
+                  >
+                    <PieChartIcon size={16} />
+                  </button>
+                  <button
+                    onClick={() => setDistributionView('map')}
+                    className={`p-1.5 rounded-md transition-all ${distributionView === 'map'
+                      ? 'bg-white dark:bg-slate-600 shadow-sm text-emerald-600 dark:text-emerald-400'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                      }`}
+                    title="תצוגת מפה"
+                  >
+                    <LayoutGrid size={16} />
+                  </button>
+                </div>
+
+                <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white">
+                  {distributionGroup === 'category' && 'פיזור לפי קטגוריות'}
+                  {distributionGroup === 'subcategory' && 'פיזור לפי תת-קטגוריות'}
+                  {distributionGroup === 'platform' && 'פיזור לפי פלטפורמות'}
+                  {distributionGroup === 'instrument' && 'פיזור לפי נכסים'}
+                </h3>
+              </div>
+
+              {/* Grouping Selection - Left Side */}
+              <div className="flex bg-slate-100 dark:bg-slate-700 rounded-lg p-1 overflow-x-auto max-w-full">
+                <button
+                  onClick={() => setDistributionGroup('category')}
+                  className={`p-1.5 rounded-md transition-all ${distributionGroup === 'category'
+                    ? 'bg-white dark:bg-slate-600 shadow-sm text-blue-600 dark:text-blue-400'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                    }`}
+                  title="קטגוריות"
+                >
+                  <PieChartIcon size={16} />
+                </button>
+                <button
+                  onClick={() => setDistributionGroup('subcategory')}
+                  className={`p-1.5 rounded-md transition-all ${distributionGroup === 'subcategory'
+                    ? 'bg-white dark:bg-slate-600 shadow-sm text-purple-600 dark:text-purple-400'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                    }`}
+                  title="תת-קטגוריות"
+                >
+                  <Layers size={16} />
+                </button>
+                <button
+                  onClick={() => setDistributionGroup('platform')}
+                  className={`p-1.5 rounded-md transition-all ${distributionGroup === 'platform'
+                    ? 'bg-white dark:bg-slate-600 shadow-sm text-emerald-600 dark:text-emerald-400'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                    }`}
+                  title="פלטפורמות"
+                >
+                  <Wallet size={16} />
+                </button>
+                <button
+                  onClick={() => setDistributionGroup('instrument')}
+                  className={`p-1.5 rounded-md transition-all ${distributionGroup === 'instrument'
+                    ? 'bg-white dark:bg-slate-600 shadow-sm text-amber-600 dark:text-amber-400'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                    }`}
+                  title="נכסים/מכשירים"
+                >
+                  <Coins size={16} />
+                </button>
+              </div>
+            </div>
+
             <div className="h-64 md:h-80 min-h-[250px] overflow-visible">
               {isLoading || !hasData ? (
                 <ChartLoader />
               ) : (
-                <ChartRenderer
-                  config={{
-                    chartType: 'PieChart',
-                    dataKey: 'category',
-                    showGrid: false
-                  }}
-                  chartData={pieDataByCategory}
-                  systemData={displaySystemData}
-                  totalValue={totalWealth}
-                />
+                distributionView === 'map' ? (
+                  <TreemapChart
+                    data={
+                      (distributionGroup === 'category' ? dataByCategory :
+                        distributionGroup === 'subcategory' ? dataBySubcategory :
+                          distributionGroup === 'platform' ? dataByPlatform :
+                            dataByInstrument).map(item => ({
+                              name: item.name,
+                              size: item.value,
+                              fill: distributionGroup === 'category'
+                                ? (displaySystemData.categories.find(c => c.name === item.name)?.color || '#3b82f6')
+                                : distributionGroup === 'platform'
+                                  ? (displaySystemData.platforms.find(p => p.name === item.name)?.color || '#10b981')
+                                  : undefined
+                            }))
+                    }
+                    title=""
+                    height="h-full"
+                    aspectRatio={4 / 3}
+                    totalValue={totalWealth}
+                  />
+                ) : (
+                  <ChartRenderer
+                    config={{
+                      chartType: 'PieChart',
+                      dataKey: distributionGroup,
+                      showGrid: false
+                    }}
+                    chartData={
+                      distributionGroup === 'category' ? pieDataByCategory : // optimized for category
+                        (distributionGroup === 'subcategory' ? dataBySubcategory :
+                          distributionGroup === 'platform' ? dataByPlatform :
+                            dataByInstrument).map(item => ({
+                              ...item,
+                              percentage: ((item.value / totalWealth) * 100).toFixed(1)
+                            }))
+                    }
+                    systemData={displaySystemData}
+                    totalValue={totalWealth}
+                  />
+                )
               )}
             </div>
           </div>

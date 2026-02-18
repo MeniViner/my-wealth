@@ -1,394 +1,142 @@
 /**
  * Market Data Service
- * Provides search functionality for crypto and stock assets
- * Now uses backend API (Vercel Functions) to avoid CORS issues
+ * Provides search functionality for crypto, stocks, and indices.
+ * 
+ * Search routing:
+ * - US Stocks: Backend API (/api/search → Yahoo Finance)
+ * - Israeli Stocks: Browser scraping via CORS proxy (Funder/Globes)
+ * - Crypto: Browser scraping via CORS proxy (CoinGecko)
+ * - Indices: Local popular list + Backend API fallback
  */
 
 import { searchAssets as backendSearchAssets } from './backendApi';
+import { fetchWithProxy, parseProxyJson } from '../utils/corsProxy';
 
-// In-memory cache for search results (fallback, IndexedDB is primary)
+// ==================== CACHE ====================
+
 const searchCache = new Map();
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-/**
- * Get cached result or null if expired
- */
-const getCachedResult = (key) => {
-  const cached = searchCache.get(key);
-  if (!cached) return null;
-
-  const now = Date.now();
-  if (now - cached.timestamp > CACHE_DURATION) {
+function getCached(key) {
+  const entry = searchCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.ts > CACHE_TTL) {
     searchCache.delete(key);
     return null;
   }
-
-  return cached.data;
-};
-
-/**
- * Set cache result
- */
-const setCachedResult = (key, data) => {
-  searchCache.set(key, {
-    data,
-  });
-};
-
-// ==================== PROXY HELPER (PRODUCTION FIX) ====================
-
-async function fetchWithFallbackProxy(targetUrl, options = {}) {
-  // 1. corsproxy.io - מהיר, תומך POST, אבל לפעמים נחסם בשרתים
-  const proxy1 = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
-
-  // 2. allorigins.win - אמין יותר כגיבוי, אבל תומך רק ב-GET
-  const proxy2 = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
-
-  try {
-    const res1 = await fetch(proxy1, options);
-    if (res1.ok) return res1;
-    console.warn(`[PROXY] Primary failed for ${targetUrl}, trying backup...`);
-  } catch (e) {
-    console.warn(`[PROXY] Primary error for ${targetUrl}:`, e.message);
-  }
-
-  // גיבוי (רק אם זו בקשת GET)
-  if (!options.method || options.method === 'GET') {
-    try {
-      const res2 = await fetch(proxy2);
-      if (res2.ok) {
-        const json = await res2.json();
-        return new Response(json.contents, { status: 200 });
-      }
-    } catch (e) {
-      console.error(`[PROXY] Backup failed for ${targetUrl}`);
-    }
-  }
-
-  return { ok: false };
+  return entry.data;
 }
 
-// ==================== HELPER: GLOBES NAME FETCH ====================
+function setSearchCache(key, data) {
+  searchCache.set(key, { data, ts: Date.now() });
+}
 
+// ==================== CRYPTO SEARCH ====================
+
+/**
+ * Search crypto assets via CoinGecko (browser, CORS proxy)
+ */
+export const searchCryptoAssets = async (query) => {
+  if (!query || query.trim().length < 2) return [];
+
+  const cacheKey = `crypto:${query.toLowerCase().trim()}`;
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const url = `https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(query.trim())}`;
+    const response = await fetchWithProxy(url, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    if (!response.ok) return [];
+
+    const json = await parseProxyJson(response);
+    const coins = (json.coins || []).slice(0, 10);
+
+    const results = coins.map(coin => ({
+      id: coin.id,
+      symbol: coin.symbol?.toUpperCase() || coin.id,
+      name: coin.name || coin.id,
+      image: coin.thumb || coin.large || null,
+      marketDataSource: 'coingecko',
+    }));
+
+    setSearchCache(cacheKey, results);
+    return results;
+  } catch (error) {
+    console.warn('[CRYPTO SEARCH] Error:', error.message);
+    return [];
+  }
+};
+
+// ==================== US STOCK SEARCH ====================
+
+/**
+ * Search US stocks via backend API
+ */
+export const searchUSStocks = async (query) => {
+  if (!query || query.trim().length < 2) return [];
+
+  const cacheKey = `us-stock:${query.toLowerCase().trim()}`;
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const results = await backendSearchAssets(query);
+
+    const usResults = results
+      .filter(r =>
+        (r.type === 'equity' || r.type === 'etf') &&
+        r.country !== 'IL' &&
+        !r.symbol?.endsWith('.TA')
+      )
+      .map(result => ({
+        id: result.symbol,
+        symbol: result.symbol,
+        name: result.name,
+        image: result.extra?.image || null,
+        marketDataSource: 'yahoo',
+      }));
+
+    setSearchCache(cacheKey, usResults);
+    return usResults;
+  } catch (error) {
+    console.error('[US STOCK SEARCH] Error:', error);
+    return [];
+  }
+};
+
+// ==================== ISRAELI STOCK SEARCH ====================
+
+/**
+ * Fetch Hebrew name from Globes (helper for Israeli stock name repair)
+ */
 async function getNameFromGlobes(securityId) {
   try {
-    const targetUrl = "https://www.globes.co.il/Portal/Handlers/GTOFeeder.ashx";
-    const proxyUrl = `https://corsproxy.io/?${targetUrl}`; // גלובס דורש POST, חייבים corsproxy
-
-    const response = await fetch(proxyUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: `instrumentId=${securityId}&type=49`
+    const targetUrl = 'https://www.globes.co.il/Portal/Handlers/GTOFeeder.ashx';
+    const response = await fetchWithProxy(targetUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `instrumentId=${securityId}&type=49`,
     });
 
     if (!response.ok) return null;
 
     const json = await response.json();
-    const securityData = json?.[0]?.Table?.Security?.[0];
-
-    if (securityData) {
-      const name = securityData.HebName || securityData.EngName;
-      if (name) return name.trim();
-    }
-    return null;
-  } catch (e) {
-    console.warn(`[NAME REPAIR] Globes fetch failed:`, e);
+    const sec = json?.[0]?.Table?.Security?.[0];
+    const name = sec?.HebName || sec?.EngName;
+    return name ? name.trim() : null;
+  } catch {
     return null;
   }
 }
 
 /**
- * Search crypto assets using backend API
- * @param {string} query - Search query
- * @returns {Promise<Array>} Array of asset objects with { id, symbol, name, image }
+ * Search Israeli stocks via browser (CORS proxy)
+ * Strategy: Direct ID lookup (Funder) -> Funder API -> Yahoo .TA fallback
  */
-export const searchCryptoAssets = async (query) => {
-  if (!query || query.trim().length < 2) {
-    return [];
-  }
-
-  const cacheKey = `crypto:${query.toLowerCase().trim()}`;
-  const cached = getCachedResult(cacheKey);
-  if (cached) {
-    return cached;
-  }
-
-  try {
-    const results = await backendSearchAssets(query);
-
-    // Filter for crypto only and map to our format
-    const cryptoResults = results
-      .filter(r => r.type === 'crypto')
-      .map(result => ({
-        id: result.id.replace('cg:', ''), // Remove prefix for backward compatibility
-        symbol: result.symbol,
-        name: result.name,
-        image: result.extra?.image || null,
-        marketDataSource: 'coingecko'
-      }));
-
-    setCachedResult(cacheKey, cryptoResults);
-    return cryptoResults;
-  } catch (error) {
-    console.error('Error searching crypto assets:', error);
-    return [];
-  }
-};
-
-/**
- * Search stock assets using Finnhub API (LEGACY - use searchUSStocks or searchIsraeliStocks instead)
- * Note: Requires API key. Falls back to manual entry if unavailable.
- * @param {string} query - Search query
- * @returns {Promise<Array>} Array of asset objects with { id, symbol, name, image }
- * @deprecated Use searchUSStocks or searchIsraeliStocks for better filtering
- */
-export const searchStockAssets = async (query) => {
-  // Legacy function - kept for backward compatibility
-  // Uses same logic as US stocks (without Israeli filter)
-  if (!query || query.trim().length < 2) {
-    return [];
-  }
-
-  const cacheKey = `stock:${query.toLowerCase().trim()}`;
-  const cached = getCachedResult(cacheKey);
-  if (cached) {
-    return cached;
-  }
-
-  // Try Finnhub first (free tier available)
-  const finnhubApiKey = import.meta.env.VITE_FINNHUB_API_KEY;
-
-  if (finnhubApiKey) {
-    try {
-      const response = await fetch(
-        `https://finnhub.io/api/v1/search?q=${encodeURIComponent(query.trim())}&token=${finnhubApiKey}`
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-
-        // Map Finnhub results to our format
-        const results = (data.result || []).slice(0, 10).map(stock => ({
-          id: stock.symbol, // Use symbol as ID for stocks
-          symbol: stock.symbol, // Ticker symbol (e.g., "AAPL")
-          name: stock.description || stock.symbol, // Company name or symbol
-          image: null, // Finnhub doesn't provide images
-          marketDataSource: 'finnhub'
-        }));
-
-        setCachedResult(cacheKey, results);
-        return results;
-      }
-    } catch (error) {
-      console.error('Error searching stocks via Finnhub:', error);
-    }
-  }
-
-  // Fallback: Try Yahoo Finance autocomplete via CORS proxy
-  try {
-    // Yahoo Finance Autocomplete API
-    const targetUrl = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query.trim())}&quotesCount=10&newsCount=0`;
-
-    // Try corsproxy.io first
-    let proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
-    let response = await fetch(proxyUrl, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      }
-    });
-
-    // If corsproxy.io fails, try allorigins.win as fallback
-    let usingAllOrigins = false;
-    if (!response.ok) {
-      proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
-      response = await fetch(proxyUrl, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-        }
-      });
-      usingAllOrigins = true;
-    }
-
-    if (response.ok) {
-      let data;
-      const responseText = await response.text();
-
-      // Try to parse as JSON
-      try {
-        const parsed = JSON.parse(responseText);
-
-        // allorigins.win wraps the response in { contents: "...", status: {...} }
-        // corsproxy.io returns the JSON directly
-        if (usingAllOrigins && parsed.contents) {
-          // Parse the contents which is the actual Yahoo Finance response
-          data = JSON.parse(parsed.contents);
-        } else {
-          // corsproxy.io returns the data directly
-          data = parsed;
-        }
-      } catch (parseError) {
-        // If parsing fails, try to extract JSON from the response
-        console.warn('Failed to parse Yahoo Finance response, trying alternative parsing:', parseError);
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          try {
-            const parsed = JSON.parse(jsonMatch[0]);
-            // Check if it's allorigins format
-            if (parsed.contents) {
-              data = JSON.parse(parsed.contents);
-            } else {
-              data = parsed;
-            }
-          } catch (e) {
-            throw new Error('Could not parse Yahoo Finance response');
-          }
-        } else {
-          throw new Error('Could not parse Yahoo Finance response');
-        }
-      }
-
-      // Yahoo returns results in data.quotes
-      if (data && data.quotes && Array.isArray(data.quotes)) {
-        // Filter to only include EQUITY and ETF types (exclude options, futures, etc.)
-        const filteredQuotes = data.quotes.filter(
-          quote => quote.quoteType === 'EQUITY' || quote.quoteType === 'ETF'
-        );
-
-        // Map Yahoo Finance results to our format
-        const results = filteredQuotes.slice(0, 10).map(quote => ({
-          id: quote.symbol, // Use symbol as ID for stocks
-          symbol: quote.symbol, // Ticker symbol (e.g., "AAPL")
-          name: quote.shortname || quote.longname || quote.symbol, // Company name
-          image: null, // Yahoo Finance doesn't provide easy logos in search
-          marketDataSource: 'yahoo'
-        }));
-
-        setCachedResult(cacheKey, results);
-        return results;
-      }
-    }
-  } catch (error) {
-    console.warn('Error searching stocks via Yahoo Finance (CORS/Network):', error);
-    // Return empty array to allow manual entry fallback
-  }
-
-  // If all APIs fail, return empty array (allows manual entry)
-  return [];
-};
-
-// ==================== CLIENT-SIDE ISRAELI STOCK SEARCH ====================
-
-/**
- * Search Israeli stocks from browser using CORS proxy
- * Fallback when backend API is unavailable (e.g., npm run dev)
- * @param {string} query - Search query
- * @returns {Promise<Array>} Array of Israeli stock results
- */
-// async function searchIsraeliStocksFromBrowser(query) {
-//   if (!query || query.trim().length < 1) {
-//     return [];
-//   }
-
-//   try {
-//     // Funder.co.il search endpoint
-//     const searchUrl = `https://www.funder.co.il/api/search?q=${encodeURIComponent(query.trim())}`;
-//     const corsProxyUrl = `https://corsproxy.io/?${encodeURIComponent(searchUrl)}`;
-
-//     console.log(`[BROWSER SEARCH] Searching Israeli stocks for "${query}" via CORS proxy...`);
-
-//     const response = await fetch(corsProxyUrl, {
-//       method: 'GET',
-//       headers: {
-//         'Accept': 'application/json',
-//         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-//       }
-//     });
-
-//     if (!response.ok) {
-//       console.warn(`[BROWSER SEARCH] Failed to fetch: HTTP ${response.status}`);
-//       return [];
-//     }
-
-//     const text = await response.text();
-//     let data;
-
-//     // Try to parse JSON
-//     try {
-//       data = JSON.parse(text);
-//     } catch (parseError) {
-//       // If not JSON, try to extract from HTML
-//       console.warn('[BROWSER SEARCH] Response is not JSON, attempting HTML extraction');
-
-//       // Try to find JSON embedded in HTML (common pattern)
-//       const jsonMatch = text.match(/"results"\s*:\s*\[([^\]]+)\]/);
-//       if (jsonMatch) {
-//         try {
-//           data = JSON.parse(`{"results":[${jsonMatch[1]}]}`);
-//         } catch (e) {
-//           console.warn('[BROWSER SEARCH] Could not extract JSON from HTML');
-//           return [];
-//         }
-//       } else {
-//         return [];
-//       }
-//     }
-
-//     // Process results - handle different response formats
-//     let results = [];
-
-//     if (Array.isArray(data)) {
-//       results = data;
-//     } else if (data.results && Array.isArray(data.results)) {
-//       results = data.results;
-//     } else if (data.data && Array.isArray(data.data)) {
-//       results = data.data;
-//     } else if (data.securities && Array.isArray(data.securities)) {
-//       results = data.securities;
-//     }
-
-//     // Map to our format
-//     const mappedResults = results
-//       .filter(item => item && (item.securityNumber || item.id || item.symbol))
-//       .slice(0, 10) // Limit to 10 results
-//       .map(item => {
-//         const securityId = item.securityNumber || item.securityId || item.id;
-//         const symbol = item.symbol || item.ticker || `${securityId}.TA`;
-//         const nameHe = item.nameHe || item.hebrewName || item.name_he || item.name;
-//         const nameEn = item.nameEn || item.englishName || item.name_en || item.name;
-
-//         return {
-//           id: `tase:${securityId}`,
-//           symbol: symbol,
-//           name: nameEn || nameHe || symbol,
-//           nameHe: nameHe || nameEn || symbol,
-//           securityId: securityId,
-//           image: null,
-//           marketDataSource: 'tase-local',
-//           provider: 'tase-local',
-//           exchange: 'TASE',
-//           extra: {
-//             securityNumber: securityId,
-//             source: 'funder-browser'
-//           }
-//         };
-//       });
-
-//     console.log(`[BROWSER SEARCH] Found ${mappedResults.length} Israeli stocks`);
-//     return mappedResults;
-
-//   } catch (error) {
-//     console.error('[BROWSER SEARCH] Error searching Israeli stocks:', error.message);
-//     return [];
-//   }
-// };
-/**
- * Search Israeli stocks from browser using CORS proxy
- * IMPROVED: Supports direct ID lookup via scraping if API fails
- */
-// ==================== ISRAELI STOCK SEARCH (THE FIX) ====================
-
 async function searchIsraeliStocksFromBrowser(query) {
   if (!query || query.trim().length < 1) return [];
 
@@ -396,50 +144,38 @@ async function searchIsraeliStocksFromBrowser(query) {
   const isNumber = /^\d+$/.test(cleanQuery);
   const results = [];
 
+  // Strategy 1: Direct ID lookup (for numeric queries)
   if (isNumber) {
     try {
-      console.log(`[BROWSER SEARCH] Direct lookup for ID: ${cleanQuery}`);
       const funderUrl = `https://www.funder.co.il/fund/${cleanQuery}`;
-
-      // שימוש בפרוקסי חכם (כולל גיבוי לפרודקשיין)
-      const response = await fetchWithFallbackProxy(funderUrl);
+      const response = await fetchWithProxy(funderUrl);
 
       if (response.ok) {
         const html = await response.text();
         let cleanName = null;
 
-        // חיפוש שם בכמה וריאציות
-        let nameMatch = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) ||
+        const nameMatch = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i) ||
           html.match(/<meta property="og:title" content="([^"]*)"/i) ||
           html.match(/<title>([\s\S]*?)<\/title>/i);
 
-        if (nameMatch && nameMatch[1]) {
+        if (nameMatch?.[1]) {
           cleanName = nameMatch[1]
-            .replace(/– Funder|– פאנדר|פאנדר|קרן נאמנות:|תעודת סל:/g, '')
+            .replace(/\u2013 Funder|\u2013 \u05E4\u05D0\u05E0\u05D3\u05E8|\u05E4\u05D0\u05E0\u05D3\u05E8|\u05E7\u05E8\u05DF \u05E0\u05D0\u05DE\u05E0\u05D5\u05EA:|\u05EA\u05E2\u05D5\u05D3\u05EA \u05E1\u05DC:/g, '')
             .replace(/&nbsp;/g, ' ')
             .replace(/\s+/g, ' ')
-            .trim()
-            .replace(/<[^>]*>/g, '');
+            .replace(/<[^>]*>/g, '')
+            .trim();
         }
 
-        // --- התיקון הקריטי: זיהוי השם הגנרי ---
-        // בדיקה מחמירה יותר: כל מה שמכיל "פורטל" או מתחיל במקף
+        // Name repair: detect generic/invalid names
         const isGeneric = !cleanName ||
-          cleanName.includes("פורטל") ||
-          cleanName.startsWith("-") ||
+          cleanName.includes('\u05E4\u05D5\u05E8\u05D8\u05DC') ||
+          cleanName.startsWith('-') ||
           cleanName.length > 60;
 
         if (isGeneric) {
-          console.log(`[BROWSER SEARCH] Generic name detected ("${cleanName}"), attempting repair via Globes...`);
           const globesName = await getNameFromGlobes(cleanQuery);
-
-          if (globesName) {
-            console.log(`[BROWSER SEARCH] ✅ Name repaired: ${globesName}`);
-            cleanName = globesName;
-          } else {
-            // אם גלובס נכשל, נשתמש בברירת מחדל נקייה
-            cleanName = `נייר ערך ${cleanQuery}`;
-          }
+          cleanName = globesName || `\u05E0\u05D9\u05D9\u05E8 \u05E2\u05E8\u05DA ${cleanQuery}`;
         }
 
         if (cleanName) {
@@ -453,39 +189,33 @@ async function searchIsraeliStocksFromBrowser(query) {
             marketDataSource: 'tase-local',
             provider: 'tase-local',
             exchange: 'TASE',
-            extra: { securityNumber: cleanQuery }
+            extra: { securityNumber: cleanQuery },
           });
           return results;
         }
       }
-    } catch (e) {
-      console.warn('[BROWSER SEARCH] Direct lookup failed:', e);
+    } catch {
+      // Continue to next strategy
     }
   }
 
-  // Fallback to original API logic if direct lookup didn't yield result (or not a number)
-  // This preserves the previous strategy 2 if needed, or we can just return what we have.
-  // The user prompt implied we replace the body.
-  // Given "fallback (Same as before)" comment, I should probably reinstate the Search API part if I want to be 100% compliant with "Same as before".
-  // BUT the user provided code block ends with `// ... (API Fallback Logic - Same as before) ... return results;`
-  // So I actually need to keep the API logic? 
-  // Let's copy the API logic from the *current* file (lines 392-428) back in here.
-
-  // --- STRATEGY 2: SEARCH API (Fallback for names/text) ---
+  // Strategy 2: Funder API search (for text queries)
   try {
     const searchUrl = `https://www.funder.co.il/api/search?q=${encodeURIComponent(cleanQuery)}`;
-    const corsProxyUrl = `https://corsproxy.io/?${encodeURIComponent(searchUrl)}`;
-
-    console.log(`[IL SEARCH] Trying Funder API search for "${cleanQuery}"...`);
-    const response = await fetch(corsProxyUrl);
+    const response = await fetchWithProxy(searchUrl);
 
     if (response.ok) {
-      const data = await response.json();
-      let apiResults = [];
+      let data;
+      try {
+        data = await parseProxyJson(response);
+      } catch {
+        data = null;
+      }
 
+      let apiResults = [];
       if (Array.isArray(data)) apiResults = data;
-      else if (data.results) apiResults = data.results;
-      else if (data.data) apiResults = data.data;
+      else if (data?.results) apiResults = data.results;
+      else if (data?.data) apiResults = data.data;
 
       if (apiResults.length > 0) {
         const mapped = apiResults
@@ -499,205 +229,109 @@ async function searchIsraeliStocksFromBrowser(query) {
               nameHe: item.nameHe || item.name,
               securityId: sid,
               marketDataSource: 'tase-local',
-              exchange: 'TASE'
+              exchange: 'TASE',
             };
           });
-
         results.push(...mapped);
-        console.log(`[IL SEARCH] ✅ Found ${mapped.length} results from Funder API`);
       }
     }
-  } catch (error) {
-    console.warn('[IL SEARCH] Funder API search failed:', error);
+  } catch {
+    // Continue to Yahoo fallback
   }
 
-  // --- STRATEGY 3: YAHOO FINANCE  FALLBACK (NEW!) ---
-  // Try Yahoo if no results from Funder/Globes
+  // Strategy 3: Yahoo Finance fallback (for .TA stocks)
   if (results.length === 0) {
     try {
-      console.log(`[IL SEARCH] 🔄 No results from Funder/Globes, trying Yahoo Finance fallback for "${cleanQuery}"...`);
-
-      // Search Yahoo Finance with .TA suffix
       const yahooQuery = cleanQuery.includes('.TA') ? cleanQuery : `${cleanQuery}.TA`;
       const targetUrl = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(yahooQuery)}&quotesCount=10&newsCount=0`;
-
-      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
-      const response = await fetch(proxyUrl, {
+      const response = await fetchWithProxy(targetUrl, {
         method: 'GET',
-        headers: { 'Accept': 'application/json' }
+        headers: { 'Accept': 'application/json' },
       });
 
       if (response.ok) {
-        const data = await response.json();
-
-        if (data && data.quotes && Array.isArray(data.quotes)) {
-          // Filter for Israeli stocks (.TA suffix)
-          const israeliQuotes = data.quotes.filter(quote =>
-            (quote.symbol || '').endsWith('.TA') &&
-            (quote.quoteType === 'EQUITY' || quote.quoteType === 'ETF')
+        const data = await parseProxyJson(response);
+        if (data?.quotes && Array.isArray(data.quotes)) {
+          const israeliQuotes = data.quotes.filter(q =>
+            (q.symbol || '').endsWith('.TA') &&
+            (q.quoteType === 'EQUITY' || q.quoteType === 'ETF')
           );
 
-          if (israeliQuotes.length > 0) {
-            const yahooResults = israeliQuotes.slice(0, 5).map(quote => ({
-              id: `yahoo:${quote.symbol}`,
-              symbol: quote.symbol,
-              name: quote.shortname || quote.longname || quote.symbol,
-              nameHe: quote.shortname || quote.longname || quote.symbol,
-              image: null,
-              marketDataSource: 'yahoo',
-              provider: 'yahoo',
-              exchange: 'TASE',
-              extra: { source: 'yahoo-fallback' }
-            }));
-
-            results.push(...yahooResults);
-            console.log(`[IL SEARCH] ✅ Found ${yahooResults.length} Israeli stocks from Yahoo Finance fallback`);
-          } else {
-            console.log(`[IL SEARCH] No Israeli (.TA) stocks found in Yahoo results for "${yahooQuery}"`);
-          }
+          const yahooResults = israeliQuotes.slice(0, 5).map(q => ({
+            id: `yahoo:${q.symbol}`,
+            symbol: q.symbol,
+            name: q.shortname || q.longname || q.symbol,
+            nameHe: q.shortname || q.longname || q.symbol,
+            image: null,
+            marketDataSource: 'yahoo',
+            provider: 'yahoo',
+            exchange: 'TASE',
+            extra: { source: 'yahoo-fallback' },
+          }));
+          results.push(...yahooResults);
         }
-      } else {
-        console.warn(`[IL SEARCH] Yahoo fallback HTTP error: ${response.status}`);
       }
-    } catch (error) {
-      console.warn('[IL SEARCH] Yahoo Finance fallback failed:', error);
+    } catch {
+      // All strategies exhausted
     }
   }
 
-  console.log(`[IL SEARCH] Total results for "${cleanQuery}": ${results.length}`);
   return results;
 }
-/**
- * Search Israeli stocks (TASE - Tel Aviv Stock Exchange)
- * Uses backend API when available (production/vercel:dev)
- * Falls back to client-side browser search when backend unavailable (npm run dev)
- * @param {string} query - Search query
- * @returns {Promise<Array>} Array of asset objects
- */
+
 export const searchIsraeliStocks = searchIsraeliStocksFromBrowser;
 
-/**
- * Search US stocks (exclude Israeli stocks) - via backend API
- * @param {string} query - Search query
- * @returns {Promise<Array>} Array of asset objects
- */
-export const searchUSStocks = async (query) => {
-  if (!query || query.trim().length < 2) {
-    return [];
-  }
+// ==================== INDICES ====================
 
-  const cacheKey = `us-stock:${query.toLowerCase().trim()}`;
-  const cached = getCachedResult(cacheKey);
-  if (cached) {
-    return cached;
-  }
-
-  try {
-    const results = await backendSearchAssets(query);
-
-    // Filter for US stocks (exclude Israeli, exclude indices unless they're US indices)
-    const usResults = results
-      .filter(r =>
-        (r.type === 'equity' || r.type === 'etf') &&
-        r.country !== 'IL' &&
-        !r.symbol?.endsWith('.TA')
-      )
-      .map(result => ({
-        id: result.symbol,
-        symbol: result.symbol,
-        name: result.name,
-        image: result.extra?.image || null,
-        marketDataSource: 'yahoo'
-      }));
-
-    setCachedResult(cacheKey, usResults);
-    return usResults;
-  } catch (error) {
-    console.error('Error searching US stocks:', error);
-    return [];
-  }
-};
-
-
-// ==================== POPULAR INDICES LIST ====================
-
-/**
- * List of popular market indices for quick search
- * These are commonly tracked indices that users might want to add
- */
 export const POPULAR_INDICES = [
-  // US Indices
-  { id: '^GSPC', symbol: '^GSPC', name: 'S&P 500', nameHe: 'אס אנד פי 500', market: 'US', marketDataSource: 'yahoo' },
-  { id: '^NDX', symbol: '^NDX', name: 'NASDAQ 100', nameHe: 'נאסדק 100', market: 'US', marketDataSource: 'yahoo' },
-  { id: '^DJI', symbol: '^DJI', name: 'Dow Jones Industrial', nameHe: 'דאו ג׳ונס', market: 'US', marketDataSource: 'yahoo' },
-  { id: '^IXIC', symbol: '^IXIC', name: 'NASDAQ Composite', nameHe: 'נאסדק מורכב', market: 'US', marketDataSource: 'yahoo' },
-  { id: '^RUT', symbol: '^RUT', name: 'Russell 2000', nameHe: 'ראסל 2000', market: 'US', marketDataSource: 'yahoo' },
-  { id: '^VIX', symbol: '^VIX', name: 'CBOE Volatility Index', nameHe: 'מדד הפחד VIX', market: 'US', marketDataSource: 'yahoo' },
-
-  // Israeli Indices
-  { id: '^TA35.TA', symbol: '^TA35.TA', name: 'Tel Aviv 35', nameHe: 'ת"א 35', market: 'IL', marketDataSource: 'yahoo' },
-  { id: '^TA125.TA', symbol: '^TA125.TA', name: 'Tel Aviv 125', nameHe: 'ת"א 125', market: 'IL', marketDataSource: 'yahoo' },
-  { id: '^TA90.TA', symbol: '^TA90.TA', name: 'Tel Aviv 90', nameHe: 'ת"א 90', market: 'IL', marketDataSource: 'yahoo' },
-  { id: '^TABANK.TA', symbol: '^TABANK.TA', name: 'Tel Aviv Banks', nameHe: 'ת"א בנקים', market: 'IL', marketDataSource: 'yahoo' },
-  { id: '^TAREALESTATE.TA', symbol: '^TAREALESTATE.TA', name: 'Tel Aviv Real Estate', nameHe: 'ת"א נדל"ן', market: 'IL', marketDataSource: 'yahoo' },
-
-  // European Indices
-  { id: '^FTSE', symbol: '^FTSE', name: 'FTSE 100', nameHe: 'פוטסי 100 (בריטניה)', market: 'EU', marketDataSource: 'yahoo' },
-  { id: '^GDAXI', symbol: '^GDAXI', name: 'DAX', nameHe: 'דאקס (גרמניה)', market: 'EU', marketDataSource: 'yahoo' },
-  { id: '^FCHI', symbol: '^FCHI', name: 'CAC 40', nameHe: 'קאק 40 (צרפת)', market: 'EU', marketDataSource: 'yahoo' },
-
-  // Asian Indices
-  { id: '^N225', symbol: '^N225', name: 'Nikkei 225', nameHe: 'ניקיי 225 (יפן)', market: 'ASIA', marketDataSource: 'yahoo' },
-  { id: '^HSI', symbol: '^HSI', name: 'Hang Seng', nameHe: 'האנג סנג (הונג קונג)', market: 'ASIA', marketDataSource: 'yahoo' },
-  { id: '000001.SS', symbol: '000001.SS', name: 'Shanghai Composite', nameHe: 'שנחאי (סין)', market: 'ASIA', marketDataSource: 'yahoo' },
+  // US
+  { id: '^GSPC', symbol: '^GSPC', name: 'S&P 500', nameHe: '\u05D0\u05E1 \u05D0\u05E0\u05D3 \u05E4\u05D9 500', market: 'US', marketDataSource: 'yahoo' },
+  { id: '^NDX', symbol: '^NDX', name: 'NASDAQ 100', nameHe: '\u05E0\u05D0\u05E1\u05D3\u05E7 100', market: 'US', marketDataSource: 'yahoo' },
+  { id: '^DJI', symbol: '^DJI', name: 'Dow Jones Industrial', nameHe: '\u05D3\u05D0\u05D5 \u05D2\u05F3\u05D5\u05E0\u05E1', market: 'US', marketDataSource: 'yahoo' },
+  { id: '^IXIC', symbol: '^IXIC', name: 'NASDAQ Composite', nameHe: '\u05E0\u05D0\u05E1\u05D3\u05E7 \u05DE\u05D5\u05E8\u05DB\u05D1', market: 'US', marketDataSource: 'yahoo' },
+  { id: '^RUT', symbol: '^RUT', name: 'Russell 2000', nameHe: '\u05E8\u05D0\u05E1\u05DC 2000', market: 'US', marketDataSource: 'yahoo' },
+  { id: '^VIX', symbol: '^VIX', name: 'CBOE Volatility Index', nameHe: '\u05DE\u05D3\u05D3 \u05D4\u05E4\u05D7\u05D3 VIX', market: 'US', marketDataSource: 'yahoo' },
+  // Israeli
+  { id: '^TA35.TA', symbol: '^TA35.TA', name: 'Tel Aviv 35', nameHe: '\u05EA"\u05D0 35', market: 'IL', marketDataSource: 'yahoo' },
+  { id: '^TA125.TA', symbol: '^TA125.TA', name: 'Tel Aviv 125', nameHe: '\u05EA"\u05D0 125', market: 'IL', marketDataSource: 'yahoo' },
+  { id: '^TA90.TA', symbol: '^TA90.TA', name: 'Tel Aviv 90', nameHe: '\u05EA"\u05D0 90', market: 'IL', marketDataSource: 'yahoo' },
+  // European
+  { id: '^FTSE', symbol: '^FTSE', name: 'FTSE 100', nameHe: '\u05E4\u05D5\u05D8\u05E1\u05D9 100 (\u05D1\u05E8\u05D9\u05D8\u05E0\u05D9\u05D4)', market: 'EU', marketDataSource: 'yahoo' },
+  { id: '^GDAXI', symbol: '^GDAXI', name: 'DAX', nameHe: '\u05D3\u05D0\u05E7\u05E1 (\u05D2\u05E8\u05DE\u05E0\u05D9\u05D4)', market: 'EU', marketDataSource: 'yahoo' },
+  // Asian
+  { id: '^N225', symbol: '^N225', name: 'Nikkei 225', nameHe: '\u05E0\u05D9\u05E7\u05D9\u05D9 225 (\u05D9\u05E4\u05DF)', market: 'ASIA', marketDataSource: 'yahoo' },
+  { id: '^HSI', symbol: '^HSI', name: 'Hang Seng', nameHe: '\u05D4\u05D0\u05E0\u05D2 \u05E1\u05E0\u05D2 (\u05D4\u05D5\u05E0\u05D2 \u05E7\u05D5\u05E0\u05D2)', market: 'ASIA', marketDataSource: 'yahoo' },
 ];
 
 /**
- * Search market indices - via backend API
- * Combines local popular indices with backend search
- * @param {string} query - Search query
- * @returns {Promise<Array>} Array of index objects
+ * Search market indices
  */
 export const searchIndices = async (query) => {
   if (!query || query.trim().length < 1) {
-    // Return popular indices when no query
-    return POPULAR_INDICES.slice(0, 10).map(idx => ({
-      ...idx,
-      image: null,
-      assetType: 'INDEX'
-    }));
+    return POPULAR_INDICES.slice(0, 10).map(idx => ({ ...idx, image: null, assetType: 'INDEX' }));
   }
 
   const cacheKey = `index:${query.toLowerCase().trim()}`;
-  const cached = getCachedResult(cacheKey);
-  if (cached) {
-    return cached;
-  }
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
 
   const normalizedQuery = query.toLowerCase().trim();
 
   // Search local popular indices first
-  const localResults = POPULAR_INDICES.filter(idx => {
-    return idx.symbol.toLowerCase().includes(normalizedQuery) ||
-      idx.name.toLowerCase().includes(normalizedQuery) ||
-      idx.nameHe.includes(query);
-  }).map(idx => ({
-    ...idx,
-    image: null,
-    assetType: 'INDEX'
-  }));
+  const localResults = POPULAR_INDICES.filter(idx =>
+    idx.symbol.toLowerCase().includes(normalizedQuery) ||
+    idx.name.toLowerCase().includes(normalizedQuery) ||
+    idx.nameHe.includes(query)
+  ).map(idx => ({ ...idx, image: null, assetType: 'INDEX' }));
 
-  // If we have local results, return them
   if (localResults.length > 0) {
-    setCachedResult(cacheKey, localResults);
+    setSearchCache(cacheKey, localResults);
     return localResults;
   }
 
-  // Fallback: Search backend API for indices
+  // Fallback: backend API
   try {
     const results = await backendSearchAssets(query);
-
-    // Filter for indices only
     const indexResults = results
       .filter(r => r.type === 'index')
       .map(result => ({
@@ -707,37 +341,33 @@ export const searchIndices = async (query) => {
         nameHe: result.name,
         image: null,
         marketDataSource: 'yahoo',
-        assetType: 'INDEX'
+        assetType: 'INDEX',
       }));
 
-    setCachedResult(cacheKey, indexResults);
+    setSearchCache(cacheKey, indexResults);
     return indexResults;
-  } catch (error) {
-    console.warn('Error searching indices:', error);
+  } catch {
     return [];
   }
 };
 
+// ==================== UNIFIED SEARCH ====================
+
 /**
- * Main search function that routes to appropriate API based on asset type
- * @param {string} query - Search query
- * @param {string} assetType - "crypto" | "us-stock" | "il-stock" | "index" | "stock" (legacy)
- * @returns {Promise<Array>} Array of asset objects
+ * Main search router
  */
 export const searchAssets = async (query, assetType) => {
   if (assetType === 'crypto') return await searchCryptoAssets(query);
-  if (assetType === 'il-stock') return await searchIsraeliStocksFromBrowser(query); // Force browser for IL
+  if (assetType === 'il-stock') return await searchIsraeliStocksFromBrowser(query);
   if (assetType === 'us-stock') return await searchUSStocks(query);
   if (assetType === 'index') return await searchIndices(query);
-
-  // Legacy / Default
+  // Legacy default
   return await searchCryptoAssets(query);
 };
 
 /**
- * Clear the search cache (useful for testing or manual refresh)
+ * Clear the search cache
  */
 export const clearSearchCache = () => {
   searchCache.clear();
 };
-

@@ -6,6 +6,7 @@ import { useAdmin } from '../hooks/useAdmin';
 import { useDarkMode } from '../hooks/useDarkMode';
 import { useDemoData } from '../contexts/DemoDataContext';
 import { confirmAlert } from '../utils/alerts';
+import InstallPrompt from './InstallPrompt';
 
 const Layout = ({ children, totalWealth, currencyRate, user }) => {
   const navigate = useNavigate();
@@ -14,22 +15,22 @@ const Layout = ({ children, totalWealth, currencyRate, user }) => {
   const { isAdmin } = useAdmin(user);
   const { isDarkMode, toggleDarkMode } = useDarkMode();
   const { isActive: isDemoActive, toggleDemoMode } = useDemoData();
-  
+
   // Load wealth visibility from localStorage
   const [isWealthVisible, setIsWealthVisible] = useState(() => {
     const saved = localStorage.getItem('wealthVisibility');
     return saved !== null ? saved === 'true' : true;
   });
-  
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  
+
   // Save wealth visibility to localStorage when it changes
   useEffect(() => {
     localStorage.setItem('wealthVisibility', isWealthVisible.toString());
     // Dispatch custom event to sync with other components
     window.dispatchEvent(new Event('wealthVisibilityChange'));
   }, [isWealthVisible]);
-  
+
   // Listen for changes from other components
   useEffect(() => {
     const handleStorageChange = () => {
@@ -38,18 +39,18 @@ const Layout = ({ children, totalWealth, currencyRate, user }) => {
         setIsWealthVisible(saved === 'true');
       }
     };
-    
+
     // Listen to custom event
     window.addEventListener('wealthVisibilityChange', handleStorageChange);
     // Listen to storage event (for cross-tab sync)
     window.addEventListener('storage', handleStorageChange);
-    
+
     return () => {
       window.removeEventListener('wealthVisibilityChange', handleStorageChange);
       window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
-  
+
   // Check if current route is AI Advisor (needs full height)
   const isAdvisorPage = location.pathname === '/advisor';
 
@@ -71,7 +72,7 @@ const Layout = ({ children, totalWealth, currencyRate, user }) => {
     <div className="min-h-[100svh] md:min-h-screen flex flex-col md:flex-row bg-slate-50 dark:bg-slate-900 font-sans text-right overflow-x-hidden" dir="rtl">
       {/* Demo Mode Banner */}
       {isDemoActive && (
-        <div 
+        <div
           onClick={async () => {
             const confirmed = await confirmAlert(
               'כיבוי מצב דמו',
@@ -89,7 +90,7 @@ const Layout = ({ children, totalWealth, currencyRate, user }) => {
           <span>מצב דמו פעיל - הנתונים נשמרים באופן מקומי בלבד </span>
         </div>
       )}
-      
+
       {/* Mobile Menu Button */}
       <button
         onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -301,7 +302,7 @@ const Layout = ({ children, totalWealth, currencyRate, user }) => {
             <div className="text-xs text-slate-500 font-sans">1$ = ₪{currencyRate.rate}</div>
           </div>
 
-         
+
         </div>
       </aside>
 
@@ -316,6 +317,7 @@ const Layout = ({ children, totalWealth, currencyRate, user }) => {
       <main className={`flex-1 ${isAdvisorPage ? 'p-0' : 'p-4 md:p-8'} bg-slate-50 dark:bg-slate-900 ${isAdvisorPage ? 'h-[100svh] md:h-screen' : 'min-h-[100svh] md:min-h-screen'} md:mr-64 overflow-hidden ${isDemoActive ? 'md:mt-10 mt-10' : ''}`}>
         {children}
       </main>
+      <InstallPrompt />
     </div>
   );
 };

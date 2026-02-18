@@ -104,15 +104,16 @@ async function fetchCoinGeckoHistory(
     );
     
     if (!response.ok) {
-      return null;
+      console.warn(`[COINGECKO HISTORY] HTTP ${response.status}, trying fallback...`);
+      return await fetchBinanceHistory(coinId, range);
     }
 
     const data = await fetchJsonSafe(response);
     
     // Defensive parsing: ensure prices array exists
     if (!data || !Array.isArray(data.prices)) {
-      console.warn(`CoinGecko history: invalid response structure for ${coinId}`);
-      return null;
+      console.warn(`CoinGecko history: invalid response structure for ${coinId}, trying fallback...`);
+      return await fetchBinanceHistory(coinId, range);
     }
 
     const prices = data.prices || [];
@@ -128,6 +129,77 @@ async function fetchCoinGeckoHistory(
     };
   } catch (error) {
     console.error(`CoinGecko history error for ${coinId}:`, error);
+    // Try fallback on error
+    return await fetchBinanceHistory(coinId, range);
+  }
+}
+
+/**
+ * Fetch crypto history from Binance (fallback)
+ */
+async function fetchBinanceHistory(
+  coinId: string,
+  range: string
+): Promise<HistoryResult | null> {
+  try {
+    // Map CoinGecko IDs to Binance symbols
+    const symbolMap: Record<string, string> = {
+      'bitcoin': 'BTC',
+      'ethereum': 'ETH',
+      'solana': 'SOL',
+      'cardano': 'ADA',
+      'polkadot': 'DOT',
+      'chainlink': 'LINK',
+      'litecoin': 'LTC',
+      'bitcoin-cash': 'BCH',
+      'stellar': 'XLM',
+      'dogecoin': 'DOGE',
+      'avalanche-2': 'AVAX',
+      'polygon': 'MATIC',
+      'uniswap': 'UNI',
+      'cosmos': 'ATOM',
+      'algorand': 'ALGO',
+      'vechain': 'VET',
+      'filecoin': 'FIL',
+      'the-graph': 'GRT',
+      'aave': 'AAVE',
+    };
+
+    const symbol = symbolMap[coinId] || coinId.toUpperCase();
+    const days = rangeToDays(range);
+    
+    // Binance klines API - limit to 1000 candles max
+    const limit = Math.min(days, 1000);
+    const interval = days <= 7 ? '1h' : days <= 30 ? '4h' : '1d';
+    
+    const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}USDT&interval=${interval}&limit=${limit}`;
+    
+    const response = await fetchReliable(url, { timeoutMs: 10000, retries: 2 });
+    
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await fetchJsonSafe(response);
+    
+    if (!Array.isArray(data) || data.length === 0) {
+      return null;
+    }
+
+    // Binance klines format: [openTime, open, high, low, close, volume, ...]
+    const points = data.map((candle: any[]) => ({
+      t: candle[0], // openTime in milliseconds
+      v: parseFloat(candle[4]), // close price
+    }));
+
+    return {
+      id: `cg:${coinId}`,
+      points,
+      currency: 'USD',
+      source: 'binance-fallback',
+    };
+  } catch (error) {
+    console.error(`Binance history error for ${coinId}:`, error);
     return null;
   }
 }
@@ -186,7 +258,7 @@ async function fetchYahooHistory(
     const timestamps = chartResult.timestamp || [];
     const closes = chartResult.indicators?.quote?.[0]?.close || [];
     const meta = chartResult.meta || {};
-    const currency = meta.currency || (symbol.endsWith('.TA') ? 'ILS' : 'USD');
+    const currency = (symbol.endsWith('.TA') ? 'ILS' : (meta.currency || 'USD'));
 
     // Use originalId if provided (for TASE), otherwise determine from symbol
     let internalId: string;
@@ -206,17 +278,27 @@ async function fetchYahooHistory(
       }))
       .filter((p: HistoryPoint) => p.v > 0);
 
-    // TASE Agorot conversion
-    if (symbol.endsWith('.TA') && !symbol.startsWith('^') && points.length > 0 && points[0].v > 500) {
+    // TASE Agorot → Shekels conversion
+    // Yahoo returns currency "ILA" for Agorot-quoted instruments
+    // We normalize to ILS and divide all points by 100
+    const rawCurrency = meta.currency || '';
+    const isIndex = symbol.startsWith('^');
+    let normalizedCurrency = currency;
+
+    if (rawCurrency === 'ILA' && !isIndex) {
+      // Convert all point values from Agorot to Shekels
       points.forEach((p) => {
         p.v = p.v / 100;
       });
+      normalizedCurrency = 'ILS';
+    } else if (rawCurrency === 'ILA' && isIndex) {
+      normalizedCurrency = 'ILS';
     }
 
     return {
       id: internalId,
       points,
-      currency,
+      currency: normalizedCurrency,
       source: 'yahoo',
     };
   } catch (error) {

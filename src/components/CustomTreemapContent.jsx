@@ -27,9 +27,27 @@ const truncateText = (text, maxLength) => {
 const getContrastColor = (hexColor) => {
   if (!hexColor) return '#1e293b';
   const hex = hexColor.replace('#', '');
-  const r = parseInt(hex.substr(0, 2), 16);
-  const g = parseInt(hex.substr(2, 2), 16);
-  const b = parseInt(hex.substr(4, 2), 16);
+  
+  // Validate hex length - need at least 6 characters for RGB
+  if (hex.length < 6) {
+    // If short hex (e.g., #abc), expand it (e.g., #aabbcc)
+    if (hex.length === 3) {
+      const expanded = hex.split('').map(char => char + char).join('');
+      const r = parseInt(expanded.substring(0, 2), 16) || 0;
+      const g = parseInt(expanded.substring(2, 4), 16) || 0;
+      const b = parseInt(expanded.substring(4, 6), 16) || 0;
+      const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      return luminance > 0.5 ? '#1e293b' : '#ffffff';
+    }
+    // If invalid, return default
+    return '#1e293b';
+  }
+  
+  // Parse RGB values with fallback to 0 if invalid
+  const r = parseInt(hex.substring(0, 2), 16) || 0;
+  const g = parseInt(hex.substring(2, 4), 16) || 0;
+  const b = parseInt(hex.substring(4, 6), 16) || 0;
+  
   // Calculate luminance
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
   // Return dark text for light backgrounds, light text for dark backgrounds

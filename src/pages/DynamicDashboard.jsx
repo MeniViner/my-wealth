@@ -19,20 +19,20 @@ const DynamicDashboard = () => {
 
   const [widgets, setWidgets] = useState([]);
   const [loading, setLoading] = useState(true);
-  
+
   // Load wealth visibility from localStorage
   const [isWealthVisible, setIsWealthVisible] = useState(() => {
     const saved = localStorage.getItem('wealthVisibility');
     return saved !== null ? saved === 'true' : true;
   });
-  
+
   // Save wealth visibility to localStorage when it changes
   useEffect(() => {
     localStorage.setItem('wealthVisibility', isWealthVisible.toString());
     // Dispatch custom event to sync with other components
     window.dispatchEvent(new Event('wealthVisibilityChange'));
   }, [isWealthVisible]);
-  
+
   // Listen for changes from other components
   useEffect(() => {
     const handleStorageChange = () => {
@@ -41,12 +41,12 @@ const DynamicDashboard = () => {
         setIsWealthVisible(saved === 'true');
       }
     };
-    
+
     // Listen to custom event (for same-tab sync)
     window.addEventListener('wealthVisibilityChange', handleStorageChange);
     // Listen to storage event (for cross-tab sync)
     window.addEventListener('storage', handleStorageChange);
-    
+
     return () => {
       window.removeEventListener('wealthVisibilityChange', handleStorageChange);
       window.removeEventListener('storage', handleStorageChange);
@@ -94,6 +94,10 @@ const DynamicDashboard = () => {
     return [...new Set(assets.map(a => a.category))].filter(Boolean).sort();
   }, [assets]);
 
+  const uniqueSubcategories = useMemo(() => {
+    return [...new Set(assets.map(a => a.subcategory))].filter(Boolean).sort();
+  }, [assets]);
+
   const uniquePlatforms = useMemo(() => {
     return [...new Set(assets.map(a => a.platform))].filter(Boolean).sort();
   }, [assets]);
@@ -109,7 +113,7 @@ const DynamicDashboard = () => {
   // Main chart data
   const mainChartData = useMemo(() => {
     const aggregatedData = aggregateData(assets, mainChartConfig.dataKey, mainChartConfig.filters);
-    
+
     if (mainChartConfig.chartType === 'Treemap') {
       return aggregatedData.map(item => ({
         name: item.name,
@@ -117,7 +121,7 @@ const DynamicDashboard = () => {
         fill: getColorForItem(item.name, mainChartConfig.dataKey, systemData)
       }));
     }
-    
+
     return aggregatedData;
   }, [assets, mainChartConfig, systemData]);
 
@@ -135,6 +139,7 @@ const DynamicDashboard = () => {
       ...prev,
       filters: {
         category: '',
+        subcategory: '',
         platform: '',
         instrument: '',
         currency: ''
@@ -145,7 +150,7 @@ const DynamicDashboard = () => {
   // Prepare chart data for each widget
   const getChartDataForWidget = (widget) => {
     const aggregatedData = aggregateData(assets, widget.dataKey, widget.filters || {});
-    
+
     if (widget.chartType === 'Treemap') {
       return aggregatedData.map(item => ({
         name: item.name,
@@ -153,7 +158,7 @@ const DynamicDashboard = () => {
         fill: getColorForItem(item.name, widget.dataKey, systemData)
       }));
     }
-    
+
     return aggregatedData;
   };
 
@@ -163,7 +168,7 @@ const DynamicDashboard = () => {
       `האם אתה בטוח שברצונך למחוק את הגרף "${widgetTitle}"?`,
       'warning'
     );
-    
+
     if (!confirmed) return;
 
     try {
@@ -221,144 +226,171 @@ const DynamicDashboard = () => {
       {/* Main Interactive Chart */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
         {/* Controls Bar */}
-        <div className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700 px-4 md:px-6 py-4">
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Chart Type Selector */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm text-slate-600 dark:text-slate-300 font-medium">סוג גרף:</span>
-              <div className="flex flex-wrap gap-2">
-                {[
-                  { value: 'PieChart', label: 'עוגה', icon: PieChart },
-                  { value: 'BarChart', label: 'עמודות', icon: BarChart },
-                  { value: 'HorizontalBarChart', label: 'אופקי', icon: BarChart2 },
-                  { value: 'RadarChart', label: 'רדאר', icon: Radar },
-                  { value: 'RadialBar', label: 'רדיאלי', icon: Gauge },
-                  { value: 'Treemap', label: 'מפה', icon: LayoutGrid }
-                ].map(type => {
-                  const IconComponent = type.icon;
-                  return (
+        <div className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
+          <div className="p-4 md:px-6 md:py-4 space-y-4">
+
+            {/* Top Row: Type & Group By (Scrollable on mobile) */}
+            <div className="flex flex-col md:flex-row md:items-center gap-4">
+
+              {/* Chart Type Selector */}
+              <div className="flex flex-col gap-2 min-w-0">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">סוג גרף</span>
+                <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-hide">
+                  {[
+                    { value: 'PieChart', label: 'עוגה', icon: PieChart },
+                    { value: 'BarChart', label: 'עמודות', icon: BarChart },
+                    { value: 'HorizontalBarChart', label: 'אופקי', icon: BarChart2 },
+                    { value: 'RadarChart', label: 'רדאר', icon: Radar },
+                    { value: 'RadialBar', label: 'רדיאלי', icon: Gauge },
+                    { value: 'Treemap', label: 'מפה', icon: LayoutGrid }
+                  ].map(type => {
+                    const IconComponent = type.icon;
+                    return (
+                      <button
+                        key={type.value}
+                        onClick={() => setMainChartConfig(prev => ({ ...prev, chartType: type.value }))}
+                        className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-xl transition-all duration-200 whitespace-nowrap flex-shrink-0 border ${mainChartConfig.chartType === type.value
+                            ? 'bg-emerald-600 dark:bg-emerald-500 text-white border-emerald-600 dark:border-emerald-500 shadow-sm'
+                            : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+                          }`}
+                      >
+                        <IconComponent size={16} className="flex-shrink-0" />
+                        <span>{type.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Separator for desktop */}
+              <div className="hidden md:block w-px h-10 bg-slate-200 dark:bg-slate-700 mx-2"></div>
+
+              {/* Group By Selector */}
+              <div className="flex flex-col gap-2 min-w-0">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">קבץ לפי</span>
+                <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-hide">
+                  {[
+                    { value: 'category', label: 'אפיקי השקעה' },
+                    { value: 'subcategory', label: 'קטגוריות חלוקה' },
+                    { value: 'platform', label: 'חשבונות וארנקים' },
+                    { value: 'instrument', label: 'מטבעות בסיס' },
+                    { value: 'tags', label: 'תגיות' },
+                    { value: 'currency', label: 'מטבע' }
+                  ].map(group => (
                     <button
-                      key={type.value}
-                      onClick={() => setMainChartConfig(prev => ({ ...prev, chartType: type.value }))}
-                      className={`flex items-center gap-2 px-3.5 py-2 text-sm font-medium rounded-xl transition-all duration-200 ${
-                        mainChartConfig.chartType === type.value
-                          ? 'bg-emerald-600 dark:bg-emerald-500 text-white shadow-md shadow-emerald-500/30 scale-105'
-                          : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600'
-                      }`}
+                      key={group.value}
+                      onClick={() => setMainChartConfig(prev => ({ ...prev, dataKey: group.value }))}
+                      className={`px-3 py-2 text-sm font-medium rounded-xl transition whitespace-nowrap flex-shrink-0 border ${mainChartConfig.dataKey === group.value
+                          ? 'bg-emerald-600 dark:bg-emerald-500 text-white border-emerald-600 dark:border-emerald-500 shadow-sm'
+                          : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+                        }`}
                     >
-                      <IconComponent size={16} className="flex-shrink-0" />
-                      <span>{type.label}</span>
+                      {group.label}
                     </button>
-                  );
-                })}
+                  ))}
+                </div>
               </div>
             </div>
 
-            {/* Group By Selector */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">קיבוץ:</span>
-              <div className="flex gap-1 bg-white dark:bg-slate-800 rounded-lg p-1 border border-slate-200 dark:border-slate-700">
-                {[
-                  { value: 'category', label: 'אפיקי השקעה' },
-                  { value: 'platform', label: 'חשבונות וארנקים' },
-                  { value: 'instrument', label: 'מטבעות בסיס' },
-                  { value: 'tags', label: 'תגיות' },
-                  { value: 'currency', label: 'מטבע' }
-                ].map(group => (
-                  <button
-                    key={group.value}
-                    onClick={() => setMainChartConfig(prev => ({ ...prev, dataKey: group.value }))}
-                    className={`px-3 py-1.5 text-xs font-medium rounded transition ${
-                      mainChartConfig.dataKey === group.value
-                        ? 'bg-emerald-600 dark:bg-emerald-500 text-white'
-                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-                    }`}
-                  >
-                    {group.label}
-                  </button>
-                ))}
+            {/* Bottom Row: Filters */}
+            <div className="pt-2 md:pt-0 border-t md:border-t-0 border-slate-200 dark:border-slate-700">
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                    <Filter size={12} />
+                    סינון
+                  </span>
+                  {hasActiveFilters && (
+                    <button
+                      onClick={clearFilters}
+                      className="px-2 py-1 text-xs text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition flex items-center gap-1"
+                    >
+                      <X size={12} />
+                      נקה הכל
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-hide">
+                  <CustomSelect
+                    value={mainChartConfig.filters.category || ''}
+                    onChange={(val) => setMainChartConfig(prev => ({
+                      ...prev,
+                      filters: { ...prev.filters, category: val }
+                    }))}
+                    options={[
+                      { value: '', label: 'כל הקטגוריות' },
+                      ...uniqueCategories.map(cat => ({
+                        value: cat,
+                        label: cat,
+                        iconColor: systemData?.categories?.find(c => c.name === cat)?.color
+                      }))
+                    ]}
+                    placeholder="כל הקטגוריות"
+                    className="min-w-[140px] flex-shrink-0"
+                  />
+
+                  <CustomSelect
+                    value={mainChartConfig.filters.subcategory || ''}
+                    onChange={(val) => setMainChartConfig(prev => ({
+                      ...prev,
+                      filters: { ...prev.filters, subcategory: val }
+                    }))}
+                    options={[
+                      { value: '', label: 'כל קטגוריות החלוקה' },
+                      ...uniqueSubcategories.map(sub => ({
+                        value: sub,
+                        label: sub,
+                        iconColor: systemData?.subcategories?.find(s => s.name === sub)?.color
+                      }))
+                    ]}
+                    placeholder="כל קטגוריות החלוקה"
+                    className="min-w-[150px] flex-shrink-0"
+                  />
+
+                  <CustomSelect
+                    value={mainChartConfig.filters.platform || ''}
+                    onChange={(val) => setMainChartConfig(prev => ({
+                      ...prev,
+                      filters: { ...prev.filters, platform: val }
+                    }))}
+                    options={[
+                      { value: '', label: 'כל הפלטפורמות' },
+                      ...uniquePlatforms.map(plat => ({
+                        value: plat,
+                        label: plat,
+                        iconColor: systemData?.platforms?.find(p => p.name === plat)?.color
+                      }))
+                    ]}
+                    placeholder="כל הפלטפורמות"
+                    className="min-w-[140px] flex-shrink-0"
+                  />
+
+                  <CustomSelect
+                    value={mainChartConfig.filters.currency || ''}
+                    onChange={(val) => setMainChartConfig(prev => ({
+                      ...prev,
+                      filters: { ...prev.filters, currency: val }
+                    }))}
+                    options={[
+                      { value: '', label: 'כל המטבעות' },
+                      ...uniqueCurrencies.map(curr => ({
+                        value: curr,
+                        label: curr
+                      }))
+                    ]}
+                    placeholder="כל המטבעות"
+                    className="min-w-[120px] flex-shrink-0"
+                  />
+                </div>
               </div>
-            </div>
-
-            {/* Filters */}
-            <div className="flex flex-wrap items-center gap-2 ml-auto">
-              <Filter size={14} className="text-slate-400 dark:text-slate-500" />
-              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">פילטרים:</span>
-              
-              {/* Category Filter */}
-              <CustomSelect
-                value={mainChartConfig.filters.category || ''}
-                onChange={(val) => setMainChartConfig(prev => ({
-                  ...prev,
-                  filters: { ...prev.filters, category: val }
-                }))}
-                options={[
-                  { value: '', label: 'כל הקטגוריות' },
-                  ...uniqueCategories.map(cat => ({
-                    value: cat,
-                    label: cat,
-                    iconColor: systemData?.categories?.find(c => c.name === cat)?.color
-                  }))
-                ]}
-                placeholder="כל הקטגוריות"
-                className="text-xs min-w-[120px]"
-              />
-
-              {/* Platform Filter */}
-              <CustomSelect
-                value={mainChartConfig.filters.platform || ''}
-                onChange={(val) => setMainChartConfig(prev => ({
-                  ...prev,
-                  filters: { ...prev.filters, platform: val }
-                }))}
-                options={[
-                  { value: '', label: 'כל הפלטפורמות' },
-                  ...uniquePlatforms.map(plat => ({
-                    value: plat,
-                    label: plat,
-                    iconColor: systemData?.platforms?.find(p => p.name === plat)?.color
-                  }))
-                ]}
-                placeholder="כל הפלטפורמות"
-                className="text-xs min-w-[120px]"
-              />
-
-              {/* Currency Filter */}
-              <CustomSelect
-                value={mainChartConfig.filters.currency || ''}
-                onChange={(val) => setMainChartConfig(prev => ({
-                  ...prev,
-                  filters: { ...prev.filters, currency: val }
-                }))}
-                options={[
-                  { value: '', label: 'כל המטבעות' },
-                  ...uniqueCurrencies.map(curr => ({
-                    value: curr,
-                    label: curr
-                  }))
-                ]}
-                placeholder="כל המטבעות"
-                className="text-xs min-w-[120px]"
-              />
-
-              {/* Clear Filters Button */}
-              {hasActiveFilters && (
-                <button
-                  onClick={clearFilters}
-                  className="px-2 py-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition flex items-center gap-1"
-                  title="נקה פילטרים"
-                >
-                  <X size={12} />
-                  נקה
-                </button>
-              )}
             </div>
           </div>
         </div>
 
         {/* Chart Display */}
-        <div className="p-6">
-          <div className="h-80">
+        <div className="p-4 md:p-6 bg-slate-50/50 dark:bg-slate-900/20">
+          <div className="h-64 md:h-96">
             <ChartRenderer
               config={mainChartConfig}
               chartData={mainChartData}
@@ -396,14 +428,14 @@ const DynamicDashboard = () => {
               const chartData = getChartDataForWidget(widget);
               const totalValue = chartData.reduce((sum, item) => sum + (item.value || item.size || 0), 0);
               const size = widget.size || 'medium';
-              
+
               // Grid classes based on size (desktop only, mobile always col-span-1)
               const gridClasses = {
                 small: 'lg:col-span-1',
                 medium: 'lg:col-span-2',
                 large: 'lg:col-span-2 lg:row-span-2'
               };
-              
+
               // Height based on size - larger for bar charts
               const heightClasses = {
                 small: 'h-[420px]',

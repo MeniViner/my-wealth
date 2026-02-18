@@ -10,6 +10,7 @@ import { z } from 'zod';
  */
 const ChartFiltersSchema = z.object({
   category: z.string().optional().default(''),
+  subcategory: z.string().optional().default(''),
   platform: z.string().optional().default(''),
   instrument: z.string().optional().default(''),
   currency: z.string().optional().default(''),
@@ -34,15 +35,18 @@ const ChartConfigSchema = z.object({
   ]),
   dataKey: z.enum([
     'category',
+    'subcategory',
     'platform',
     'instrument',
     'symbol',
+    'name',
     'tags',
     'currency'
   ]),
   aggregationType: z.enum(['sum', 'count', 'avg']).optional().default('sum'),
   filters: ChartFiltersSchema.optional().default({
     category: '',
+    subcategory: '',
     platform: '',
     instrument: '',
     currency: '',
@@ -94,14 +98,14 @@ export const validateChartSuggestions = (data) => {
   } catch (error) {
     if (error instanceof z.ZodError) {
       const errorMessages = error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
-      return { 
-        success: false, 
-        error: `Validation failed: ${errorMessages}` 
+      return {
+        success: false,
+        error: `Validation failed: ${errorMessages}`
       };
     }
-    return { 
-      success: false, 
-      error: `Validation error: ${error.message}` 
+    return {
+      success: false,
+      error: `Validation error: ${error.message}`
     };
   }
 };
@@ -118,14 +122,14 @@ export const validateSingleChart = (data) => {
   } catch (error) {
     if (error instanceof z.ZodError) {
       const errorMessages = error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
-      return { 
-        success: false, 
-        error: `Validation failed: ${errorMessages}` 
+      return {
+        success: false,
+        error: `Validation failed: ${errorMessages}`
       };
     }
-    return { 
-      success: false, 
-      error: `Validation error: ${error.message}` 
+    return {
+      success: false,
+      error: `Validation error: ${error.message}`
     };
   }
 };
@@ -142,14 +146,14 @@ export const validateRebalancingAllocation = (data) => {
   } catch (error) {
     if (error instanceof z.ZodError) {
       const errorMessages = error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
-      return { 
-        success: false, 
-        error: `Validation failed: ${errorMessages}` 
+      return {
+        success: false,
+        error: `Validation failed: ${errorMessages}`
       };
     }
-    return { 
-      success: false, 
-      error: `Validation error: ${error.message}` 
+    return {
+      success: false,
+      error: `Validation error: ${error.message}`
     };
   }
 };
@@ -164,6 +168,7 @@ export const getFallbackChartConfig = () => ({
   aggregationType: 'sum',
   filters: {
     category: '',
+    subcategory: '',
     platform: '',
     instrument: '',
     currency: '',
@@ -185,6 +190,7 @@ export const getFallbackChartSuggestions = () => ({
       aggregationType: 'sum',
       filters: {
         category: '',
+        subcategory: '',
         platform: '',
         instrument: '',
         currency: '',

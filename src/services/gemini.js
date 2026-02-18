@@ -16,7 +16,20 @@ import {
 
 // Groq API Configuration
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
+
+// Default model is now Google Gemini
+const DEFAULT_MODEL = 'gemini-3-flash-preview';
+
+/**
+ * Available Gemini Models
+ */
+export const GEMINI_MODELS = {
+  'gemini-3-flash-preview': 'Gemini 3 Flash Preview',
+  'gemini-2.5-flash': 'Gemini 2.5 Flash',
+  'gemini-flash-latest': 'Gemini Flash Latest',
+  'gemini-robotics-er-1.5-preview': 'Gemini Robotics ER 1.5 Preview '
+};
 
 /**
  * Available Groq Models
@@ -35,14 +48,24 @@ export const GROQ_MODELS = {
  * @returns {string} API key
  */
 const getGroqApiKey = (customApiKey = '') => {
-  // Use custom key if provided, otherwise fallback to env variable
   if (customApiKey && customApiKey.trim()) {
     return customApiKey.trim();
   }
+  return import.meta.env.VITE_GROQ_API_KEY || '';
+};
 
-  const apiKey = import.meta.env.VITE_GROQ_API_KEY;
+/**
+ * Get Gemini API Key
+ * @param {string} customApiKey - Optional custom API key from user settings
+ * @returns {string} API key
+ */
+const getGeminiApiKey = (customApiKey = '') => {
+  if (customApiKey && customApiKey.trim()) {
+    return customApiKey.trim();
+  }
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
   if (!apiKey) {
-    throw new Error("VITE_GROQ_API_KEY environment variable is not set");
+    throw new Error("VITE_GEMINI_API_KEY environment variable is not set");
   }
   return apiKey;
 };
@@ -55,8 +78,11 @@ const getGroqApiKey = (customApiKey = '') => {
  * @param {number} temperature - Temperature for response generation (0-2)
  * @returns {Promise<string>} - AI response
  */
-const callGroqAPI = async (messages, model = DEFAULT_MODEL, customApiKey = '', temperature = 0.7) => {
+const callGroqAPI = async (messages, model = 'llama-3.3-70b-versatile', customApiKey = '', temperature = 0.7) => {
   const apiKey = getGroqApiKey(customApiKey);
+  if (!apiKey) {
+    throw new Error("VITE_GROQ_API_KEY environment variable is not set");
+  }
 
   const response = await fetch(GROQ_API_URL, {
     method: 'POST',
@@ -78,6 +104,67 @@ const callGroqAPI = async (messages, model = DEFAULT_MODEL, customApiKey = '', t
 
   const data = await response.json();
   return data.choices[0].message.content;
+};
+
+/**
+ * Call Google Gemini API
+ */
+const callGoogleGeminiAPI = async (messages, model = DEFAULT_MODEL, customApiKey = '') => {
+  const apiKey = getGeminiApiKey(customApiKey);
+
+  // Format messages for Gemini
+  // Gemini expects: { contents: [{ role: 'user'|'model', parts: [{ text: '...' }] }] }
+  // System instructions are passed separately in valid models, but for simplicity via REST API we can prepend or use systemInstruction if supported.
+  // v1beta supports systemInstruction.
+
+  const contents = [];
+  let systemInstruction = undefined;
+
+  for (const msg of messages) {
+    if (msg.role === 'system') {
+      systemInstruction = { parts: [{ text: msg.content }] };
+    } else {
+      const role = msg.role === 'assistant' ? 'model' : 'user';
+      contents.push({
+        role: role,
+        parts: [{ text: msg.content }]
+      });
+    }
+  }
+
+  const url = `${GEMINI_API_URL}/${model}:generateContent?key=${apiKey}`;
+
+  const body = {
+    contents: contents,
+    generationConfig: {
+      temperature: 0.7
+    }
+  };
+
+  if (systemInstruction) {
+    body.systemInstruction = systemInstruction;
+  }
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(`Gemini API Error: ${response.status} - ${errorData.error?.message || response.statusText}`);
+  }
+
+  const data = await response.json();
+
+  if (!data.candidates || data.candidates.length === 0) {
+    throw new Error("No candidates returned from Gemini API");
+  }
+
+  return data.candidates[0].content.parts[0].text;
 };
 
 /**
@@ -107,19 +194,24 @@ export const callGeminiAI = async (prompt, portfolioContext = "", model = DEFAUL
       content: prompt
     });
 
-    // Call Groq API
-    const content = await callGroqAPI(messages, model, customApiKey);
-
-    return content || "לא התקבלה תשובה תקינה.";
+    // Determine which API to call based on model name
+    if (model.startsWith('gemini')) {
+      return await callGoogleGeminiAPI(messages, model, customApiKey);
+    } else {
+      return await callGroqAPI(messages, model, customApiKey || '');
+    }
   } catch (error) {
-    console.error("Groq AI Error:", error);
+    console.error("AI Error:", error);
 
     // Provide helpful error messages
     if (error.message.includes("VITE_GROQ_API_KEY")) {
       return "שגיאה: מפתח Groq API לא הוגדר. אנא הוסף VITE_GROQ_API_KEY לקובץ .env";
     }
+    if (error.message.includes("VITE_GEMINI_API_KEY")) {
+      return "שגיאה: מפתח Gemini API לא הוגדר. אנא הוסף VITE_GEMINI_API_KEY לקובץ .env";
+    }
 
-    return `שגיאה בקבלת תשובה מה-AI (Groq): ${error.message || "שגיאה לא ידועה"}`;
+    return `שגיאה בקבלת תשובה מה-AI: ${error.message || "שגיאה לא ידועה"}`;
   }
 };
 
@@ -155,19 +247,24 @@ export const callGeminiAIWithHistory = async (messages = [], portfolioContext = 
     const recentMessages = messages.slice(-15);
     formattedMessages.push(...recentMessages);
 
-    // Call Groq API
-    const content = await callGroqAPI(formattedMessages, model, customApiKey);
-
-    return content || "לא התקבלה תשובה תקינה.";
+    // Call appropriate API
+    if (model.startsWith('gemini')) {
+      return await callGoogleGeminiAPI(formattedMessages, model, customApiKey);
+    } else {
+      return await callGroqAPI(formattedMessages, model, customApiKey || '');
+    }
   } catch (error) {
-    console.error("Groq AI Error:", error);
+    console.error("AI Error:", error);
 
     // Provide helpful error messages
     if (error.message.includes("VITE_GROQ_API_KEY")) {
       return "שגיאה: מפתח Groq API לא הוגדר. אנא הוסף VITE_GROQ_API_KEY לקובץ .env";
     }
+    if (error.message.includes("VITE_GEMINI_API_KEY")) {
+      return "שגיאה: מפתח Gemini API לא הוגדר. אנא הוסף VITE_GEMINI_API_KEY לקובץ .env";
+    }
 
-    return `שגיאה בקבלת תשובה מה-AI (Groq): ${error.message || "שגיאה לא ידועה"}`;
+    return `שגיאה בקבלת תשובה מה-AI: ${error.message || "שגיאה לא ידועה"}`;
   }
 };
 

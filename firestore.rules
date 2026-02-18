@@ -118,6 +118,18 @@ service cloud.firestore {
           allow write: if isOwner(userId) || isAdminInContext(appId);
         }
         
+        // Portfolio snapshots collection - daily portfolio value snapshots
+        // STRICT PER-USER ISOLATION: Only allow access when userId matches request.auth.uid
+        match /portfolioSnapshots/{snapshotId} {
+          // Users can ONLY read their own snapshots (userId must match auth.uid)
+          allow read: if isAuthenticated() && request.auth.uid == userId;
+          // Users can create/update their own snapshots only (for daily archiving)
+          // Note: userId is from the parent path (/users/{userId}/portfolioSnapshots/{snapshotId})
+          allow create, update: if isAuthenticated() && request.auth.uid == userId;
+          // Delete requires admin claim OR user is owner (for safety)
+          allow delete: if isAuthenticated() && (request.auth.uid == userId || isAdminInContext(appId));
+        }
+        
         // Chats collection - AI chat conversations
         // STRICT PER-USER ISOLATION: Only allow access when userId matches request.auth.uid
         match /chats/{chatId} {
