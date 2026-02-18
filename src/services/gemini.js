@@ -25,10 +25,10 @@ const DEFAULT_MODEL = 'gemini-3-flash-preview';
  * Available Gemini Models
  */
 export const GEMINI_MODELS = {
-  'gemini-3-flash-preview': 'Gemini 3 Flash Preview',
+  'gemini-3-flash-preview': 'Gemini 3 Flash',
   'gemini-2.5-flash': 'Gemini 2.5 Flash',
-  'gemini-flash-latest': 'Gemini Flash Latest',
-  'gemini-robotics-er-1.5-preview': 'Gemini Robotics ER 1.5 Preview '
+  'gemini-2.5-flash-lite': 'Gemini 2.5 Flash Lite',
+  'gemma-3-27b-it': 'Gemma 3 27B'
 };
 
 /**
@@ -36,11 +36,23 @@ export const GEMINI_MODELS = {
  * Export for use in UI components
  */
 export const GROQ_MODELS = {
-  'llama-3.3-70b-versatile': 'Llama 3.3 70B - New & Strongest',
-  'llama-3.1-70b-versatile': 'Llama 3.1 70B - Classic',
-  'mixtral-8x7b-32768': 'Mixtral 8x7B - Large Context',
-  'gemma2-9b-it': 'Gemma 2 9B - Fast Google'
+  'llama-3.3-70b-versatile': 'Llama 3.3 70b - New & Strongest',
+  'gpt-oss-120b': 'GPT OSS 120b',
+  'openai/gpt-oss-120b': 'OpenAI GPT OSS 120b',
+  'qwen/qwen3-32b': 'Qwen 3 32b',
+  'llama-3.1-70b-versatile': 'Llama 3.1 70b - Classic',
+  'llama-3.1-8b-instant': 'Llama 3.1 8b - Instant',
+  'mixtral-8x7b-32768': 'Mixtral 8x7b - Large Context',
+  'gemma2-9b-it': 'Gemma 2 9b - Fast Google'
 };
+
+const FALLBACK_ORDER = [
+  'gemini-3-flash-preview',
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemma-3-27b-it',
+  'llama-3.3-70b-versatile',
+];
 
 /**
  * Get Groq API Key
@@ -78,7 +90,7 @@ const getGeminiApiKey = (customApiKey = '') => {
  * @param {number} temperature - Temperature for response generation (0-2)
  * @returns {Promise<string>} - AI response
  */
-const callGroqAPI = async (messages, model = 'llama-3.3-70b-versatile', customApiKey = '', temperature = 0.7) => {
+const callGroqAPI = async (messages, model = 'llama-3.3-70b-versatile', customApiKey = '', temperature = 0.7, signal = null) => {
   const apiKey = getGroqApiKey(customApiKey);
   if (!apiKey) {
     throw new Error("VITE_GROQ_API_KEY environment variable is not set");
@@ -90,6 +102,7 @@ const callGroqAPI = async (messages, model = 'llama-3.3-70b-versatile', customAp
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`
     },
+    signal,
     body: JSON.stringify({
       model: model,
       messages: messages,
@@ -109,7 +122,7 @@ const callGroqAPI = async (messages, model = 'llama-3.3-70b-versatile', customAp
 /**
  * Call Google Gemini API
  */
-const callGoogleGeminiAPI = async (messages, model = DEFAULT_MODEL, customApiKey = '') => {
+const callGoogleGeminiAPI = async (messages, model = DEFAULT_MODEL, customApiKey = '', signal = null) => {
   const apiKey = getGeminiApiKey(customApiKey);
 
   // Format messages for Gemini
@@ -150,6 +163,7 @@ const callGoogleGeminiAPI = async (messages, model = DEFAULT_MODEL, customApiKey
     headers: {
       'Content-Type': 'application/json'
     },
+    signal,
     body: JSON.stringify(body)
   });
 
@@ -228,44 +242,73 @@ export const callGeminiAI = async (prompt, portfolioContext = "", model = DEFAUL
  * @param {string} customApiKey - Optional custom API key
  * @returns {Promise<string>} - AI response
  */
-export const callGeminiAIWithHistory = async (messages = [], portfolioContext = "", model = DEFAULT_MODEL, customApiKey = "") => {
-  try {
-    // Build messages array for Groq API
-    // Format: [{role: 'system'|'user'|'assistant', content: string}, ...]
-    const formattedMessages = [];
+export const callGeminiAIWithHistory = async (messages = [], portfolioContext = "", model = DEFAULT_MODEL, customApiKey = "", signal = null) => {
+  // Build messages array
+  const formattedMessages = [];
 
-    // Add system message with portfolio context if provided
-    if (portfolioContext) {
-      formattedMessages.push({
-        role: 'system',
-        content: portfolioContext
-      });
-    }
-
-    // Add chat history (last 10-15 messages to prevent context overflow)
-    // Token optimization: Only send recent history
-    const recentMessages = messages.slice(-15);
-    formattedMessages.push(...recentMessages);
-
-    // Call appropriate API
-    if (model.startsWith('gemini')) {
-      return await callGoogleGeminiAPI(formattedMessages, model, customApiKey);
-    } else {
-      return await callGroqAPI(formattedMessages, model, customApiKey || '');
-    }
-  } catch (error) {
-    console.error("AI Error:", error);
-
-    // Provide helpful error messages
-    if (error.message.includes("VITE_GROQ_API_KEY")) {
-      return "שגיאה: מפתח Groq API לא הוגדר. אנא הוסף VITE_GROQ_API_KEY לקובץ .env";
-    }
-    if (error.message.includes("VITE_GEMINI_API_KEY")) {
-      return "שגיאה: מפתח Gemini API לא הוגדר. אנא הוסף VITE_GEMINI_API_KEY לקובץ .env";
-    }
-
-    return `שגיאה בקבלת תשובה מה-AI: ${error.message || "שגיאה לא ידועה"}`;
+  // Add system message with portfolio context if provided
+  if (portfolioContext) {
+    formattedMessages.push({
+      role: 'system',
+      content: portfolioContext
+    });
   }
+
+  // Add chat history (last 10-15 messages to prevent context overflow)
+  const recentMessages = messages.slice(-15);
+  formattedMessages.push(...recentMessages);
+
+  // Determine models list to try
+  let modelsToTry = [model];
+  if (FALLBACK_ORDER.includes(model)) {
+    // If the requested model is in our fallback list, try it and then the rest
+    const startIndex = FALLBACK_ORDER.indexOf(model);
+    modelsToTry = FALLBACK_ORDER.slice(startIndex);
+  } else if (!model || model === DEFAULT_MODEL) {
+    modelsToTry = FALLBACK_ORDER;
+  }
+
+  // Try each model in sequence
+  let lastError = null;
+
+  for (const currentModel of modelsToTry) {
+    try {
+      console.log(`Attempting AI call with model: ${currentModel}`);
+
+      if (currentModel.startsWith('gemini') || currentModel.startsWith('gemma')) { // Assume gemma is Google unless explicit otherwise in future
+        // Check if it's a Groq model (gemma2-9b-it is Groq)
+        if (Object.keys(GROQ_MODELS).includes(currentModel)) {
+          return await callGroqAPI(formattedMessages, currentModel, customApiKey || '', 0.7, signal);
+        }
+        // Otherwise assume Google Gemini
+        return await callGoogleGeminiAPI(formattedMessages, currentModel, customApiKey, signal);
+      } else {
+        return await callGroqAPI(formattedMessages, currentModel, customApiKey || '', 0.7, signal);
+      }
+    } catch (error) {
+      console.warn(`Model ${currentModel} failed:`, error);
+      lastError = error;
+
+      // If aborted, don't retry
+      if (signal?.aborted || error.name === 'AbortError') {
+        throw error;
+      }
+
+      // Continue to next model
+    }
+  }
+
+  // All models failed
+  console.error("All AI models failed.", lastError);
+
+  if (lastError.message.includes("VITE_GROQ_API_KEY")) {
+    return "שגיאה: מפתח Groq API לא הוגדר. אנא הוסף VITE_GROQ_API_KEY לקובץ .env";
+  }
+  if (lastError.message.includes("VITE_GEMINI_API_KEY")) {
+    return "שגיאה: מפתח Gemini API לא הוגדר. אנא הוסף VITE_GEMINI_API_KEY לקובץ .env";
+  }
+
+  throw new Error(`כל המודלים נכשלו. שגיאה אחרונה: ${lastError.message}`);
 };
 
 /**

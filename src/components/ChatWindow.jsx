@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, updateDoc, doc, getDoc } from 'firebase/firestore';
-import { Send, Loader2, Sparkles, AlertCircle, X, Circle, LucideMenu, Settings, Copy, Code } from 'lucide-react';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, updateDoc, doc, getDoc, deleteDoc } from 'firebase/firestore';
+import { useNavigate } from 'react-router-dom';
+import { Send, Loader2, Sparkles, AlertCircle, X, Circle, LucideMenu, Settings, Copy, Code, ArrowRight, Edit2, RotateCcw, StopCircle, Info, Check } from 'lucide-react';
 import { db, appId } from '../services/firebase';
-import { callGeminiAIWithHistory } from '../services/gemini';
+import { callGeminiAIWithHistory, GEMINI_MODELS, GROQ_MODELS } from '../services/gemini';
 import MarkdownRenderer from './MarkdownRenderer';
 
 /**
@@ -39,7 +40,10 @@ const ChatWindow = ({
     const [suggestions, setSuggestions] = useState([]);
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
+    const abortControllerRef = useRef(null);
+    const navigate = useNavigate();
     const [copiedMessageId, setCopiedMessageId] = useState(null);
+    const [expandedInfo, setExpandedInfo] = useState(new Set()); // Track which messages have info expanded
 
     // Fetch messages from Firestore
     useEffect(() => {
@@ -141,14 +145,121 @@ const ChatWindow = ({
         copyToClipboard(payload, message.id);
     };
 
+    const handleStopGeneration = () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+            setLoading(false);
+        }
+    };
+
+    const handleEditPrompt = (messageId, content) => {
+        setInputValue(content);
+        inputRef.current?.focus();
+        // Optional: Delete the old message pair if desired? 
+        // For now, just load into input is safer/standard "Edit" behavior in many chat UIs which allows forking.
+        // But if user expects 'Edit' to replace, we can delete the user message and subsequent AI response.
+        // Let's stick to loading into input.
+    };
+
+    const handleRegenerate = async (messageId) => {
+        // Find the message in the valid list
+        const msgIndex = messages.findIndex(m => m.id === messageId);
+        if (msgIndex === -1) return;
+
+        // The message to regenerate is an AI message. We need the User message before it.
+        const previousMsg = messages[msgIndex - 1];
+        if (!previousMsg || previousMsg.role !== 'user') return;
+
+        // Delete the AI message (and any error message)
+        try {
+            await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'chats', chatId, 'messages', messageId));
+        } catch (e) {
+            console.error("Error deleting message for regeneration:", e);
+        }
+
+        // Trigger send with the user's content, but we don't need to add a NEW user message, 
+        // we just want to get an AI response for the EXISTING user message.
+        // However, handleSendMessage adds a user message.
+        // I'll create a new helper `generateResponseForContext` or just modify handleSendMessage to allow bypassing user msg creation?
+        // Simpler: Just re-run the AI generation logic.
+
+        setLoading(true);
+        setError(null);
+
+        // Setup AbortController
+        if (abortControllerRef.current) abortControllerRef.current.abort();
+        abortControllerRef.current = new AbortController();
+        const signal = abortControllerRef.current.signal;
+
+        // Timeout
+        const timeoutId = setTimeout(() => {
+            if (abortControllerRef.current) abortControllerRef.current.abort('timeout');
+        }, 60000); // 60s timeout
+
+        try {
+            const messageHistory = messages.slice(0, msgIndex); // History up to the AI message (excluding it)
+
+            // ... (Same context building logic as handleSendMessage) ...
+            const contextEnabled = aiConfig?.contextEnabled !== false;
+            let finalContext = contextEnabled ? portfolioContext : "";
+            const followUpInstruction = `\n\n**חשוב**: בסוף כל תשובה, הוסף 3 שאלות המלצה רלוונטיות שהמשתמש יכול לשאול אותך הלאה. השאלות חייבות להיות מנוסחות בגוף ראשון (מנקודת מבט של המשתמש).\nדוגמה נכונה: "איך כדאי לי להשקיע את המזומן?" (לא "האם תרצה לשמוע...")\nפורמט: שלח את השאלות בסוף התשובה בפורמט הבא (על שורה נפרדת):\n[SUGGESTIONS]: ["שאלה 1", "שאלה 2", "שאלה 3"]`;
+
+            if (finalContext) {
+                finalContext += followUpInstruction;
+            } else {
+                finalContext = followUpInstruction;
+            }
+
+            const aiResponse = await callGeminiAIWithHistory(
+                messageHistory,
+                finalContext,
+                groqConfig?.model || 'gemini-3-flash-preview', // Default to Gemini 3 Flash per instructions
+                groqConfig?.customApiKey || '',
+                signal
+            );
+
+            clearTimeout(timeoutId);
+
+            if (aiResponse && aiResponse.includes('שגיאה')) throw new Error(aiResponse);
+
+            await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'chats', chatId, 'messages'), {
+                role: 'assistant',
+                content: aiResponse,
+                timestamp: serverTimestamp()
+            });
+
+        } catch (error) {
+            clearTimeout(timeoutId);
+            if (signal.aborted) {
+                if (signal.reason === 'timeout') {
+                    setError('פסק זמן: הבקשה ארכה יותר מדי זמן.');
+                }
+                // If manual stop, do nothing
+                return;
+            }
+            console.error(error);
+            setError(error.message);
+            await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'chats', chatId, 'messages'), {
+                role: 'assistant',
+                content: `שגיאה: ${error.message || 'שגיאה כללית'}`,
+                timestamp: serverTimestamp(),
+                isError: true
+            });
+        } finally {
+            setLoading(false);
+            abortControllerRef.current = null;
+        }
+    };
+
     const handleSendMessage = async (e) => {
         e.preventDefault();
 
         if (!inputValue.trim() || loading) return;
 
-        // If no chat exists, create a new one first
         let currentChatId = chatId;
         if (!currentChatId && onCreateNewChat) {
+            // ... (Creation logic remains same) ...
             try {
                 const newChatRef = await addDoc(
                     collection(db, 'artifacts', appId, 'users', user.uid, 'chats'),
@@ -174,25 +285,15 @@ const ChatWindow = ({
         setInputValue('');
         setError(null);
 
-        // Add user message to Firestore
         let userMessageRef;
         try {
             userMessageRef = await addDoc(
-                collection(
-                    db,
-                    'artifacts',
-                    appId,
-                    'users',
-                    user.uid,
-                    'chats',
-                    currentChatId,
-                    'messages'
-                ),
+                collection(db, 'artifacts', appId, 'users', user.uid, 'chats', currentChatId, 'messages'),
                 {
                     role: 'user',
                     content: userMessage,
                     timestamp: serverTimestamp(),
-                    fullContext: null  // Will be updated after AI call with full context
+                    fullContext: null
                 }
             );
         } catch (error) {
@@ -203,28 +304,23 @@ const ChatWindow = ({
 
         setLoading(true);
 
+        // CHANGE: AbortController and Timeout
+        if (abortControllerRef.current) abortControllerRef.current.abort();
+        abortControllerRef.current = new AbortController();
+        const signal = abortControllerRef.current.signal;
+
+        const timeoutId = setTimeout(() => {
+            if (abortControllerRef.current) abortControllerRef.current.abort('timeout');
+        }, 60000);
+
         try {
-            // Build message history for AI (excluding system message, it will be added in callGeminiAIWithHistory)
-            const messageHistory = messages.map(msg => ({
-                role: msg.role,
-                content: msg.content
-            }));
+            const messageHistory = messages.map(msg => ({ role: msg.role, content: msg.content }));
+            messageHistory.push({ role: 'user', content: userMessage });
 
-            // Add the new user message to history
-            messageHistory.push({
-                role: 'user',
-                content: userMessage
-            });
-
-            // Apply history limit from user settings (default to 10)
             const historyLimit = aiConfig?.historyLimit || 10;
             const limitedHistory = messageHistory.slice(-historyLimit);
-
-            // Only include portfolio context if enabled (default to true)
             const contextEnabled = aiConfig?.contextEnabled !== false;
             let finalContext = contextEnabled ? portfolioContext : "";
-
-            // Add follow-up questions instruction to system context
             const followUpInstruction = `\n\n**חשוב**: בסוף כל תשובה, הוסף 3 שאלות המלצה רלוונטיות שהמשתמש יכול לשאול אותך הלאה. השאלות חייבות להיות מנוסחות בגוף ראשון (מנקודת מבט של המשתמש).\nדוגמה נכונה: "איך כדאי לי להשקיע את המזומן?" (לא "האם תרצה לשמוע...")\nפורמט: שלח את השאלות בסוף התשובה בפורמט הבא (על שורה נפרדת):\n[SUGGESTIONS]: ["שאלה 1", "שאלה 2", "שאלה 3"]`;
 
             if (finalContext) {
@@ -233,15 +329,16 @@ const ChatWindow = ({
                 finalContext = followUpInstruction;
             }
 
-            // Call AI with history, portfolio context, model, and custom API key
             const aiResponse = await callGeminiAIWithHistory(
                 limitedHistory,
                 finalContext,
-                groqConfig?.model || 'llama-3.3-70b-versatile',
-                groqConfig?.customApiKey || ''
+                groqConfig?.model || 'gemini-3-flash-preview',
+                groqConfig?.customApiKey || '',
+                signal
             );
 
-            // Update user message with full context for debugging
+            clearTimeout(timeoutId);
+
             if (userMessageRef) {
                 await updateDoc(userMessageRef, {
                     fullContext: {
@@ -251,76 +348,58 @@ const ChatWindow = ({
                 });
             }
 
-            // Check if response contains error
             if (aiResponse && aiResponse.includes('שגיאה')) {
                 throw new Error(aiResponse);
             }
 
-            // Add AI response to Firestore
             await addDoc(
-                collection(
-                    db,
-                    'artifacts',
-                    appId,
-                    'users',
-                    user.uid,
-                    'chats',
-                    currentChatId,
-                    'messages'
-                ),
+                collection(db, 'artifacts', appId, 'users', user.uid, 'chats', currentChatId, 'messages'),
                 {
                     role: 'assistant',
                     content: aiResponse,
-                    timestamp: serverTimestamp()
+                    timestamp: serverTimestamp(),
+                    model: groqConfig?.model || 'gemini-3-flash-preview',
+                    provider: groqConfig?.customApiKey ? (groqConfig.model.includes('gemini') || groqConfig.model.includes('gemma') ? 'gemini' : 'groq') : 'gemini'
                 }
             );
 
-            // Update chat metadata with last message preview
-            const chatRef = doc(
-                db,
-                'artifacts',
-                appId,
-                'users',
-                user.uid,
-                'chats',
-                currentChatId
-            );
-
-            // Generate title from first message if title is still default
+            // Update chat metadata...
+            const chatRef = doc(db, 'artifacts', appId, 'users', user.uid, 'chats', currentChatId);
+            // ... Logic to update title/lastMessage ...
             const chatDoc = await getDoc(chatRef);
             const chatData = chatDoc.data();
-
             let updateData = {
                 updatedAt: serverTimestamp(),
                 lastMessagePreview: userMessage.length > 50 ? userMessage.substring(0, 50) + '...' : userMessage
             };
-
-            // If title is still default, update it based on first message
             if (chatData?.title === 'שיחה חדשה' && messages.length === 0) {
-                updateData.title = userMessage.length > 30
-                    ? userMessage.substring(0, 30) + '...'
-                    : userMessage;
+                updateData.title = userMessage.length > 30 ? userMessage.substring(0, 30) + '...' : userMessage;
             }
-
             await updateDoc(chatRef, updateData);
 
         } catch (error) {
+            clearTimeout(timeoutId);
+
+            if (signal.aborted) {
+                if (signal.reason === 'timeout') {
+                    // Add timeout error message
+                    await addDoc(collection(db, 'artifacts', appId, 'users', user.uid, 'chats', currentChatId, 'messages'), {
+                        role: 'assistant',
+                        content: 'שגיאה: הבקשה הסתיימה עקב פסק זמן (Timeout). נסה שוב או פשט את הבקשה.',
+                        timestamp: serverTimestamp(),
+                        isError: true
+                    });
+                }
+                // If manually stopped, just stop (no message)
+                return;
+            }
+
             console.error('Error getting AI response:', error);
             setError(error.message || 'אירעה שגיאה בקבלת תשובה מה-AI');
 
-            // Add error message to chat
             if (currentChatId) {
                 await addDoc(
-                    collection(
-                        db,
-                        'artifacts',
-                        appId,
-                        'users',
-                        user.uid,
-                        'chats',
-                        currentChatId,
-                        'messages'
-                    ),
+                    collection(db, 'artifacts', appId, 'users', user.uid, 'chats', currentChatId, 'messages'),
                     {
                         role: 'assistant',
                         content: `שגיאה: ${error.message || 'לא ניתן לקבל תשובה מה-AI כרגע. אנא נסה שוב.'}`,
@@ -331,6 +410,7 @@ const ChatWindow = ({
             }
         } finally {
             setLoading(false);
+            abortControllerRef.current = null;
         }
     };
 
@@ -472,6 +552,12 @@ const ChatWindow = ({
             <header className="sticky top-0 z-[10] bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 md:px-6 py-3 flex items-center justify-between">
                 {/* Left: AI Persona Name & Status */}
                 <div className="flex items-center gap-3 mr-12 md:mr-0">
+                    <button onClick={() => navigate('/')} className="md:hidden p-1 text-slate-500 hover:bg-slate-100 rounded-full">
+                        <ArrowRight size={24} />
+                    </button>
+                    <button onClick={() => navigate('/')} className="hidden md:block p-1 text-slate-500 hover:bg-slate-100 rounded-full mr-2">
+                        <ArrowRight size={20} />
+                    </button>
                     <Sparkles className="text-emerald-600 dark:text-emerald-400" size={20} />
                     <div>
                         <h2 className="text-base md:text-lg font-semibold text-slate-800 dark:text-white">
@@ -597,8 +683,8 @@ const ChatWindow = ({
                                                     type="button"
                                                     onClick={() => handleCopyMessage(message.content, message.id)}
                                                     className={`p-1.5 rounded-lg transition-colors ${message.role === 'user'
-                                                            ? 'hover:bg-emerald-800/50 text-white'
-                                                            : 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'
+                                                        ? 'hover:bg-emerald-800/50 text-white'
+                                                        : 'hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400'
                                                         }`}
                                                     title="העתק טקסט"
                                                     aria-label="העתק טקסט"
@@ -629,9 +715,91 @@ const ChatWindow = ({
 
                                             {/* Message Content - Use clean content without suggestions */}
                                             {message.role === 'assistant' ? (
-                                                <div className="prose prose-sm dark:prose-invert max-w-none leading-relaxed text-slate-700 dark:text-slate-200">
-                                                    <MarkdownRenderer content={cleanContent} />
-                                                </div>
+                                                <>
+                                                    <div className="prose prose-sm dark:prose-invert max-w-none leading-relaxed text-slate-700 dark:text-slate-200">
+                                                        <MarkdownRenderer content={cleanContent} />
+                                                    </div>
+
+                                                    {/* AI Message Actions */}
+                                                    {/* AI Message Actions & Info */}
+                                                    {!message.isError && (
+                                                        <div className="mt-2">
+                                                            {/* Info Panel - Context/Model */}
+                                                            {expandedInfo.has(message.id) && (
+                                                                <div className="mb-3 p-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50 rounded-lg text-xs text-slate-500 dark:text-slate-400">
+                                                                    <div className="flex flex-wrap gap-x-6 gap-y-2">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="font-semibold text-slate-700 dark:text-slate-300">מודל:</span>
+                                                                            <span>
+                                                                                {GEMINI_MODELS[message.model] || GROQ_MODELS[message.model] || message.model || 'Gemini 3 Flash'}
+                                                                            </span>
+                                                                        </div>
+                                                                        {message.timestamp && (
+                                                                            <div className="flex items-center gap-2">
+                                                                                <span className="font-semibold text-slate-700 dark:text-slate-300">זמן:</span>
+                                                                                <span dir="ltr">
+                                                                                    {message.timestamp?.toDate ? message.timestamp.toDate().toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : new Date(message.timestamp).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
+                                                                                </span>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+
+                                                            <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700/50">
+                                                                <div className="flex items-center gap-2">
+                                                                    {/* Info Button - Toggle */}
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            const newSet = new Set(expandedInfo);
+                                                                            if (newSet.has(message.id)) {
+                                                                                newSet.delete(message.id);
+                                                                            } else {
+                                                                                newSet.add(message.id);
+                                                                            }
+                                                                            setExpandedInfo(newSet);
+                                                                        }}
+                                                                        className={`p-1.5 rounded transition-colors ${expandedInfo.has(message.id) ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                                                                        title="מידע נוסף"
+                                                                    >
+                                                                        <Info size={14} />
+                                                                    </button>
+                                                                </div>
+
+                                                                <div className="flex items-center gap-2">
+                                                                    <button
+                                                                        onClick={() => handleCopyMessage(cleanContent, message.id)}
+                                                                        className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-slate-500 hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
+                                                                        title="העתק תשובה"
+                                                                    >
+                                                                        {copiedMessageId === message.id ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+                                                                        <span>{copiedMessageId === message.id ? 'הועתק' : 'העתק'}</span>
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            const prevUserMsg = messages[index - 1];
+                                                                            if (prevUserMsg) handleEditPrompt(message.id, prevUserMsg.content);
+                                                                        }}
+                                                                        className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-slate-500 hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
+                                                                        title="ערוך בקשה"
+                                                                    >
+                                                                        <Edit2 size={12} />
+                                                                        <span>ערוך</span>
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => handleRegenerate(message.id)}
+                                                                        className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-slate-500 hover:text-emerald-600 dark:text-slate-400 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
+                                                                        title="צור תשובה מחדש"
+                                                                    >
+                                                                        <RotateCcw size={12} />
+                                                                        <span>נסה שוב</span>
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </>
                                             ) : (
                                                 <p className="whitespace-pre-wrap break-words leading-relaxed text-base text-white">{message.content}</p>
                                             )}
@@ -663,18 +831,29 @@ const ChatWindow = ({
                         })}
 
                         {/* Typing Indicator - Animated */}
+                        {/* Typing Indicator - Animated with Stop Button */}
                         {loading && (
-                            <div className="flex justify-start">
-                                <div className="bg-slate-100 dark:bg-slate-800 rounded-2xl px-4 py-3 shadow-sm">
-                                    <div className="flex items-center gap-2">
+                            <div className="flex items-center justify-between animate-in fade-in slide-in-from-bottom-2 duration-300">
+                                <div className="bg-white dark:bg-slate-800 rounded-2xl rounded-tr-none px-4 py-3 shadow-sm border border-slate-100 dark:border-slate-700">
+                                    <div className="flex items-center gap-3">
                                         <div className="flex gap-1">
-                                            <div className="w-2 h-2 bg-slate-400 dark:bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                                            <div className="w-2 h-2 bg-slate-400 dark:bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                                            <div className="w-2 h-2 bg-slate-400 dark:bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                                            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                                            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                                            <div className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                                         </div>
-                                        <span className="text-sm text-slate-600 dark:text-slate-300 mr-2">מחשב תשובה...</span>
+                                        <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                                            יועץ AI חושב...
+                                        </span>
                                     </div>
                                 </div>
+
+                                <button
+                                    onClick={handleStopGeneration}
+                                    className="flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-full text-sm font-medium hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors mr-auto"
+                                >
+                                    <StopCircle size={16} />
+                                    <span>עצור</span>
+                                </button>
                             </div>
                         )}
 
@@ -749,13 +928,17 @@ const ChatWindow = ({
                                 }}
                             />
                             <button
-                                type="submit"
-                                disabled={!inputValue.trim() || loading}
-                                className="m-1.5 bg-emerald-600 dark:bg-emerald-700 text-white p-2.5 rounded-xl hover:bg-emerald-700 dark:hover:bg-emerald-600 transition flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0 shadow-sm"
-                                title="שלח"
+                                type="button"
+                                onClick={loading ? handleStopGeneration : undefined}
+                                disabled={!inputValue.trim() && !loading}
+                                className={`m-1.5 p-2.5 rounded-xl transition flex items-center justify-center flex-shrink-0 shadow-sm ${loading
+                                    ? 'bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400'
+                                    : 'bg-emerald-600 dark:bg-emerald-700 text-white hover:bg-emerald-700 dark:hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed'
+                                    }`}
+                                title={loading ? "עצור" : "שלח"}
                             >
                                 {loading ? (
-                                    <Loader2 size={18} className="animate-spin" />
+                                    <StopCircle size={18} />
                                 ) : (
                                     <Send size={18} />
                                 )}

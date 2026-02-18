@@ -13,7 +13,8 @@ import { callGeminiAI, parseAndValidateChartSuggestions, parseAndValidateSingleC
 import {
   Save, BarChart3, Filter, X, Eye, PieChart, BarChart, BarChart2, Radar, Gauge, LayoutGrid,
   Plus, Trash2, ArrowUp, ArrowDown, Monitor, Smartphone, Edit2, Check, AreaChart, LineChart,
-  TrendingUp, Grid, Settings, Sparkles, Loader2, ChevronDown, ChevronUp, LucideBarChartHorizontal
+  TrendingUp, Grid, Settings, Sparkles, Loader2, ChevronDown, ChevronUp, LucideBarChartHorizontal,
+  Wallet, Layers, Coins, Binary, Type, Tag, Banknote
 } from 'lucide-react';
 
 const ChartBuilder = () => {
@@ -896,10 +897,9 @@ ${portfolioContext}
                 <label className="block text-xs font-semibold text-slate-600 mb-3 uppercase tracking-wide">
                   סוג גרף
                 </label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="flex bg-slate-100 dark:bg-slate-700 rounded-lg p-1 overflow-x-auto max-w-full">
                   {[
                     { value: 'BarChart', label: 'עמודות', icon: BarChart },
-                    // { value: 'StackedBarChart', label: 'מוערם', icon: BarChart2 },
                     { value: 'HorizontalBarChart', label: 'אופקי', icon: BarChart2 },
                     { value: 'RadialBar', label: 'רדיאלי', icon: Gauge },
                     { value: 'PieChart', label: 'עוגה', icon: PieChart },
@@ -914,13 +914,13 @@ ${portfolioContext}
                       <button
                         key={type.value}
                         onClick={() => setConfig({ ...config, chartType: type.value })}
-                        className={`px-3 py-2.5 text-xs font-medium rounded-lg transition border flex flex-col items-center gap-1 ${config.chartType === type.value
-                          ? 'bg-emerald-600 dark:bg-emerald-500 text-white border-emerald-600 dark:border-emerald-500'
-                          : 'bg-slate-50 dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 hover:border-slate-300 dark:hover:border-slate-500'
+                        className={`p-1.5 rounded-md transition-all min-w-[32px] flex items-center justify-center ${config.chartType === type.value
+                          ? 'bg-white dark:bg-slate-600 shadow-sm text-emerald-600 dark:text-emerald-400'
+                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
                           }`}
+                        title={type.label}
                       >
-                        <IconComponent size={16} />
-                        {type.label}
+                        <IconComponent size={18} />
                       </button>
                     );
                   })}
@@ -959,28 +959,32 @@ ${portfolioContext}
                 <label className="block text-xs font-semibold text-slate-600 mb-3 uppercase tracking-wide">
                   קיבוץ לפי
                 </label>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex bg-slate-100 dark:bg-slate-700 rounded-lg p-1 overflow-x-auto max-w-full">
                   {[
-                    { value: 'category', label: 'אפיקי השקעה' },
-                    { value: 'subcategory', label: 'קטגוריות חלוקה' },
-                    { value: 'platform', label: 'חשבונות וארנקים' },
-                    { value: 'instrument', label: 'מטבעות בסיס' },
-                    { value: 'symbol', label: 'סמל' },
-                    { value: 'name', label: 'שם נכס' },
-                    { value: 'tags', label: 'תגיות' },
-                    { value: 'currency', label: 'מטבע' }
-                  ].map(group => (
-                    <button
-                      key={group.value}
-                      onClick={() => setConfig({ ...config, dataKey: group.value })}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-lg transition ${config.dataKey === group.value
-                        ? 'bg-emerald-600 dark:bg-emerald-500 text-white'
-                        : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600'
-                        }`}
-                    >
-                      {group.label}
-                    </button>
-                  ))}
+                    { value: 'category', label: 'אפיקי השקעה', icon: PieChart },
+                    { value: 'subcategory', label: 'קטגוריות חלוקה', icon: Layers },
+                    { value: 'platform', label: 'חשבונות וארנקים', icon: Wallet },
+                    { value: 'instrument', label: 'מטבעות בסיס', icon: Coins },
+                    { value: 'symbol', label: 'סמל', icon: Binary },
+                    { value: 'name', label: 'שם נכס', icon: Type },
+                    { value: 'tags', label: 'תגיות', icon: Tag },
+                    { value: 'currency', label: 'מטבע', icon: Banknote }
+                  ].map(group => {
+                    const IconComponent = group.icon;
+                    return (
+                      <button
+                        key={group.value}
+                        onClick={() => setConfig({ ...config, dataKey: group.value })}
+                        className={`p-1.5 rounded-md transition-all min-w-[32px] flex items-center justify-center ${config.dataKey === group.value
+                          ? 'bg-white dark:bg-slate-600 shadow-sm text-emerald-600 dark:text-emerald-400'
+                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                          }`}
+                        title={group.label}
+                      >
+                        <IconComponent size={18} />
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -1038,7 +1042,10 @@ ${portfolioContext}
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">אפיקי השקעה</label>
+                    <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5 flex items-center gap-1.5">
+                      <PieChart size={12} className="text-slate-400" />
+                      אפיקי השקעה
+                    </label>
                     <CustomSelect
                       value={config.filters.category || ''}
                       onChange={(val) => setConfig({
@@ -1046,7 +1053,7 @@ ${portfolioContext}
                         filters: { ...config.filters, category: val }
                       })}
                       options={[
-                        { value: '', label: 'הכל' },
+                        { value: '', label: 'כל הקטגוריות' },
                         ...uniqueCategories.map(cat => ({
                           value: cat,
                           label: cat,
@@ -1059,7 +1066,10 @@ ${portfolioContext}
                   </div>
 
                   <div>
-                    <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">קטגוריות חלוקה</label>
+                    <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5 flex items-center gap-1.5">
+                      <Layers size={12} className="text-slate-400" />
+                      קטגוריות חלוקה
+                    </label>
                     <CustomSelect
                       value={config.filters.subcategory || ''}
                       onChange={(val) => setConfig({
@@ -1067,7 +1077,7 @@ ${portfolioContext}
                         filters: { ...config.filters, subcategory: val }
                       })}
                       options={[
-                        { value: '', label: 'הכל' },
+                        { value: '', label: 'כל קטגוריות החלוקה' },
                         ...uniqueSubcategories.map(subcat => ({
                           value: subcat,
                           label: subcat,
@@ -1080,7 +1090,10 @@ ${portfolioContext}
                   </div>
 
                   <div>
-                    <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">חשבונות וארנקים</label>
+                    <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5 flex items-center gap-1.5">
+                      <Wallet size={12} className="text-slate-400" />
+                      חשבונות וארנקים
+                    </label>
                     <CustomSelect
                       value={config.filters.platform || ''}
                       onChange={(val) => setConfig({
@@ -1088,7 +1101,7 @@ ${portfolioContext}
                         filters: { ...config.filters, platform: val }
                       })}
                       options={[
-                        { value: '', label: 'הכל' },
+                        { value: '', label: 'כל הפלטפורמות' },
                         ...uniquePlatforms.map(plat => ({
                           value: plat,
                           label: plat,
@@ -1101,7 +1114,10 @@ ${portfolioContext}
                   </div>
 
                   <div>
-                    <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5">מטבע</label>
+                    <label className="block text-xs text-slate-500 dark:text-slate-400 mb-1.5 flex items-center gap-1.5">
+                      <Banknote size={12} className="text-slate-400" />
+                      מטבע
+                    </label>
                     <CustomSelect
                       value={config.filters.currency || ''}
                       onChange={(val) => setConfig({
@@ -1109,7 +1125,7 @@ ${portfolioContext}
                         filters: { ...config.filters, currency: val }
                       })}
                       options={[
-                        { value: '', label: 'הכל' },
+                        { value: '', label: 'כל המטבעות' },
                         ...uniqueCurrencies.map(curr => ({
                           value: curr,
                           label: curr

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Search, Edit2, Trash2, Eye, ArrowUpDown, LayoutGrid, Layers, Building2, ChevronDown, ChevronUp, X, Tag, Database, Palette, RefreshCw, TestTube, TrendingUp, BarChart3, Package, FileText, Bitcoin, CakeSlice, PieChartIcon } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Eye, ArrowUpDown, LayoutGrid, Layers, Building2, ChevronDown, ChevronUp, X, Tag, Database, Palette, RefreshCw, TestTube, TrendingUp, BarChart3, Package, FileText, Bitcoin } from 'lucide-react';
 import Modal from '../components/Modal';
 import { confirmAlert, successToast } from '../utils/alerts';
 import CustomSelect from '../components/CustomSelect';
@@ -12,7 +12,6 @@ import AssetKPIs from './assets/components/AssetKPIs';
 import ViewPresetSelector, { VIEW_PRESETS } from './assets/components/ViewPresetSelector';
 import MobileAssetCard from './assets/components/MobileAssetCard';
 import { usePriceSync } from '../hooks/usePriceSync';
-import { PieChart } from 'recharts';
 
 const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData, user }) => {
   const { demoAssets, isActive: isDemoActive, toggleDemoMode } = useDemoData();
@@ -121,10 +120,6 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
     if (groupBy === 'category') {
       const category = systemData.categories.find(c => c.name === groupName);
       return category?.color || '#94A3B8';
-    }
-    if (groupBy === 'subcategory') {
-      const subcategory = systemData.subcategories.find(sc => sc.name === groupName);
-      return subcategory?.color || '#94A3B8';
     }
     if (groupBy === 'instrument') {
       const instrument = systemData.instruments.find(i => i.name === groupName);
@@ -248,9 +243,9 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
   const getSourceTypeTitle = (type) => {
     switch (type) {
       case 'categories': return 'אפיקי השקעה';
+      case 'subcategories': return 'קטגוריות חלוקה';
       case 'platforms': return 'חשבונות וארנקים';
       case 'instruments': return 'מטבעות בסיס';
-      case 'subcategories': return 'קטגוריות חלוקה';
       default: return '';
     }
   };
@@ -351,7 +346,7 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
           </div>
 
           {/* Filters and Group By */}
-          <div className="p-4 md:p-5 rounded-xl md:shadow-sm border border-slate-200  dark:border-slate-700 space-y-4">
+          <div className="bg-white dark:bg-slate-800 p-4 md:p-5 md:rounded-xl md:shadow-sm md:border md:border-slate-200 dark:border-slate-700 space-y-4">
             <div className="flex flex-col md:flex-row gap-4">
               <div className="relative flex-1">
                 <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
@@ -425,15 +420,6 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                     }`}
                 >
                   אפיקי השקעה
-                </button>
-                <button
-                  onClick={() => setGroupBy('subcategory')}
-                  className={`px-4 py-2 mb-2 rounded-lg text-sm font-medium transition-all flex-shrink-0 whitespace-nowrap ${groupBy === 'subcategory'
-                    ? 'bg-emerald-600 dark:bg-emerald-700 text-white shadow-sm'
-                    : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600'
-                    }`}
-                >
-                  קטגוריות חלוקה
                 </button>
                 <button
                   onClick={() => setGroupBy('instrument')}
@@ -577,7 +563,7 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                   const isExpanded = expandedGroups.has(key);
 
                   return (
-                    <div key={key} className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+                    <div key={key} className={`rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden transition-all ${!isExpanded ? 'bg-surface-light dark:bg-surface-dark' : 'bg-white dark:bg-slate-800'}`}>
                       {/* Group Header */}
                       <div
                         className={`px-4 md:px-6 py-3 cursor-pointer transition-colors ${!isExpanded
@@ -608,8 +594,13 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                               <div className="text-base font-bold text-slate-900 dark:text-white leading-tight">
                                 ₪{Math.round(totalValue).toLocaleString()}
                               </div>
-                              <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50 px-1.5 py-0.5 rounded inline-block mt-0.5" dir="ltr">
-                                {((totalValue / sortedAssets.reduce((sum, a) => sum + (a.value || 0), 0)) * 100).toFixed(1)}%
+                              <div className="flex items-center justify-end gap-1 mt-0.5">
+                                <div className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded" dir="ltr">
+                                  {((totalValue / sortedAssets.reduce((sum, a) => sum + (a.value || 0), 0)) * 100).toFixed(1)}%
+                                </div>
+                                <div className={`text-slate-400 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+                                  <ChevronDown size={20} />
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -628,8 +619,6 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                                     params.set('platform', key);
                                   } else if (groupBy === 'category') {
                                     params.set('category', key);
-                                  } else if (groupBy === 'subcategory') {
-                                    params.set('subcategory', key);
                                   } else if (groupBy === 'instrument') {
                                     params.set('instrument', key);
                                   }
@@ -675,8 +664,6 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                                   params.set('platform', key);
                                 } else if (groupBy === 'category') {
                                   params.set('category', key);
-                                } else if (groupBy === 'subcategory') {
-                                  params.set('subcategory', key);
                                 } else if (groupBy === 'instrument') {
                                   params.set('instrument', key);
                                 }
@@ -967,19 +954,18 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
                       {selectedAsset.symbol || <span className="text-slate-400 dark:text-slate-500 italic">ללא סמל</span>}
                     </span>
                   </div>
-                  {selectedAsset.subCategory && (
-                    <div className="flex border-b border-slate-100 dark:border-slate-700 pb-2">
-                      <span className="w-2/5 text-base md:text-sm text-slate-500 dark:text-slate-400">תת קטגוריה</span>
-                      <span className="font-medium  text-base md:text-sm text-slate-800 dark:text-white">{selectedAsset.subCategory}</span>
-                    </div>
-                  )}
-
                   {selectedAsset.purchaseDate && (
                     <div className="flex border-b border-slate-100 dark:border-slate-700 pb-2">
                       <span className="w-2/5 text-base md:text-sm text-slate-500 dark:text-slate-400">תאריך רכישה</span>
                       <span className="font-medium  text-base md:text-sm text-slate-800 dark:text-white">
                         {new Date(selectedAsset.purchaseDate).toLocaleDateString('he-IL')}
                       </span>
+                    </div>
+                  )}
+                  {selectedAsset.subcategory && (
+                    <div className="flex border-b border-slate-100 dark:border-slate-700 pb-2">
+                      <span className="w-2/5 text-base md:text-sm text-slate-500 dark:text-slate-400">קטגוריית חלוקה</span>
+                      <span className="font-medium  text-base md:text-sm text-slate-800 dark:text-white">{selectedAsset.subcategory}</span>
                     </div>
                   )}
 
@@ -1041,4 +1027,3 @@ const AssetManager = ({ assets, onDelete, systemData, setSystemData, onResetData
 };
 
 export default AssetManager;
-

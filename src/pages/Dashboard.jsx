@@ -8,6 +8,7 @@ import { useDemoData } from '../contexts/DemoDataContext';
 import { fetchPriceHistory } from '../services/priceService';
 import { resolveInternalId } from '../services/internalIds';
 import { confirmAlert } from '../utils/alerts';
+import { getColorForItem } from '../utils/chartUtils';
 import { usePriceSync } from '../hooks/usePriceSync';
 import { usePortfolioHistory } from '../hooks/usePortfolioHistory';
 
@@ -432,6 +433,7 @@ const Dashboard = ({ assets, systemData, currencyRate, isLoading = false, user }
 
   // State for portfolio history data
   const [portfolioHistory, setPortfolioHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   // State for Chart 2 (Distribution) configuration
   const [distributionView, setDistributionView] = useState('graph'); // 'graph' | 'map'
   const [distributionGroup, setDistributionGroup] = useState('category'); // 'category' | 'subcategory' | 'platform' | 'instrument'
@@ -895,14 +897,13 @@ const Dashboard = ({ assets, systemData, currencyRate, isLoading = false, user }
           title="שגיאה בטעינת השינויים"
           message="הגרף לא נטען. שאר הגרפים ימשיכו לעבוד כרגיל."
         >
-          {console.log('Rendering Dynamic Distribution Chart', { distributionView, distributionGroup, hasData })}
-          <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border-2 border-red-500 dark:border-slate-700 overflow-visible relative">
-            <div className="absolute top-0 right-0 bg-red-500 text-white text-xs px-2 py-1 rounded-bl-lg">Debug Mode</div>
+          <div className="bg-white dark:bg-slate-800 p-4 md:p-6 rounded-2xl shadow-sm border-2 border-green-600 dark:border-slate-700 overflow-visible relative">
+            <div className="absolute top-0 right-0 bg-green-600 text-white text-xs px-2 py-1 rounded-bl-lg">גרף גמיש</div>
             {/* Header with controls */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+            <div className="flex flex-row justify-between items-center gap-4 mb-6 mt-4">
               <div className="flex items-center gap-3">
                 {/* View Toggle (Graph/Map) - Right Side */}
-                <div className="flex bg-slate-100 dark:bg-slate-700 rounded-lg p-1">
+                <div className="flex bg-slate-100 dark:bg-slate-700 rounded-lg p-1 ">
                   <button
                     onClick={() => setDistributionView('graph')}
                     className={`p-1.5 rounded-md transition-all ${distributionView === 'graph'
@@ -927,7 +928,7 @@ const Dashboard = ({ assets, systemData, currencyRate, isLoading = false, user }
 
                 <h3 className="text-base md:text-lg font-bold text-slate-800 dark:text-white">
                   {distributionGroup === 'category' && 'פיזור לפי קטגוריות'}
-                  {distributionGroup === 'subcategory' && 'פיזור לפי תת-קטגוריות'}
+                  {distributionGroup === 'subcategory' && 'פיזור לפי קטגוריות חלוקה'}
                   {distributionGroup === 'platform' && 'פיזור לפי פלטפורמות'}
                   {distributionGroup === 'instrument' && 'פיזור לפי נכסים'}
                 </h3>
@@ -991,11 +992,7 @@ const Dashboard = ({ assets, systemData, currencyRate, isLoading = false, user }
                             dataByInstrument).map(item => ({
                               name: item.name,
                               size: item.value,
-                              fill: distributionGroup === 'category'
-                                ? (displaySystemData.categories.find(c => c.name === item.name)?.color || '#3b82f6')
-                                : distributionGroup === 'platform'
-                                  ? (displaySystemData.platforms.find(p => p.name === item.name)?.color || '#10b981')
-                                  : undefined
+                              fill: getColorForItem(item.name, distributionGroup, displaySystemData)
                             }))
                     }
                     title=""

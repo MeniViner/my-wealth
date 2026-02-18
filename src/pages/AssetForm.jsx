@@ -380,28 +380,19 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
         });
 
         setCurrentPriceData(priceData);
-        // [FIX #4] The Critical Change:
-        // If we are in "Edit Mode" (editAsset exists), DO NOT auto-fill purchase price.
-        // Just show the toast.
-        // Only auto-fill for NEW assets (creating for the first time).
-        const shouldAutoFill = !editAsset;
-
-        if (shouldAutoFill) {
-          console.log('[BUTTON] Auto-filling price fields');
-          setNativePrice(priceData.currentPrice);
-          setNativeCurrency(priceData.currency || 'USD');
-          setIsPriceManual(false);
-        } else {
-          console.log('[BUTTON] Skipping auto-fill (edit mode)');
-        }
+        // Manual "נוכחי" button: ALWAYS auto-fill price fields (including edit mode).
+        // This is a deliberate user action — they want to update the price.
+        console.log('[BUTTON] Auto-filling price fields (force refresh)');
+        setNativePrice(priceData.currentPrice);
+        setNativeCurrency(priceData.currency || 'USD');
+        setIsPriceManual(false);
 
         // Get converted price for toast message
         const { convertAmount } = await import('../services/currency');
         const displayPrice = await convertAmount(priceData.currentPrice, priceData.currency || 'USD', formData.currency);
 
         await successToast(
-          `מחיר נוכחי: ${displayPrice.toFixed(2)} ${formData.currency}` +
-          (shouldAutoFill ? '' : ' (לא עודכן בטופס למניעת דריסת היסטוריה)'),
+          `מחיר נוכחי: ${displayPrice.toFixed(2)} ${formData.currency}`,
           3000
         );
       } else {
@@ -641,10 +632,18 @@ const AssetForm = ({ onSave, assets = [], systemData, setSystemData, portfolioCo
           const assetNativeCurrency = priceData.currency || 'USD';
           const assetNativePrice = priceData.currentPrice;
 
-          // Update native price and currency
-          setNativePrice(assetNativePrice);
-          setNativeCurrency(assetNativeCurrency);
-          setIsPriceManual(false); // Reset manual mode when fetching from API
+          // In edit mode: only store price data for display, do NOT auto-fill
+          // the purchase price fields (to preserve historical purchase data).
+          // Only auto-fill for NEW assets.
+          if (!editAsset) {
+            setNativePrice(assetNativePrice);
+            setNativeCurrency(assetNativeCurrency);
+            setIsPriceManual(false); // Reset manual mode when fetching from API
+          } else {
+            console.log('[EFFECT A] Edit mode - skipping price auto-fill to preserve purchase data');
+            // Still set nativeCurrency for potential manual refresh later
+            setNativeCurrency(assetNativeCurrency);
+          }
         }
       } catch (error) {
         console.error('Error fetching native price:', error);

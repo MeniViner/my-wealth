@@ -17,6 +17,7 @@ import Dashboard from './pages/Dashboard';
 import AssetManager from './pages/AssetManager';
 import AssetForm from './pages/AssetForm';
 import AIAdvisor from './pages/AIAdvisor';
+import AdvisorSettings from './pages/AdvisorSettings';
 import Settings from './pages/Settings';
 import ChartBuilder from './pages/ChartBuilder';
 import DynamicDashboard from './pages/DynamicDashboard';
@@ -382,6 +383,17 @@ const AppWithDemo = ({
                   message="אירעה שגיאה בטעינת היועץ. אנא נסה לרענן את הדף."
                 >
                   <AIAdvisor assets={displayAssets} totalWealth={totalWealth} user={user} portfolioContext={portfolioContextString} aiConfig={aiConfig} />
+                </ErrorBoundary>
+              }
+            />
+            <Route
+              path="/advisor/settings"
+              element={
+                <ErrorBoundary
+                  title="שגיאה בטעינת הגדרות היועץ"
+                  message="אירעה שגיאה בטעינת הגדרות היועץ. אנא נסה לרענן את הדף."
+                >
+                  <AdvisorSettings user={user} />
                 </ErrorBoundary>
               }
             />
