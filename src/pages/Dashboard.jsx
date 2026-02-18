@@ -11,6 +11,7 @@ import { confirmAlert } from '../utils/alerts';
 import { getColorForItem } from '../utils/chartUtils';
 import { usePriceSync } from '../hooks/usePriceSync';
 import { usePortfolioHistory } from '../hooks/usePortfolioHistory';
+import { useHeader } from '../contexts/HeaderContext';
 
 // Hebrew font stack
 const HEBREW_FONT = "'Assistant', 'Heebo', 'Rubik', sans-serif";
@@ -166,6 +167,13 @@ const ChartLoader = () => (
 );
 
 const Dashboard = ({ assets, systemData, currencyRate, isLoading = false, user }) => {
+  const { setTitle } = useHeader();
+
+  // Set header title
+  useEffect(() => {
+    setTitle('דשבורד ראשי');
+  }, [setTitle]);
+
   // Debug check
   useEffect(() => {
     console.log('XXX DASHBOARD MOUNTED XXX');

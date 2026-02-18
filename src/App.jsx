@@ -8,6 +8,7 @@ import { useCurrency } from './hooks/useCurrency';
 import { useAIConfig } from './hooks/useAIConfig';
 import { useOnboarding } from './hooks/useOnboarding';
 import { useDemoData, DemoDataProvider } from './contexts/DemoDataContext';
+import { HeaderProvider } from './contexts/HeaderContext';
 import { db, appId } from './services/firebase';
 import { generatePortfolioContext } from './utils/aiContext';
 import Layout from './components/Layout';
@@ -244,29 +245,31 @@ function App() {
 
   return (
     <DemoDataProvider>
-      <AppWithDemo
-        user={user}
-        assets={assets}
-        systemData={systemData}
-        setSystemData={setSystemData}
-        currencyRate={currencyRate}
-        totalWealth={totalWealth}
-        aiConfig={aiConfig}
-        addAsset={addAsset}
-        updateAsset={updateAsset}
-        deleteAsset={deleteAsset}
-        handleInitializeDB={handleInitializeDB}
-        refreshCurrencyRate={refreshCurrencyRate}
-        resetOnboarding={resetOnboarding}
-        startCoachmarks={startCoachmarks}
-        showCoachmarks={showCoachmarks}
-        dismissCoachmarks={dismissCoachmarks}
-        portfolioContextString={portfolioContextString}
-        refreshPrices={refreshPrices}
-        pricesLoading={pricesLoading}
-        assetsLoading={assetsLoading}
-        lastPriceUpdate={lastPriceUpdate}
-      />
+      <HeaderProvider>
+        <AppWithDemo
+          user={user}
+          assets={assets}
+          systemData={systemData}
+          setSystemData={setSystemData}
+          currencyRate={currencyRate}
+          totalWealth={totalWealth}
+          aiConfig={aiConfig}
+          addAsset={addAsset}
+          updateAsset={updateAsset}
+          deleteAsset={deleteAsset}
+          handleInitializeDB={handleInitializeDB}
+          refreshCurrencyRate={refreshCurrencyRate}
+          resetOnboarding={resetOnboarding}
+          startCoachmarks={startCoachmarks}
+          showCoachmarks={showCoachmarks}
+          dismissCoachmarks={dismissCoachmarks}
+          portfolioContextString={portfolioContextString}
+          refreshPrices={refreshPrices}
+          pricesLoading={pricesLoading}
+          assetsLoading={assetsLoading}
+          lastPriceUpdate={lastPriceUpdate}
+        />
+      </HeaderProvider>
     </DemoDataProvider>
   );
 }

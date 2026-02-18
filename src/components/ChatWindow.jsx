@@ -552,12 +552,6 @@ const ChatWindow = ({
             <header className="sticky top-0 z-[10] bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 md:px-6 py-3 flex items-center justify-between">
                 {/* Left: AI Persona Name & Status */}
                 <div className="flex items-center gap-3 mr-12 md:mr-0">
-                    <button onClick={() => navigate('/')} className="md:hidden p-1 text-slate-500 hover:bg-slate-100 rounded-full">
-                        <ArrowRight size={24} />
-                    </button>
-                    <button onClick={() => navigate('/')} className="hidden md:block p-1 text-slate-500 hover:bg-slate-100 rounded-full mr-2">
-                        <ArrowRight size={20} />
-                    </button>
                     <Sparkles className="text-emerald-600 dark:text-emerald-400" size={20} />
                     <div>
                         <h2 className="text-base md:text-lg font-semibold text-slate-800 dark:text-white">
@@ -602,7 +596,7 @@ const ChatWindow = ({
             </header>
 
             {/* Error Message */}
-            {error && (
+            {/* {error && (
                 <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 max-w-2xl w-full mx-4">
                     <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-300 px-4 py-3 rounded-xl flex items-start gap-3 shadow-lg">
                         <AlertCircle size={18} className="mt-0.5 flex-shrink-0" />
@@ -619,7 +613,7 @@ const ChatWindow = ({
                         </button>
                     </div>
                 </div>
-            )}
+            )} */}
 
             {/* Messages Area - Scrollable with bottom padding for fixed input */}
             <div className={`flex-1 overflow-y-auto custom-scrollbar ${!selectedReport ? 'pb-24' : ''}`}>

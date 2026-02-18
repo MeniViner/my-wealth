@@ -7,6 +7,8 @@ import { useDarkMode } from '../hooks/useDarkMode';
 import { useDemoData } from '../contexts/DemoDataContext';
 import { confirmAlert } from '../utils/alerts';
 import InstallPrompt from './InstallPrompt';
+import TopBar from './TopBar';
+import { useHeader } from '../contexts/HeaderContext';
 
 const Layout = ({ children, totalWealth, currencyRate, user }) => {
   const navigate = useNavigate();
@@ -306,6 +308,8 @@ const Layout = ({ children, totalWealth, currencyRate, user }) => {
         </div>
       </aside>
 
+      <TopBar isDemoActive={isDemoActive} />
+
       {/* Mobile Overlay */}
       {mobileMenuOpen && (
         <div
@@ -314,13 +318,30 @@ const Layout = ({ children, totalWealth, currencyRate, user }) => {
         />
       )}
 
-      <main className={`flex-1 ${isAdvisorPage ? 'p-0' : 'p-4 md:p-8'} bg-slate-50 dark:bg-slate-900 ${isAdvisorPage ? 'h-[100svh] md:h-screen' : 'min-h-[100svh] md:min-h-screen'} md:mr-64 overflow-hidden ${isDemoActive ? 'md:mt-10 mt-10' : ''}`}>
+      <MainContent isAdvisorPage={isAdvisorPage} isDemoActive={isDemoActive}>
         {children}
-      </main>
+      </MainContent>
       <InstallPrompt />
     </div>
   );
 };
 
-export default Layout;
+const MainContent = ({ isAdvisorPage, isDemoActive, children }) => {
+  const { isVisible, title, actions } = useHeader();
+  const hasHeader = isVisible && (title || actions);
 
+  const mobileTopPadding = hasHeader ? (isAdvisorPage ? 'pt-16' : 'pt-20') : (isAdvisorPage ? 'pt-0' : 'pt-4');
+  const mobilePadding = isAdvisorPage ? mobileTopPadding : `${mobileTopPadding} px-4 pb-4`;
+
+  const desktopPadding = isAdvisorPage ? 'md:p-0' : 'md:p-8';
+
+  return (
+    <main
+      className={`flex-1 ${mobilePadding} ${desktopPadding} bg-slate-50 dark:bg-slate-900 ${isAdvisorPage ? 'h-[100svh] md:h-screen' : 'min-h-[100svh] md:min-h-screen'} md:mr-64 overflow-hidden ${isDemoActive ? 'md:mt-10 mt-10' : ''}`}
+    >
+      {children}
+    </main>
+  );
+};
+
+export default Layout;

@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Sparkles, HelpCircle, ChevronDown, Eye, EyeOff } from 'lucide-react';
+import { ArrowRight, Sparkles, HelpCircle, ChevronDown, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { useState } from 'react';
 import { useAiSettings } from '../hooks/useAiSettings';
 import { GEMINI_MODELS, GROQ_MODELS } from '../services/gemini';
@@ -21,14 +21,14 @@ const AdvisorSettings = ({ user }) => {
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-900 pb-12" dir="rtl">
             {/* Header */}
-            <header className="sticky top-0 z-10 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 py-3">
-                <div className="max-w-3xl mx-auto flex items-center gap-3">
+            <header className="sticky top-0 left-0 z-10 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-4 py-3">
+                <div className="max-w-3xl mx-auto flex flex-row-reverse items-center justify-between">
                     <button
-                        onClick={() => navigate(-1)}
-                        className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-full transition-colors text-slate-500 dark:text-slate-400"
-                        aria-label="חזור"
+                        onClick={() => navigate('/advisor')}
+                        className="flex items-center gap-2 px-3 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors font-medium"
+                        aria-label="חזרה לצ'אט"
                     >
-                        <ArrowRight size={20} />
+                        <ArrowLeft size={20} />
                     </button>
                     <div className="flex items-center gap-2">
                         <Sparkles size={20} className="text-emerald-600 dark:text-emerald-400" />
