@@ -423,3 +423,336 @@ h1, h2, h3, h4, h5, h6 {
   border-radius: 8px;
 }
 
+/* ===== Login Page Styles ===== */
+
+/* Full-screen background */
+.login-page {
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 40%, #0f172a 100%);
+  position: relative;
+  overflow: hidden;
+  padding: 1.5rem;
+}
+
+/* Animated floating orbs */
+.login-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  opacity: 0.35;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.login-orb-1 {
+  width: 340px;
+  height: 340px;
+  background: radial-gradient(circle, #10b981 0%, transparent 70%);
+  top: -80px;
+  left: -60px;
+  animation: orbFloat1 8s ease-in-out infinite;
+}
+
+.login-orb-2 {
+  width: 260px;
+  height: 260px;
+  background: radial-gradient(circle, #8b5cf6 0%, transparent 70%);
+  bottom: -40px;
+  right: -40px;
+  animation: orbFloat2 10s ease-in-out infinite;
+}
+
+.login-orb-3 {
+  width: 200px;
+  height: 200px;
+  background: radial-gradient(circle, #3b82f6 0%, transparent 70%);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  animation: orbFloat3 12s ease-in-out infinite;
+}
+
+@keyframes orbFloat1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, 20px) scale(1.05); }
+  66% { transform: translate(-15px, 30px) scale(0.95); }
+}
+
+@keyframes orbFloat2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(-25px, -15px) scale(1.08); }
+  66% { transform: translate(20px, -25px) scale(0.92); }
+}
+
+@keyframes orbFloat3 {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-50%, -50%) scale(1.15); }
+}
+
+/* Glassmorphism card */
+.login-card {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  max-width: 380px;
+  background: rgba(30, 41, 59, 0.65);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 1.5rem;
+  padding: 2.5rem 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.04),
+    0 8px 40px rgba(0,0,0,0.45),
+    0 2px 12px rgba(0,0,0,0.2);
+  animation: cardAppear 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  opacity: 0;
+}
+
+@keyframes cardAppear {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Brand area */
+.login-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.login-logo-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.login-wallet-icon {
+  width: 36px;
+  height: 36px;
+  color: #10b981;
+  filter: drop-shadow(0 0 8px rgba(16,185,129,0.35));
+}
+
+.login-title {
+  font-family: 'Inter', 'Assistant', sans-serif;
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #f1f5f9;
+  margin: 0;
+  line-height: 1;
+}
+
+.login-pro-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: linear-gradient(135deg, #8b5cf6, #6d28d9);
+  padding: 2px 7px;
+  border-radius: 6px;
+  line-height: 1.4;
+  box-shadow: 0 2px 8px rgba(139,92,246,0.3);
+}
+
+.login-subtitle {
+  font-family: 'Assistant', 'Heebo', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 400;
+  color: #94a3b8;
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+/* Divider row: —— G —— */
+.login-divider-row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+}
+
+.login-divider-line {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(148,163,184,0.25), transparent);
+}
+
+/* Google G button */
+.login-google-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(148,163,184,0.2);
+  background: rgba(15, 23, 42, 0.6);
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+  outline: none;
+}
+
+.login-google-btn:hover:not(:disabled) {
+  border-color: rgba(148,163,184,0.4);
+  background: rgba(30, 41, 59, 0.8);
+  transform: scale(1.08);
+  box-shadow:
+    0 0 0 4px rgba(66,133,244,0.12),
+    0 4px 20px rgba(0,0,0,0.3);
+}
+
+.login-google-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.login-google-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.login-google-icon {
+  display: block;
+}
+
+/* Hint text */
+.login-hint {
+  font-family: 'Assistant', 'Heebo', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: #64748b;
+  margin: -0.75rem 0 0 0;
+  text-align: center;
+}
+
+/* Footer */
+.login-footer {
+  font-family: 'Assistant', 'Heebo', sans-serif;
+  font-size: 0.7rem;
+  color: #475569;
+  margin: 0;
+  text-align: center;
+  line-height: 1.6;
+}
+
+.login-link {
+  color: #64748b;
+  text-decoration: underline;
+  text-decoration-color: rgba(100,116,139,0.3);
+  text-underline-offset: 2px;
+  transition: color 0.2s;
+}
+
+.login-link:hover {
+  color: #94a3b8;
+}
+
+/* ===== Login Responsive ===== */
+
+/* Tablet */
+@media (min-width: 768px) {
+  .login-page {
+    min-height: 100vh;
+  }
+
+  .login-card {
+    max-width: 400px;
+    padding: 3rem 2.5rem;
+  }
+
+  .login-wallet-icon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .login-title {
+    font-size: 2rem;
+  }
+
+  .login-google-btn {
+    width: 56px;
+    height: 56px;
+  }
+
+  .login-orb-1 {
+    width: 420px;
+    height: 420px;
+  }
+
+  .login-orb-2 {
+    width: 320px;
+    height: 320px;
+  }
+}
+
+/* Desktop */
+@media (min-width: 1024px) {
+  .login-card {
+    max-width: 420px;
+    padding: 3.5rem 3rem;
+    gap: 2.25rem;
+  }
+
+  .login-orb-1 {
+    width: 500px;
+    height: 500px;
+    top: -120px;
+    left: -100px;
+  }
+
+  .login-orb-2 {
+    width: 380px;
+    height: 380px;
+    bottom: -80px;
+    right: -80px;
+  }
+
+  .login-orb-3 {
+    width: 280px;
+    height: 280px;
+  }
+}
+
+/* Small mobile */
+@media (max-width: 380px) {
+  .login-card {
+    padding: 2rem 1.5rem;
+    gap: 1.5rem;
+    border-radius: 1.25rem;
+  }
+
+  .login-title {
+    font-size: 1.5rem;
+  }
+
+  .login-wallet-icon {
+    width: 30px;
+    height: 30px;
+  }
+
+  .login-google-btn {
+    width: 46px;
+    height: 46px;
+  }
+}
+
